@@ -60,7 +60,7 @@ export function LaunchControls({ snap }: { snap: LaunchSnapshot }) {
   const clock =
     phase === 'countdown'
       ? formatTMinus(snap.clockS)
-      : phase === 'ascent' || (phase === 'debrief' && snap.ascent)
+      : phase === 'ascent' || ((phase === 'debrief' || phase === 'handoff') && snap.ascent)
         ? formatTMinus(snap.ascent?.tS ?? 0)
         : phase === 'rollout'
           ? `Rollout ${Math.round(snap.rolloutProgress * 100)}%`

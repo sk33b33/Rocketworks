@@ -31,7 +31,7 @@ export const LOCATIONS: readonly LocationDefinition[] = [
     id: 'flight',
     name: 'Flight / Orbit',
     implementedInStage: 5,
-    lockedReason: 'Unlocks in a later stage (Flight). Requires a successful launch.',
+    lockedReason: 'Unlocks in a later stage (Flight).',
   },
   {
     id: 'station',
@@ -48,7 +48,7 @@ export const LOCATIONS: readonly LocationDefinition[] = [
 ];
 
 /** Highest roadmap stage implemented by this build. Bump as stages are accepted. */
-export const CURRENT_STAGE = 4;
+export const CURRENT_STAGE = 5;
 
 export const DEFAULT_LOCATION: LocationId = 'factory';
 

@@ -20,12 +20,29 @@ export interface FlightRecord {
   readonly maxQPa: number;
   readonly durationS: number;
   readonly events: readonly string[];
+  /** Orbital flight and return details (Stage 5+); absent for pad-only flights. */
+  readonly landing?: LandingSummary;
 }
 
-/** Missions whose objectives are fully covered by the ascent simulation in this stage. */
+export type LandingOutcome = 'landed' | 'splashdown' | 'crash' | 'breakup' | 'stranded';
+
+export interface LandingSummary {
+  readonly outcome: LandingOutcome;
+  /** Zone the ship came down in (within tolerance), if any. */
+  readonly zoneName: string | null;
+  /** Along-track distance from the selected zone (m, positive = long). */
+  readonly missM: number | null;
+  readonly shipRecovered: boolean;
+  readonly orbits: number;
+  readonly hull: number;
+  readonly shield: number;
+  readonly peakG: number;
+  readonly peakHeatKWm2: number;
+}
+
+/** Missions whose objectives are fully covered by the ascent simulation alone. */
 export const CREDITABLE_ON_ASCENT: Readonly<Record<string, AscentTarget['kind']>> = {
   'test-flight': 'suborbital',
-  'orbital-flight': 'orbit',
 };
 
 export interface OutcomeInput {
@@ -40,7 +57,7 @@ export interface OutcomeInput {
 
 export function scrubRecord(input: OutcomeInput, reason: string): FlightRecord {
   return {
-    ...base(input),
+    ...recordBase(input),
     result: 'scrubbed',
     summary: `Scrubbed: ${reason}`,
     credited: false,
@@ -53,7 +70,7 @@ export function scrubRecord(input: OutcomeInput, reason: string): FlightRecord {
   };
 }
 
-function base(input: OutcomeInput) {
+export function recordBase(input: OutcomeInput) {
   return {
     id: input.id,
     at: input.at,
@@ -77,8 +94,8 @@ export function ascentRecord(input: OutcomeInput, s: AscentState): FlightRecord 
       : 'failure';
   const summaries: Record<string, string> = {
     orbit: creditable
-      ? 'Orbit achieved. Return and landing are assumed nominal until the flight stage (simplified).'
-      : 'Ascent to orbit succeeded. The rest of this mission arrives in a later stage.',
+      ? 'Orbit achieved.'
+      : 'Ascent to orbit succeeded. Continue the flight in orbit.',
     apogee: 'Suborbital test profile completed: staging, apogee and telemetry return.',
     'low-apogee': 'The ship did not reach the planned apogee.',
     'no-liftoff': 'Hold-down abort at T-0: not enough thrust to lift off.',
@@ -88,7 +105,7 @@ export function ascentRecord(input: OutcomeInput, s: AscentState): FlightRecord 
     aborted: 'Flight aborted.',
   };
   return {
-    ...base(input),
+    ...recordBase(input),
     result,
     summary: summaries[s.status] ?? s.status,
     credited: success && creditable,

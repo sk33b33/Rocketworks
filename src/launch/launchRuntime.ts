@@ -13,12 +13,14 @@ import { ascentRecord, scrubRecord, type FlightRecord, type OutcomeInput } from 
 
 /*
  * Launch runtime: a framework-free state machine for one launch attempt
- * (rollout → pad → countdown → ascent → debrief). The scene calls update() every frame; the
+ * (rollout → pad → countdown → ascent → debrief, or → handoff when an orbital mission reaches
+ * orbit and continues in the Flight runtime). The scene calls update() every frame; the
  * simulation advances in fixed SIM_DT_S steps (capped per frame) and can be paused or warped.
  * UI subscribes to throttled immutable snapshots, so React never re-renders at frame rate.
  */
 
-export type LaunchPhase = 'idle' | 'rollout' | 'pad' | 'countdown' | 'ascent' | 'debrief';
+export type LaunchPhase =
+  'idle' | 'rollout' | 'pad' | 'countdown' | 'ascent' | 'handoff' | 'debrief';
 export const WARP_LEVELS = [1, 2, 4, 10] as const;
 export type Warp = (typeof WARP_LEVELS)[number];
 
@@ -26,6 +28,8 @@ export type Warp = (typeof WARP_LEVELS)[number];
 export const ROLLOUT_DURATION_S = 20;
 /** Real seconds to linger on the final state before the debrief opens. */
 export const DEBRIEF_DELAY_S = 4;
+/** Real seconds after orbit insertion before the "continue to orbit" hand-off is offered. */
+export const HANDOFF_DELAY_S = 2;
 const PUBLISH_INTERVAL_S = 0.1;
 const PROFILE_SAMPLE_S = 2;
 
@@ -230,11 +234,22 @@ export class LaunchRuntime {
     }
     // Terminal: keep the booster falling for the visuals, then open the debrief.
     this.sinceTerminal += realDtS;
+    if (continuesInOrbit(ctx, this.live)) {
+      // The flight isn't over: the Flight runtime takes the ship from here.
+      if (this.sinceTerminal >= HANDOFF_DELAY_S)
+        this.set({ ...this.state, phase: 'handoff', ascent: this.live });
+      return;
+    }
     if (this.sinceTerminal >= DEBRIEF_DELAY_S && !s.record) {
       const record = ascentRecord({ ...ctx.outcome, at: this.now() }, this.live);
       this.set({ ...this.state, phase: 'debrief', record, ascent: this.live });
       this.onRecord(record);
     }
+  }
+
+  /** Ends the launch session after the orbital flight has been recorded. */
+  completeHandoff(): void {
+    if (this.state.phase === 'handoff') this.reset();
   }
 
   private publish(): void {
@@ -256,4 +271,9 @@ export class LaunchRuntime {
     this.snap = next;
     for (const l of this.listeners) l();
   }
+}
+
+/** Orbital missions that reached orbit continue in the Flight runtime instead of a debrief. */
+export function continuesInOrbit(ctx: LaunchContext, s: AscentState): boolean {
+  return ctx.config.target.kind === 'orbit' && s.status === 'orbit';
 }

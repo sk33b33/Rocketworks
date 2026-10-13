@@ -352,7 +352,8 @@ export class LaunchPadScene implements GameScene {
     const mode: PadCameraMode = this.controller.getCameraMode();
     const target = this.vehicleFocus(snap, live, this.focus);
     const cam = this.camera;
-    const flying = snap.phase === 'ascent' || (snap.phase === 'debrief' && !!live);
+    const flying =
+      snap.phase === 'ascent' || ((snap.phase === 'debrief' || snap.phase === 'handoff') && !!live);
 
     if (mode === 'follow') {
       const dist = 190 * this.zoom;

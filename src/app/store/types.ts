@@ -4,6 +4,7 @@ import type { MissionFixAction, MissionTab } from '../../missions/missionReadine
 import type { MissionSetup } from '../../missions/missionSetup';
 import type { FlightRecord } from '../../launch/flightRecord';
 import type { PadCameraMode } from '../../scenes/launch-pad/launchPadController';
+import type { FlightCameraMode } from '../../scenes/flight/flightController';
 import type { FixAction } from '../../rocket/readiness/readiness';
 import type { HullFinish, RocketBlueprint, SocketRef, VehicleRole } from '../../rocket/model/types';
 import type { LocationId } from '../locations';
@@ -47,6 +48,8 @@ export interface GameData {
   missionTab: MissionTab;
   /** Launch Pad camera mode (not persisted). */
   padCamera: PadCameraMode;
+  /** Flight camera mode (not persisted). */
+  flightCamera: FlightCameraMode;
   /** Flight history (persisted, newest last). */
   flights: readonly FlightRecord[];
   history: History;
@@ -118,6 +121,7 @@ export interface FlightActions {
   recordFlight(record: FlightRecord): void;
   setRandomFailures(enabled: boolean): void;
   setPadCamera(mode: PadCameraMode): void;
+  setFlightCamera(mode: FlightCameraMode): void;
 }
 
 export type GameStore = GameData &

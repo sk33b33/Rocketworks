@@ -12,7 +12,7 @@ export function CountdownPanel({ snap }: { snap: LaunchSnapshot }) {
   const clock =
     snap.phase === 'countdown'
       ? snap.clockS
-      : snap.phase === 'ascent' || snap.phase === 'debrief'
+      : snap.phase === 'ascent' || snap.phase === 'debrief' || snap.phase === 'handoff'
         ? 1
         : -1e9;
   const load = propellantLoad(snap.phase === 'countdown' ? snap.clockS : clock > 0 ? 0 : -1e9);

@@ -81,15 +81,16 @@ describe('countdown', () => {
 
 describe('flight records', () => {
   it('credits only missions fully covered by the ascent', () => {
-    const ctx = context('orbital-flight');
-    const s = simulateAscent(ctx.config, SIM_DT_S);
-    expect(ascentRecord(ctx.outcome, s)).toMatchObject({
+    const hop = context('test-flight', false);
+    expect(ascentRecord(hop.outcome, simulateAscent(hop.config, SIM_DT_S))).toMatchObject({
       result: 'success',
       credited: true,
-      crewSafe: true,
+      crewSafe: null,
     });
-    const station = ascentRecord({ ...ctx.outcome, missionId: 'station-docking' }, s);
-    expect(station).toMatchObject({ result: 'partial', credited: false });
+    // Orbital missions continue in the flight stage: the ascent alone is never credited.
+    const ctx = context('orbital-flight');
+    const s = simulateAscent(ctx.config, SIM_DT_S);
+    expect(ascentRecord(ctx.outcome, s)).toMatchObject({ result: 'partial', credited: false });
   });
 });
 
@@ -104,7 +105,7 @@ describe('LaunchRuntime', () => {
       (r) => records.push(r),
       () => NOW,
     );
-    rt.prepare(context());
+    rt.prepare(context('test-flight', false));
     expect(rt.getSnapshot().phase).toBe('rollout');
     rt.startCountdown(); // ignored during rollout
     expect(rt.getSnapshot().phase).toBe('rollout');

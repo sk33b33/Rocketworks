@@ -41,7 +41,8 @@ export function LaunchPadHud() {
       </div>
       <div className="hud-col hud-right">
         <section data-panel="telemetry" className="grow">
-          {snap.phase === 'ascent' || (snap.phase === 'debrief' && snap.ascent) ? (
+          {snap.phase === 'ascent' ||
+          ((snap.phase === 'debrief' || snap.phase === 'handoff') && snap.ascent) ? (
             <TelemetryPanel snap={snap} />
           ) : (
             <div className="panel">

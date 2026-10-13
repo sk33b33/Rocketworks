@@ -44,7 +44,8 @@ describe('navigate', () => {
 
   it('rejects locked locations with a reason and keeps the current one', () => {
     expect(navigate('factory', 'launch-pad').ok).toBe(true);
-    const result = navigate('factory', 'flight');
+    expect(navigate('factory', 'flight').ok).toBe(true);
+    const result = navigate('factory', 'station');
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain('later stage');
   });
