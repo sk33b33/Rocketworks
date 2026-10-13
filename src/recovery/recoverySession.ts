@@ -13,7 +13,6 @@ import {
   initialGuidance,
   planPlatformX,
   REC,
-  simulateAssistedRecovery,
   type GuidancePhase,
   type GuidanceState,
   type ManualLandingInput,
@@ -35,6 +34,9 @@ import {
  */
 
 export type BoosterKey = 'throttle-up' | 'throttle-down' | 'tilt-downrange' | 'tilt-uprange';
+
+/** Fixed step used when the replay is skipped (same as the live replay). */
+const SKIP_DT_S = 0.05;
 
 export const MANUAL_RATES = { throttlePerS: 0.8, tiltDegPerS: 12, maxTiltDeg: 20 } as const;
 
@@ -59,6 +61,8 @@ export class RecoverySession {
   private input: { throttle: number; tiltDeg: number } = { throttle: 0, tiltDeg: 0 };
   private keys = new Set<BoosterKey>();
   private wasManual = false;
+  /** The assist flew part of the landing burn (then it doesn't count as a manual landing). */
+  private assistedBurn = false;
   private message: string | null = null;
   readonly target: RecoveryTargetSpec;
 
@@ -130,6 +134,7 @@ export class RecoverySession {
     // The player may only take over in the final descent: before that the assist flies.
     const manual = landingManual ? this.input : null;
     if (landingManual) this.wasManual = true;
+    else if (this.g.phase === 'landing-burn') this.assistedBurn = true;
     const out = guideBooster(this.g, this.s, this.spec, this.target, manual);
     if (out.message) this.message = out.message;
     // Taking over at ignition: start from the throttle the assist would have used.
@@ -143,15 +148,15 @@ export class RecoverySession {
     this.s = stepBooster(this.s, this.spec, out.controls, this.target, dt);
   }
 
-  /** Skips the replay: the rest of the recovery is flown by the assist instantly. */
+  /** Skips the replay: the assist flies the rest of the recovery instantly. */
   skip(): void {
-    if (this.done) return;
     this.manualRequested = false;
-    this.s = simulateAssistedRecovery(this.s, this.spec, this.target);
+    for (let i = 0; i < 60_000 && !this.done; i++) this.step(SKIP_DT_S, 0);
   }
 
   summary(simulated: boolean): BoosterRecoverySummary {
-    return summarizeRecovery(this.s, this.target, this.wasManual, simulated);
+    // Credit a manual landing only if the player flew the whole landing burn.
+    return summarizeRecovery(this.s, this.target, this.wasManual && !this.assistedBurn, simulated);
   }
 
   private applyKeys(dt: number): void {

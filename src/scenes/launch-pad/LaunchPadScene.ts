@@ -17,7 +17,7 @@ import {
 } from '../../render/rocket/partAnimation';
 import type { RecoverySessionView } from '../../recovery/recoverySession';
 import { CATCH_HEIGHT_M } from '../../recovery/recoveryPlan';
-import { ARMS_ABOVE_BASE_M, RecoveryView } from './RecoveryView';
+import { RecoveryView } from './RecoveryView';
 import {
   buildSpaceBackdrop,
   placeOnEarth,
@@ -132,7 +132,7 @@ export class LaunchPadScene implements GameScene {
     const live = this.controller.runtime.liveAscent;
     const recovery = this.controller.runtime.liveRecovery;
     this.syncRocket(snap);
-    this.recoveryView?.update(recovery, deltaSeconds);
+    this.recoveryView?.update(recovery, deltaSeconds, snap.context?.boosterSpec?.lengthM ?? 45);
     if (recovery) this.placeRecovery(recovery);
     else this.placeVehicle(snap, live);
     this.smoke?.update(deltaSeconds);
@@ -422,7 +422,7 @@ export class LaunchPadScene implements GameScene {
       // Landing camera: from the target (tower or deck), looking up at the returning booster.
       const spot = placeOnEarth(
         rec.target.x,
-        rec.target.mode === 'catch' ? CATCH_HEIGHT_M + ARMS_ABOVE_BASE_M / 2 : 4,
+        rec.target.mode === 'catch' ? CATCH_HEIGHT_M + 20 : 4,
       );
       const up = new THREE.Vector3(Math.sin(spot.arcRad), Math.cos(spot.arcRad), 0);
       cam.position

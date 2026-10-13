@@ -1,65 +1,65 @@
 # Project Status
 
 ## Current stage
-**Stage 5: Flight HUD and Earth orbit.** Complete and waiting for review.
+**Stage 6: Reusable booster and ship landing.** Complete and waiting for review.
 
 ## Completed
 - **Stage 0–2:** foundation; Rocket Factory with modular assembly; validation, certification, design library, progression.
 - **Stage 3:** Mission Control: missions, crew, payloads, weather, a go/no-go poll and commitment.
-- **Stage 5:**
-  - **Flight model** (`src/flight/flightModel.ts`; pure, fixed steps):
-    - Planar Earth-centred two-body motion (`orbitMath.ts`: orbital elements, Ap/Pe, period, time to apsides, path sampling).
-    - Attitude: pitch relative to the local horizon, bank about the nose (tilts lift out of the plane), and visual-only yaw. Attitude slews at 8°/s with RCS and 20°/s in the air.
-    - Engines with an acceleration governor (3.5 g).
-    - Aerodynamics: drag area blends nose-on and side-on; lift peaks at mid angles of attack. Without flaps the ship can't hold a high angle of attack.
-    - Re-entry heating: Sutton–Graves stagnation flux. Belly-first (AoA ≥ 35°) the tiles absorb heat and ablate; otherwise bare steel takes it and the ship breaks up. Shield coverage comes from the design's open heat-shield sockets.
-    - Touchdown classification: gentle landing (≤ 6 m/s vertical, ≤ 4 m/s horizontal, ≤ 15° tilt), hard contact (survivable on water only), or crash.
-  - **Autopilot** (`autopilot.ts`):
-    - Attitude holds: prograde, retrograde, radial in/out, belly-first, manual.
-    - Programs:
-      - **Circularize** burns near apoapsis and stops at the eccentricity minimum.
-      - **Deorbit to target** predicts the impact point by simulation, times the retrograde burn and aims slightly long.
-      - **Re-entry guidance** banks to trim range.
-      - **Landing burn** does a belly-flop, flips upright and runs a suicide-burn law.
-    - Tuned so all three zones land within ~1 km with the reference design (shield about 93%, peak 3.5 g).
-  - **Landing zones** (`landingZones.ts`): equatorial splashdown zone (±40 km), ocean platform "Kestrel" (±1.5 km), launch-site pad (±1.5 km). Simplified geography: the launch coast is land; the rest of the ground track is ocean.
-  - **Flight runtime** (`flightRuntime.ts`):
-    - A framework-free session from orbit insertion to debrief. Snapshots are throttled to 10 Hz, with at most 400 steps per frame.
-    - Time warp: 0.05 s steps up to 10×. A coarse 1 s step (up to 1000×) is used only when coasting unpowered above 110 km. Warp drops automatically for burns, the atmosphere, near apoapsis while circularizing, and before the deorbit burn point, and says why.
-    - Manual input disengages the autopilot without a jump.
-    - Objectives: stable orbit (Pe ≥ 120 km), one full orbit, deorbit, survive re-entry, land or splash down safely.
-    - *End flight* (confirmed) leaves the ship in space.
-  - **Outcome** (`flightOutcome.ts`):
-    - Landed on a pad, platform or the coast means the ship is recovered.
-    - A gentle or hard splashdown on water keeps the crew safe, but the ship is lost.
-    - A crash or breakup is fatal.
-    - Crewed Orbital Shakedown is credited for orbit + one full orbit + a safe return.
-    - Station and lunar missions record a "safe return (partial)".
-    - The flight record gains an optional `landing` summary.
-  - **Launch hand-off:**
-    - Orbital missions that reach orbit no longer get a debrief at the pad. The runtime enters a `handoff` phase and offers *Continue to Flight / Orbit*.
-    - The commitment is used up once the orbital flight is recorded.
-    - The suborbital Test Flight is unchanged.
-  - **Flight / Orbit location** (now unlocked; `CURRENT_STAGE = 5`):
-    - Shows an empty state with next steps when nothing is flying, or *Take control in orbit* when a hand-off is waiting.
-  - **Flight scene** (`src/scenes/flight/`):
-    - Floating origin: the ship stays at the scene origin and the planet moves around it.
-    - Earth: procedural Earth and cloud textures (seeded noise, original), a rim-lit atmosphere shell and a star field.
-    - Near the ground: a flat local surface tile, the landing platform and pad props, and a target ring sized to the zone tolerance.
-    - Ship: the ship-only part tree from the flown design, oriented belly-down, with engine plumes, a plasma glow scaled by heat flux and a breakup fireball.
-    - Cameras: **Chase** (drag and zoom), **Orbit** (slow cinematic circle), **Map** (M; whole planet with the predicted path coloured by status, Ap/Pe, ship and zone markers).
-  - **Flight HUD** (`src/ui/flight/`):
-    - **Orbit panel:** position (altitude, speed, horizontal/vertical) separate from the trajectory (Ap and Pe with time to each, period, eccentricity, status badge), plus a 2D SVG orbit inset.
-    - **Objectives:** next-step hint.
-    - **Ship:** propellant, heat shield and hull meters; Δv; engines and throttle; pitch and bank; AoA; heating; g; shield coverage; flaps; crew.
-    - **Autopilot:** zone picker with distance ahead; programs (disabled with a visible reason); attitude holds.
-    - **Controls bar:** clock, pause, warp (levels above the limit are disabled with the reason), cutoff, Stage (disabled: no further stages), cameras, reset view, help, end flight.
-    - **Overlays:** a guidance message strip, the help dialog (`?`) and the debrief (outcome, miss distance, recovery, orbits, shield and hull, peak heating and g, rewards, flight log).
+- **Stage 4:** Launch Pad, countdown and a fixed-step 2D ascent with seeded failures.
+- **Stage 5:** Flight / Orbit:
+  - a planar orbit and re-entry model with heating;
+  - assisted programs (circularize, deorbit to a zone, re-entry guidance, landing burn) with manual takeover;
+  - time warp with safety limits;
+  - a procedural Earth with chase, orbit and map cameras;
+  - the orbit and ship HUD, objectives and debrief.
 
-- **Stage 4:**
-  - Launch Pad: a fixed-step 2D ascent sim with seeded risk failures, a compressed countdown with checklist, hold, scrub and skip, rollout, plumes, staging and three cameras, telemetry and a debrief.
-  - Save format v4 adds flight history.
-  - Since Stage 5, orbital missions hand off to the Flight runtime at orbit insertion instead of being credited at the pad.
+  Orbital missions hand off from the pad at orbit insertion.
+- **Stage 6:**
+  - **Booster recovery planning** (`src/recovery/recoveryPlan.ts`):
+    - Three options: **tower catch** (return to launch site), **ocean platform** landing downrange, or **expend**.
+    - Propellant held back at staging: 15% for a catch, 6% for the platform. The ascent stages earlier (`boosterReserveKg`), and the Δv estimate in Mission Control accounts for it.
+    - Hardware rules: a catch needs 4 grid fins (the arms catch on the fin hardpoints); the platform also needs 4 booster legs.
+  - **Booster model** (`boosterModel.ts`):
+    - A 2D return in the ascent frame: tail-first drag, grid-fin lateral steering and engine throttling with a 4 g governor.
+    - Engine-bay heat load: the booster is lost above 9 MJ/m².
+    - Capture window for a catch: ±12 m, ≤ 4 m/s down, ≤ 3 m/s drift, ≤ 8° tilt. Platform touchdown: on the 90 m deck at ≤ 6 m/s with legs down.
+  - **Booster guidance** (`boosterGuidance.ts`):
+    - Phases: separation, flip, boostback (catch only, aimed with an impact prediction), coast, a capped entry burn, grid-fin glide and landing burn.
+    - **Tower catch:** a drag-aware powered-descent guidance law that re-plans every step. The landing burn lights when, a moment later, no flyable plan would remain.
+    - **Platform:** a retro "suicide burn" with drag-aware ignition. The platform is stationed where the assisted profile comes down, as real droneships are positioned before launch.
+    - Assisted results with the reference design: catches within about 1 m at 1.6 m/s; platform landings at the deck centre.
+  - **Replay in the launch runtime:**
+    - After the ascent, a `recovery` phase replays the booster from staging.
+    - Controls: pause, warp up to 10×, and *Skip replay* (the assisted result is simulated instantly and marked as such).
+    - *Fly the landing myself*: from below 9 km the player flies the landing burn. Shift/Ctrl or a slider set throttle (0–⅓ runs one engine, above that three); A/D tilt the thrust; it flies in real time.
+    - Afterwards the debrief opens (suborbital) or the orbit hand-off is offered (orbital), carrying the booster result.
+  - **Landing ratings (S–D)** (`rating.ts`): miss distance, sink rate, drift and tilt against the safe limits. They apply to booster catches, platform landings and ship landings.
+    - The ship's debrief shows its rating and whether it was flown manually (the landing program unused below 5 km).
+  - **Fleet and reuse** (`src/fleet/fleet.ts`):
+    - Recovered boosters (B-n) and ships (S-n) join the fleet with flight count, wear and their last rating.
+    - Wear grows with each flight, more after rough landings and heavy heating, and adds mission risk. A vehicle retires at 100% wear.
+    - *Refurbish* resets wear at a one-off surcharge on the next flight; *Scrap* (with confirmation) removes a vehicle.
+    - Vehicles match designs by a part-tree signature per stage, so editing only the ship keeps the booster reusable.
+    - Reflights cost 12% of a new build plus a wear-dependent share; the *Rapid Reuse* tech lowers that further.
+    - A reflown vehicle that is lost leaves the fleet.
+  - **Per-mission budget:**
+    - The program budget now caps each mission's hardware cost (new builds plus reflights) in the Mission Control poll, under a new "Recovery & budget" station.
+    - Certification only warns when a new build exceeds the budget, so reflown hardware lets bigger designs fly.
+  - **Mission Control Manifest:**
+    - Booster recovery choice (Automatic, or an option disabled with its reason), booster and ship hardware (new build or matching fleet vehicles, with cost and wear).
+    - Mission hardware cost against the budget, and the fleet list.
+  - **Progression:**
+    - New milestones: *Caught by the tower* (+2 RP), *Downrange landing*, *Ship recovered*, *Hands on the stick* (manual landing rated A or better, +1 RP and +25,000 cr), *Flight-proven* (recover reflown hardware).
+    - New tech: *Rapid Reuse* and *Fleet Operations* (+75,000 cr budget).
+  - **Visuals:**
+    - The pad scene replays the booster: engines light from the centre out, grid fins unfold, legs deploy.
+    - The tower arms wait open and close on capture, then lower the booster onto the mount.
+    - A landing platform with its own patch of ocean appears downrange.
+    - A new **Landing** camera (key 4) watches from the target.
+    - Ship flaps trim with angle of attack and bank in the Flight scene, and its legs deploy for the final approach.
+  - **Save format v5:** fleet, recovery and hardware on flight records, and recovery and fleet choices in the mission plan, with a v4→v5 migration and per-entry validation.
+  - **Ship landing fix:** a light ship can't throttle below one engine at minimum thrust, so the landing program now pulses the engine instead of hovering until it runs dry.
 
 ## Assumptions (documented, reversible)
 - Flight physics is a simplified planar gameplay model: one orbital plane (the equator), no Earth rotation, an exponential atmosphere, lumped aerodynamics, and Sutton–Graves heating with gameplay heat capacities. The UI and footnotes say so; it is not a flight simulator.
@@ -69,38 +69,48 @@
 - A crew left in space via *End flight* is assumed rescued (the result is "flight ended", not credited). Breakup or a crash is fatal for the crew.
 - The orbital flight isn't saved mid-flight. Reloading during a flight loses it, but the mission commitment is only used up when the flight is recorded, so you can launch again.
 - A flight advances only while its location is active (the pad for the ascent, Flight / Orbit for the orbit), as in Stage 4.
-- Mission readiness Δv remains a conservative estimate. The reference design reaches orbit, circularizes and lands with about 50 t of propellant to spare.
+- Mission readiness Δv remains a conservative estimate, now including the booster's recovery reserve.
+  - The reference design flies the Crewed Orbital Shakedown with a tower catch and lands its ship with about 11 t of propellant to spare.
+  - Heavy payloads with a catch can come up short; Mission Control flags this and suggests the platform. The Shakedown's Δv requirement rose to 9,750 m/s to match.
+- Booster recovery is a 2D gameplay model in the ascent's frame. Guidance laws are simplified versions of real techniques (powered-descent guidance, suicide burns), tuned for the game.
+- The recovery is a replay from staging that runs after the ascent, not a parallel simulation. Skipping it simulates the assisted result.
+- The platform repositions per flight to the booster's natural landing point; the ship's ocean platform zone ("Kestrel") is a separate, fixed zone.
+- Wear, reflight pricing and rating thresholds are game values.
 
 ## Checks (last run)
 - `npm run typecheck`, `npm run lint`, `npm run build`: pass.
-- `npm test`: 160 tests pass across 16 files. New this stage (`tests/flight.test.ts`, plus updates):
-  - orbit math (circular, elliptical, suborbital and escape states; path sampling; apsis timing; ascent→inertial conversion);
-  - flight model (heating scaling, coarse-step orbit stability, the thrust governor, belly-first vs nose-first and unshielded re-entry, touchdown classification);
-  - landing zones;
-  - the assisted autopilot landing on all three zones within tolerance (hull > 90%, < 5 g);
-  - outcome evaluation (credit, splashdown, crash, missing orbit, station partial, stranded);
-  - warp limits and program availability reasons;
-  - a full runtime run from launch hand-off to a credited RTLS landing;
-  - manual takeover and *End flight*;
-  - launch hand-off (no pad debrief for orbital missions);
-  - landing-summary save parsing.
+- `npm test`: 181 tests pass across 17 files. New this stage (`tests/recovery.test.ts`, plus save and launch updates):
+  - recovery hardware rules and defaults; the staging reserve; per-stage design signatures;
+  - assisted tower catch inside the capture window; platform landing at the stationed deck;
+  - loss without landing propellant; manual takeover; manual credit only for a fully manual burn;
+  - S–D ratings;
+  - fleet pricing (wear, refurbishment, Rapid Reuse), naming, wear, retirement, loss and compatibility;
+  - Mission Control recovery Δv, hardware, per-mission budget, reflown hardware, wear risk, missing or mismatched vehicles;
+  - launch runtime replay → debrief (suborbital) and → hand-off with the result (orbital); expend skips the replay;
+  - store recording: fleet, milestones, released assignments;
+  - v4→v5 save migration and fleet/recovery parsing.
 - Headless Chromium smoke test (manual script, not committed), with no console errors:
-  - empty Flight state, then certify, crew and commit the Crewed Orbital Shakedown;
-  - launch with failures off, and the hand-off dialog at orbit insertion;
-  - *Continue to Flight / Orbit*, with Circularize engaged automatically;
-  - chase, map and orbit cameras; the landing program shown disabled with its reason;
-  - W takeover switches to manual; the help dialog opens;
-  - one full orbit at 1000×, then Kestrel selected and *Deorbit to target*, with warp dropping to 10× before the burn and in the atmosphere;
-  - re-entry with plasma, landing program and touchdown;
-  - debrief: **Mission Success**, landed on Kestrel 1.02 km long, crew safe, shield 93%, hull 99%, peak 479 kW/m² and 3.5 g, +3 RP / +30,000 cr;
-  - Mission Control afterwards; the pad is clear, since the commitment was used.
+  - **Flight 1** (test flight, tower catch, assisted):
+    - Replay: separation → flip → boostback → coast → glide → landing burn.
+    - Caught 0.0 m off centre at 1.6 m/s, rated S. The arms close on the booster and lower it onto the mount.
+    - B-1 joins the fleet; *Caught by the tower* is awarded.
+  - **Flight 2** (reflown B-1 to the ocean platform):
+    - The manifest shows the reflight at 77,217 cr vs 136,700 cr new.
+    - The Landing camera watches from the deck; the manual-landing toggle works. Landed at deck centre, and B-1's wear rose.
+    - This run exposed a manual-credit exploit, now fixed and covered by a test.
+  - **Flight 3** (Crewed Orbital Shakedown, tower catch, replay skipped):
+    - The thin-Δv warning shows.
+    - The hand-off dialog carries the simulated catch result. *End flight* in orbit gives a debrief with the booster line, and B-2 joins the fleet.
 
 ## Known limitations
 - Headless software rendering is slow, so timings in the smoke test differ from real browsers.
-- The booster is not recovered (Stage 6), and the ship's landing burn is assisted rather than a dedicated landing camera/challenge (Stage 6).
+- Manual landings take practice: there is no landing-burn predictor beyond the HUD's height, speeds and target distance.
+- Asymmetric flap deflection for bank isn't modelled visually (all flaps deflect together).
+- The replay doesn't show the ship and booster at the same time.
+- The assisted tower-catch landing burn lights high (around 12–15 km) and runs long. It reliably catches, but it's less efficient than a real booster's short final burn (tuning candidate).
 - The Earth texture is procedural and low-resolution (1024×512); near the ground a flat local surface tile stands in for terrain.
 - Ctrl is the throttle-down key; browsers reserve some Ctrl combinations (e.g. Ctrl+W), so use the X cutoff or the buttons if in doubt.
 - There's no free-fly camera, and the map view shows the predicted path but no manoeuvre planning nodes.
 
 ## Next action
-Review Stage 5. When approved, begin **Stage 6: Reusable booster and ship landing** (booster return and catch or landing, landing camera, flap/leg/grid-fin animations, landing challenge).
+Review Stage 6. When approved, begin **Stage 7: ISS-like orbital station**: a fictional station in orbit, rendezvous planning, approach and docking, and the Orbital Station location.

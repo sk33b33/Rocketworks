@@ -11,8 +11,8 @@ import { MOUNT_TOP_M } from './LaunchSite';
  * landing platform with a local patch of sea, and lowering a caught booster onto the mount.
  */
 
-/** Arms close this far above the booster's base (matches the stacking height). */
-export const ARMS_ABOVE_BASE_M = 60;
+/** The arms close on the booster's catch points, this far up its length. */
+export const ARMS_AT_LENGTH_SHARE = 0.82;
 const LOWER_SECONDS = 8;
 const DECK_TOP_M = 2;
 
@@ -82,7 +82,7 @@ export class RecoveryView {
     return v.state.h;
   }
 
-  update(v: RecoverySessionView | null, dt: number): void {
+  update(v: RecoverySessionView | null, dt: number, boosterLengthM: number): void {
     const arms = this.site.catchArms;
     if (!v) {
       this.droneship.visible = false;
@@ -101,7 +101,7 @@ export class RecoveryView {
     if (v.target.mode !== 'catch') return;
     const caught = v.state.phase === 'caught';
     if (caught) this.caughtFor += dt;
-    arms.position.y = this.boosterBaseY(v) + ARMS_ABOVE_BASE_M;
+    arms.position.y = this.boosterBaseY(v) + boosterLengthM * ARMS_AT_LENGTH_SHARE;
     const close = caught ? Math.min(1, this.caughtFor / 1.2) : 0;
     for (const [i, arm] of arms.children.slice(1).entries()) {
       const side = i === 0 ? -1 : 1;

@@ -147,6 +147,17 @@ describe('assisted booster recovery', () => {
     expect(session.view().state.vy).toBeGreaterThan(vyStart + 20);
   });
 
+  it('only credits a manual landing when the player flew the whole burn', () => {
+    const session = new RecoverySession(staging('platform').staging, spec, 'platform');
+    session.setManual(true);
+    let i = 0;
+    while (!session.view().manualActive && i++ < 20_000) session.step(SIM_DT_S, SIM_DT_S);
+    for (let k = 0; k < 5; k++) session.step(SIM_DT_S, SIM_DT_S);
+    session.setManual(false); // hand back to the assist mid-burn
+    session.skip();
+    expect(session.summary(false)).toMatchObject({ outcome: 'landed', manual: false });
+  });
+
   it('summarizes expended and unattempted recoveries', () => {
     expect(unrecoveredSummary('expend', 'expended')).toMatchObject({
       outcome: 'expended',

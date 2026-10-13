@@ -51,6 +51,11 @@ Current progress is tracked in `docs/STATUS.md`.
 - Take over at any time: W/S pitch, Q/E bank, Shift/Ctrl throttle, Z full throttle, X cutoff, Space pause, `.` `,` warp, 1/2/M cameras (chase, orbit, map), `?` help.
 - The debrief shows the landing outcome, miss distance, heat-shield and hull condition, peak g and rewards. The flight model is simplified (planar, no Earth rotation).
 
+**Recovering and reflying hardware (Stage 6):**
+- In Mission Control's Manifest, choose the booster recovery: tower catch, ocean platform or expend. Recovery holds back booster propellant, which costs ascent performance. Assign recovered boosters and ships from the fleet to fly them again for a fraction of the cost.
+- After the ascent, the booster's return replays from staging. Watch it with the **Landing** camera (4), *Skip replay* to simulate it, or choose *Fly the landing myself* below 9 km (Shift/Ctrl throttle, A/D tilt) for a precision rating and a bonus milestone.
+- Landings are rated S–D. Recovered vehicles wear with use: refurbish them in the Manifest's fleet list, or scrap them.
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:
