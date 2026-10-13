@@ -2,7 +2,9 @@ import { findCrew } from '../../missions/crew';
 import { findMission, findPayload } from '../../missions/missionCatalog';
 import { commitMission } from '../../missions/missionReadiness';
 import {
+  assignFleet,
   selectMission,
+  setRecovery,
   setMissionDesign,
   setPayload,
   toggleCrew,
@@ -10,6 +12,8 @@ import {
   type MissionSetup,
 } from '../../missions/missionSetup';
 import { generateConditions } from '../../missions/conditions';
+import { RECOVERY_LABELS } from '../../recovery/recoveryPlan';
+import { refurbish, scrap } from '../../fleet/fleet';
 import { makeNotice, now } from './commit';
 import { missionReport } from './derived';
 import type { GetState, MissionActions, SetState } from './types';
@@ -59,7 +63,7 @@ export function createMissionActions(set: SetState, get: GetState): MissionActio
     commitMission: () => {
       const s = get();
       const bp = s.blueprints.find((b) => b.id === s.mission.designId);
-      const report = missionReport(s.mission, s.blueprints, s.progression);
+      const report = missionReport(s.mission, s.blueprints, s.progression, s.fleet);
       const r = commitMission(s.mission, bp, report, now());
       if (!r.ok) return warn(r.reason);
       set({
@@ -74,6 +78,50 @@ export function createMissionActions(set: SetState, get: GetState): MissionActio
       const s = get();
       if (!s.mission.commit) return;
       update({ ...s.mission, commit: null }, 'Mission stood down; back to planning.');
+    },
+    setRecovery: (target) => {
+      update(
+        setRecovery(get().mission, target),
+        target ? `Booster recovery: ${RECOVERY_LABELS[target]}.` : 'Booster recovery: automatic.',
+      );
+    },
+    assignFleet: (kind, vehicleId) => {
+      const s = get();
+      const v = vehicleId ? s.fleet.find((f) => f.id === vehicleId) : null;
+      if (vehicleId && !v) return warn('That vehicle is no longer in the fleet.');
+      update(
+        assignFleet(s.mission, kind, vehicleId),
+        v ? `${v.name} assigned to fly again.` : `New-build ${kind} selected.`,
+      );
+    },
+    refurbishVehicle: (id) => {
+      const s = get();
+      const v = s.fleet.find((f) => f.id === id);
+      if (!v) return warn('That vehicle is no longer in the fleet.');
+      const used = s.mission.boosterFleetId === id || s.mission.shipFleetId === id;
+      set({
+        fleet: refurbish(s.fleet, id),
+        ...(used ? { mission: { ...s.mission, commit: null } } : {}),
+        notice: makeNotice(
+          'success',
+          `${v.name} refurbished: wear reset. Its next flight carries a refurbishment charge.`,
+        ),
+      });
+    },
+    scrapVehicle: (id) => {
+      const s = get();
+      const v = s.fleet.find((f) => f.id === id);
+      if (!v) return;
+      const mission = {
+        ...s.mission,
+        boosterFleetId: s.mission.boosterFleetId === id ? null : s.mission.boosterFleetId,
+        shipFleetId: s.mission.shipFleetId === id ? null : s.mission.shipFleetId,
+      };
+      set({
+        fleet: scrap(s.fleet, id),
+        mission,
+        notice: makeNotice('info', `${v.name} scrapped.`),
+      });
     },
     setMissionTab: (missionTab) => set({ missionTab }),
     runMissionFix: (action) => {

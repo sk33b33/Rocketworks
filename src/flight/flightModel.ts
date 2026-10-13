@@ -56,6 +56,8 @@ export interface FlightState {
   readonly angleOfAttackDeg: number;
   readonly phase: FlightPhase;
   readonly events: readonly FlightEvent[];
+  /** Contact metrics, set when the ship comes down. */
+  readonly touchdown?: TouchdownResult;
 }
 
 /** Model constants (gameplay values). */
@@ -307,7 +309,7 @@ function touchdown(
           ? `Hard contact at ${m.vertMS.toFixed(1)} m/s vertical, ${m.horizMS.toFixed(0)} m/s horizontal.`
           : `Impact at ${m.vertMS.toFixed(0)} m/s.`,
   });
-  return { ...next, r: surface, v: [0, 0], throttle: 0, phase };
+  return { ...next, r: surface, v: [0, 0], throttle: 0, phase, touchdown: m };
 }
 
 /** Δv left in the ship (ideal rocket equation, vacuum Isp). */

@@ -4,6 +4,7 @@ import { findPayload } from '../../missions/missionCatalog';
 import { certificationStatus } from '../../rocket/readiness/certification';
 import { calculateRocketStats } from '../../rocket/stats/calculateRocketStats';
 import { formatMass } from '../format';
+import { RecoveryFleetSection } from './RecoveryFleetSection';
 
 const CERT_TEXT = {
   none: 'not certified',
@@ -51,6 +52,8 @@ export function ManifestTab() {
           );
         })}
       </fieldset>
+
+      <RecoveryFleetSection bp={bp} />
 
       <fieldset className="stacked">
         <legend className="eyebrow">Payload</legend>

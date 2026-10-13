@@ -63,6 +63,22 @@ export const TECH_TREE: readonly TechNode[] = [
     costRp: 3,
     requires: ['engine-block-2'],
   },
+  {
+    id: 'rapid-reuse',
+    name: 'Rapid Reuse',
+    description:
+      'Streamlined inspections: reflying recovered hardware costs less and refurbishment is cheaper.',
+    costRp: 3,
+    requires: [],
+  },
+  {
+    id: 'fleet-operations',
+    name: 'Fleet Operations',
+    description: 'Raises the program budget by 75,000 cr.',
+    costRp: 3,
+    requires: ['rapid-reuse'],
+    budgetBonusCredits: 75_000,
+  },
 ];
 
 export const INITIAL_PROGRESSION: ProgressionState = {

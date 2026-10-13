@@ -1,6 +1,6 @@
 /** Save-format migrations. Each entry upgrades version N to N+1; never edit a shipped migration. */
 
-export const CURRENT_SAVE_VERSION = 4;
+export const CURRENT_SAVE_VERSION = 5;
 
 type Data = Record<string, unknown>;
 type Migration = (data: Data) => Data;
@@ -46,6 +46,14 @@ const MIGRATIONS: Record<number, Migration> = {
   }),
   // v4 (Stage 4): flight history.
   3: (data) => ({ ...data, flights: [] }),
+  // v5 (Stage 6): recovered-hardware fleet; mission plans gain recovery and fleet choices.
+  4: (data) => ({
+    ...data,
+    fleet: [],
+    mission: isRecord(data.mission)
+      ? { ...data.mission, recovery: null, boosterFleetId: null, shipFleetId: null }
+      : data.mission,
+  }),
 };
 
 export type MigrationResult =

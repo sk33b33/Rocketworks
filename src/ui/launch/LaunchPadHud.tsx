@@ -5,6 +5,7 @@ import { CountdownPanel } from './CountdownPanel';
 import { DebriefPanel } from './DebriefPanel';
 import { LaunchControls } from './LaunchControls';
 import { TelemetryPanel } from './TelemetryPanel';
+import { RecoveryPanel, RecoveryResultLine } from './RecoveryPanel';
 import { useLaunchSnapshot } from './useLaunch';
 
 /** Launch Pad overlay: empty state, countdown checklist, telemetry, controls and debrief. */
@@ -42,8 +43,11 @@ export function LaunchPadHud() {
       </div>
       <div className="hud-col hud-right">
         <section data-panel="telemetry" className="grow">
-          {snap.phase === 'ascent' ||
-          ((snap.phase === 'debrief' || snap.phase === 'handoff') && snap.ascent) ? (
+          {snap.recovery &&
+          (snap.phase === 'recovery' || snap.phase === 'debrief' || snap.phase === 'handoff') ? (
+            <RecoveryPanel snap={snap} />
+          ) : snap.phase === 'ascent' ||
+            ((snap.phase === 'debrief' || snap.phase === 'handoff') && snap.ascent) ? (
             <TelemetryPanel snap={snap} />
           ) : (
             <div className="panel">
@@ -65,9 +69,10 @@ export function LaunchPadHud() {
           <div className="status-banner tone-ok">✓ ORBIT INSERTION</div>
           <h2 className="debrief-title">{snap.context?.outcome.missionName}</h2>
           <p>
-            The ship is in orbit and the booster is on its way home. The mission isn&apos;t over:
-            fly the orbit, deorbit and bring the ship down safely.
+            The ship is in orbit. The mission isn&apos;t over: fly the orbit, deorbit and bring the
+            ship down safely.
           </p>
+          {snap.recoveryResult && <RecoveryResultLine r={snap.recoveryResult} />}
           <div className="actions">
             <button type="button" className="primary" autoFocus onClick={() => continueToOrbit()}>
               Continue to Flight / Orbit

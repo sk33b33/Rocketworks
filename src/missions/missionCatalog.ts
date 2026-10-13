@@ -147,7 +147,7 @@ export const MISSIONS: readonly MissionDefinition[] = [
       'Heat-shield damage reported before deorbit',
     ],
     durationDays: 3,
-    requiredDeltaVMs: 9_600,
+    requiredDeltaVMs: 9_750,
     requirements: {
       minCrew: 2,
       maxCrew: 8,

@@ -2,6 +2,7 @@ import { useGameStore } from '../../app/gameStore';
 import { flightRuntime } from '../../app/flightBinding';
 import type { FlightRecord } from '../../launch/flightRecord';
 import { findMission } from '../../missions/missionCatalog';
+import { RecoveryResultLine } from '../launch/RecoveryPanel';
 import { formatPercent } from '../format';
 import { fmt, formatDuration } from './useFlight';
 
@@ -36,6 +37,7 @@ export function FlightDebrief({ record }: { record: FlightRecord }) {
       <div className={`status-banner tone-${r.tone}`}>{r.label}</div>
       <h2 className="debrief-title">{record.missionName}</h2>
       <p>{record.summary}</p>
+      {record.recovery && <RecoveryResultLine r={record.recovery} />}
       {record.crewSafe !== null && (
         <p className={record.crewSafe ? 'tone-ok' : 'tone-bad'}>
           {record.crewSafe ? '✓ Crew safe.' : '✕ Crew lost.'}
@@ -59,8 +61,17 @@ export function FlightDebrief({ record }: { record: FlightRecord }) {
               </dd>
             </>
           )}
+          {l.grade && (
+            <>
+              <dt>Landing rating</dt>
+              <dd>
+                <strong className={`grade-${l.grade}`}>{l.grade}</strong>
+                {l.manual ? ' · flown manually' : ' · autopilot'}
+              </dd>
+            </>
+          )}
           <dt>Ship recovered</dt>
-          <dd>{l.shipRecovered ? 'Yes' : 'No'}</dd>
+          <dd>{l.shipRecovered ? 'Yes (joins the fleet)' : 'No'}</dd>
           <dt>Orbits</dt>
           <dd>{l.orbits}</dd>
           <dt>Heat shield · hull</dt>

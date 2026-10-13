@@ -1,6 +1,7 @@
 import { FlightRuntime, type FlightContext } from '../flight/flightRuntime';
 import { ascentToInertial, shipSpecFor } from '../flight/shipSpec';
 import type { LaunchContext } from '../launch/launchRuntime';
+import type { BoosterRecoverySummary } from '../launch/flightRecord';
 import type { AscentState } from '../simulation/ascent/ascentModel';
 import type { FlightController } from '../scenes/flight/flightController';
 import { useGameStore } from './gameStore';
@@ -13,7 +14,11 @@ export const flightRuntime = new FlightRuntime((record) => {
 });
 
 /** Flight context from a launch that reached orbit. Pure. */
-export function flightContextFromLaunch(ctx: LaunchContext, ascent: AscentState): FlightContext {
+export function flightContextFromLaunch(
+  ctx: LaunchContext,
+  ascent: AscentState,
+  recovery: BoosterRecoverySummary | null = null,
+): FlightContext {
   const { r, v } = ascentToInertial(ascent);
   return {
     outcome: ctx.outcome,
@@ -23,6 +28,8 @@ export function flightContextFromLaunch(ctx: LaunchContext, ascent: AscentState)
     crewNames: ctx.crewNames,
     spec: shipSpecFor(ctx.blueprint, ctx.config.vehicle.ship),
     start: { r, v, propKg: ascent.shipPropKg, tS: ascent.tS },
+    recovery,
+    hardware: ctx.hardware ?? { boosterId: null, shipId: null },
     ascent: {
       maxAltitudeM: ascent.maxAltitudeM,
       maxSpeedMS: ascent.maxSpeedMS,
@@ -42,7 +49,7 @@ export function continueToOrbit(): boolean {
   const snap = launchRuntime.getSnapshot();
   if (!flightRuntime.active) {
     if (snap.phase !== 'handoff' || !snap.context || !snap.ascent) return false;
-    flightRuntime.start(flightContextFromLaunch(snap.context, snap.ascent));
+    flightRuntime.start(flightContextFromLaunch(snap.context, snap.ascent, snap.recoveryResult));
   }
   return useGameStore.getState().goTo('flight');
 }

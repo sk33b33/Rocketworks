@@ -38,6 +38,7 @@ type LoadedSlice = Pick<
   | 'progression'
   | 'mission'
   | 'flights'
+  | 'fleet'
   | 'ui'
   | 'notice'
   | 'saveStatus'
@@ -57,6 +58,7 @@ function initialData(): LoadedSlice {
       progression: data.progression,
       mission: data.mission ?? createDefaultSetup(active.id),
       flights: data.flights,
+      fleet: data.fleet,
       ui: data.ui,
       notice: problems.length
         ? makeNotice(
@@ -82,6 +84,7 @@ function initialData(): LoadedSlice {
     progression: INITIAL_PROGRESSION,
     mission: createDefaultSetup(starter.id),
     flights: [],
+    fleet: [],
     ui: DEFAULT_UI,
     notice:
       loaded.status === 'corrupt' && persistent
@@ -161,6 +164,7 @@ useGameStore.subscribe((s, prev) => {
     s.progression === prev.progression &&
     s.mission === prev.mission &&
     s.flights === prev.flights &&
+    s.fleet === prev.fleet &&
     s.ui === prev.ui
   )
     return;
@@ -173,6 +177,7 @@ useGameStore.subscribe((s, prev) => {
     progression: s.progression,
     mission: s.mission,
     flights: s.flights,
+    fleet: s.fleet,
     ui: s.ui,
   });
   useGameStore.setState({
@@ -187,5 +192,6 @@ export const selectGuide = (s: Pick<GameStore, 'blueprint'>) => guideProgress(s.
 export const selectProgram = (s: Pick<GameStore, 'progression'>) => programSummary(s.progression);
 export const selectReadiness = (s: Pick<GameStore, 'blueprint' | 'progression'>) =>
   readinessReport(s.blueprint, s.progression);
-export const selectMissionReport = (s: Pick<GameStore, 'mission' | 'blueprints' | 'progression'>) =>
-  missionReport(s.mission, s.blueprints, s.progression);
+export const selectMissionReport = (
+  s: Pick<GameStore, 'mission' | 'blueprints' | 'progression' | 'fleet'>,
+) => missionReport(s.mission, s.blueprints, s.progression, s.fleet);

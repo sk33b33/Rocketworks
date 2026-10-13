@@ -5,6 +5,7 @@ import { commitState } from '../missions/missionReadiness';
 import { hashString } from '../shared/random';
 import { deriveFlightVehicle } from '../simulation/ascent/flightVehicle';
 import { planFailures } from '../simulation/ascent/failures';
+import { deriveBoosterSpec, RESERVE_FRACTION } from '../recovery/recoveryPlan';
 import type { LaunchPadController } from '../scenes/launch-pad/launchPadController';
 import { selectMissionReport, useGameStore, type GameStore } from './gameStore';
 
@@ -35,6 +36,7 @@ export function buildLaunchContext(s: GameStore): ContextResult {
   }
   const mission = report.mission;
   const crewed = mission.requirements.maxCrew > 0;
+  const vehicle = deriveFlightVehicle(bp, report.carriedMassKg);
   const flightNumber = s.flights.length + 1;
   const seed = hashString(
     `${bp.id}:${bp.revision}:${mission.id}:${flightNumber}:${s.mission.conditionsSeed}`,
@@ -56,10 +58,14 @@ export function buildLaunchContext(s: GameStore): ContextResult {
       crewed,
       crewNames: s.mission.crewIds.map((id) => findCrew(id)?.name ?? id),
       config: {
-        vehicle: deriveFlightVehicle(bp, report.carriedMassKg),
+        vehicle,
         target: ascentTargetFor(mission),
         failures: planFailures(seed, report.risk.score, s.ui.randomFailures),
+        boosterReserveKg: vehicle.booster.propellantKg * RESERVE_FRACTION[report.recovery],
       },
+      recovery: report.recovery,
+      boosterSpec: deriveBoosterSpec(bp, vehicle.booster),
+      hardware: { boosterId: s.mission.boosterFleetId, shipId: s.mission.shipFleetId },
     },
   };
 }

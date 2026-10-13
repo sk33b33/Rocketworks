@@ -10,6 +10,7 @@ const CAMERAS: { id: PadCameraMode; label: string; key: string }[] = [
   { id: 'pad', label: 'Pad', key: '1' },
   { id: 'follow', label: 'Follow', key: '2' },
   { id: 'cinematic', label: 'Cinematic', key: '3' },
+  { id: 'landing', label: 'Landing', key: '4' },
 ];
 
 /** Phase-dependent launch controls, camera modes and the mission clock. */
@@ -30,15 +31,17 @@ export function LaunchControls({ snap }: { snap: LaunchSnapshot }) {
   useShortcut(['1'], () => setCamera('pad'));
   useShortcut(['2'], () => setCamera('follow'));
   useShortcut(['3'], () => setCamera('cinematic'));
+  useShortcut(['4'], () => setCamera('landing'));
+  const recovering = phase === 'recovery';
   useShortcut(
     [' '],
     () => {
       if (phase === 'countdown') {
         if (snap.held) rt.resume();
         else rt.hold();
-      } else if (phase === 'ascent') rt.togglePause();
+      } else if (phase === 'ascent' || phase === 'recovery') rt.togglePause();
     },
-    phase === 'countdown' || phase === 'ascent',
+    phase === 'countdown' || phase === 'ascent' || phase === 'recovery',
   );
   useShortcut(
     [']'],
@@ -46,7 +49,7 @@ export function LaunchControls({ snap }: { snap: LaunchSnapshot }) {
       const i = WARP_LEVELS.indexOf(snap.warp);
       rt.setWarp(WARP_LEVELS[Math.min(WARP_LEVELS.length - 1, i + 1)]!);
     },
-    phase === 'ascent',
+    phase === 'ascent' || recovering,
   );
   useShortcut(
     ['['],
@@ -54,17 +57,19 @@ export function LaunchControls({ snap }: { snap: LaunchSnapshot }) {
       const i = WARP_LEVELS.indexOf(snap.warp);
       rt.setWarp(WARP_LEVELS[Math.max(0, i - 1)]!);
     },
-    phase === 'ascent',
+    phase === 'ascent' || recovering,
   );
 
   const clock =
     phase === 'countdown'
       ? formatTMinus(snap.clockS)
-      : phase === 'ascent' || ((phase === 'debrief' || phase === 'handoff') && snap.ascent)
-        ? formatTMinus(snap.ascent?.tS ?? 0)
-        : phase === 'rollout'
-          ? `Rollout ${Math.round(snap.rolloutProgress * 100)}%`
-          : 'T-40:00';
+      : recovering && snap.recovery
+        ? formatTMinus(snap.recovery.state.tS)
+        : phase === 'ascent' || ((phase === 'debrief' || phase === 'handoff') && snap.ascent)
+          ? formatTMinus(snap.ascent?.tS ?? 0)
+          : phase === 'rollout'
+            ? `Rollout ${Math.round(snap.rolloutProgress * 100)}%`
+            : 'T-40:00';
 
   return (
     <div className="camera-toolbar launch-controls">
@@ -76,7 +81,10 @@ export function LaunchControls({ snap }: { snap: LaunchSnapshot }) {
         {clock}
         {snap.held && <span className="clock-tag">HOLD</span>}
         {snap.paused && <span className="clock-tag">PAUSED</span>}
-        {phase === 'ascent' && snap.warp > 1 && <span className="clock-tag">{snap.warp}×</span>}
+        {(phase === 'ascent' || recovering) && snap.warp > 1 && (
+          <span className="clock-tag">{snap.warp}×</span>
+        )}
+        {recovering && <span className="clock-tag">BOOSTER</span>}
       </div>
       <div className="toolbar">
         {phase === 'rollout' && (
@@ -122,6 +130,31 @@ export function LaunchControls({ snap }: { snap: LaunchSnapshot }) {
             >
               Scrub
             </button>
+          </>
+        )}
+        {recovering && (
+          <>
+            <button type="button" onClick={() => rt.togglePause()}>
+              {snap.paused ? 'Resume' : 'Pause'} <kbd>Space</kbd>
+            </button>
+            <span className="warp" role="group" aria-label="Time warp">
+              {WARP_LEVELS.map((w) => (
+                <button
+                  key={w}
+                  type="button"
+                  aria-pressed={snap.warp === w}
+                  disabled={!!snap.recovery?.manualActive && w > 1}
+                  title={
+                    snap.recovery?.manualActive && w > 1
+                      ? 'Manual landings fly in real time.'
+                      : undefined
+                  }
+                  onClick={() => rt.setWarp(w)}
+                >
+                  {w}×
+                </button>
+              ))}
+            </span>
           </>
         )}
         {phase === 'ascent' && (

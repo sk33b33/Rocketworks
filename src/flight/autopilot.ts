@@ -312,7 +312,11 @@ export function runProgram(
       if (burning) {
         accelCmd = alt < 25 ? G0_MS2 + 2 * (-1.5 - vV) : G0_MS2 + aReq * 1.1;
       }
-      const thr = upright && burning ? Math.max(0, Math.min(1, (accelCmd * mass) / fullThrust)) : 0;
+      let thr = upright && burning ? Math.max(0, Math.min(1, (accelCmd * mass) / fullThrust)) : 0;
+      // A light ship can't throttle below one engine at minimum: pulse it instead of hovering.
+      const minThrust = FLIGHT.minThrottlePerEngine * spec.stage.thrustSlPerEngineN;
+      if (thr > 0 && thr * fullThrust < minThrust)
+        thr = thr * fullThrust >= minThrust * 0.85 ? minThrust / fullThrust : 0;
       return {
         mode: 'vertical',
         controls: { targetPitchDeg: 90 - tilt, bankDeg: 0, throttle: thr },

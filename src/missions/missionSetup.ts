@@ -1,3 +1,4 @@
+import type { RecoveryTarget } from '../recovery/recoveryPlan';
 import { CREW_ROSTER, findCrew } from './crew';
 import { initialConditionsSeed, nextWindowSeed } from './conditions';
 import { findMission, missionAvailability, MISSIONS } from './missionCatalog';
@@ -18,6 +19,11 @@ export interface MissionSetup {
   readonly waits: number;
   /** Set by "Commit mission"; any planning change clears it. */
   readonly commit: MissionCommit | null;
+  /** Booster recovery choice; null = best option the hardware allows. */
+  readonly recovery: RecoveryTarget | null;
+  /** Recovered hardware assigned to fly again (null = new build). */
+  readonly boosterFleetId: string | null;
+  readonly shipFleetId: string | null;
 }
 
 export type SetupResult = { ok: true; setup: MissionSetup } | { ok: false; reason: string };
@@ -32,6 +38,9 @@ export function createDefaultSetup(designId: string | null): MissionSetup {
     conditionsSeed: initialConditionsSeed(first.id),
     waits: 0,
     commit: null,
+    recovery: null,
+    boosterFleetId: null,
+    shipFleetId: null,
   };
 }
 
@@ -61,7 +70,9 @@ export function selectMission(
 }
 
 export function setMissionDesign(setup: MissionSetup, designId: string): MissionSetup {
-  return setup.designId === designId ? setup : { ...setup, designId, commit: null };
+  return setup.designId === designId
+    ? setup
+    : { ...setup, designId, commit: null, boosterFleetId: null, shipFleetId: null };
 }
 
 export function setPayload(setup: MissionSetup, payloadId: string): SetupResult {
@@ -109,4 +120,18 @@ export function waitForNextWindow(setup: MissionSetup): MissionSetup {
     waits: setup.waits + 1,
     commit: null,
   };
+}
+
+export function setRecovery(setup: MissionSetup, recovery: RecoveryTarget | null): MissionSetup {
+  return setup.recovery === recovery ? setup : { ...setup, recovery, commit: null };
+}
+
+/** Assigns recovered hardware (or a new build with null) to the booster or ship. */
+export function assignFleet(
+  setup: MissionSetup,
+  kind: 'booster' | 'ship',
+  vehicleId: string | null,
+): MissionSetup {
+  const key = kind === 'booster' ? 'boosterFleetId' : 'shipFleetId';
+  return setup[key] === vehicleId ? setup : { ...setup, [key]: vehicleId, commit: null };
 }

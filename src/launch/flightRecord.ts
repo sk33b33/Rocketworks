@@ -1,5 +1,7 @@
 import type { AscentState, AscentTarget } from '../simulation/ascent/ascentModel';
 import { isSuccess } from '../simulation/ascent/ascentModel';
+import type { Grade } from '../recovery/rating';
+import type { RecoveryTarget } from '../recovery/recoveryPlan';
 
 /** What happened on a launch attempt; stored in the save for the debrief and history. */
 export interface FlightRecord {
@@ -22,6 +24,26 @@ export interface FlightRecord {
   readonly events: readonly string[];
   /** Orbital flight and return details (Stage 5+); absent for pad-only flights. */
   readonly landing?: LandingSummary;
+  /** Booster recovery (Stage 6+). */
+  readonly recovery?: BoosterRecoverySummary;
+  /** Fleet vehicles that flew (null = new build). */
+  readonly hardware?: { readonly boosterId: string | null; readonly shipId: string | null };
+}
+
+export type BoosterOutcome = 'caught' | 'landed' | 'lost' | 'expended' | 'not-attempted';
+
+export interface BoosterRecoverySummary {
+  readonly target: RecoveryTarget;
+  readonly outcome: BoosterOutcome;
+  readonly grade: Grade | null;
+  /** The player flew the landing burn. */
+  readonly manual: boolean;
+  /** The player skipped the replay; the assisted result was simulated. */
+  readonly simulated: boolean;
+  readonly missM: number | null;
+  readonly vertMS: number | null;
+  readonly heatLoadMJm2: number;
+  readonly summary: string;
 }
 
 export type LandingOutcome = 'landed' | 'splashdown' | 'crash' | 'breakup' | 'stranded';
@@ -38,6 +60,10 @@ export interface LandingSummary {
   readonly shield: number;
   readonly peakG: number;
   readonly peakHeatKWm2: number;
+  /** Precision rating of a landing or splashdown (Stage 6+). */
+  readonly grade?: Grade | null;
+  /** The player flew the final descent without the landing program. */
+  readonly manual?: boolean;
 }
 
 /** Missions whose objectives are fully covered by the ascent simulation alone. */

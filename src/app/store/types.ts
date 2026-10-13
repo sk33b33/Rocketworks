@@ -3,6 +3,8 @@ import type { ProgressionState } from '../../progression/research';
 import type { MissionFixAction, MissionTab } from '../../missions/missionReadiness';
 import type { MissionSetup } from '../../missions/missionSetup';
 import type { FlightRecord } from '../../launch/flightRecord';
+import type { FleetVehicle } from '../../fleet/fleet';
+import type { RecoveryTarget } from '../../recovery/recoveryPlan';
 import type { PadCameraMode } from '../../scenes/launch-pad/launchPadController';
 import type { FlightCameraMode } from '../../scenes/flight/flightController';
 import type { FixAction } from '../../rocket/readiness/readiness';
@@ -52,6 +54,8 @@ export interface GameData {
   flightCamera: FlightCameraMode;
   /** Flight history (persisted, newest last). */
   flights: readonly FlightRecord[];
+  /** Recovered boosters and ships (persisted). */
+  fleet: readonly FleetVehicle[];
   history: History;
   selection: Selection;
   notice: Notice | null;
@@ -102,6 +106,10 @@ export interface MissionActions {
   commitMission(): void;
   standDown(): void;
   setMissionTab(tab: MissionTab): void;
+  setRecovery(target: RecoveryTarget | null): void;
+  assignFleet(kind: 'booster' | 'ship', vehicleId: string | null): void;
+  refurbishVehicle(id: string): void;
+  scrapVehicle(id: string): void;
   runMissionFix(action: MissionFixAction): void;
 }
 

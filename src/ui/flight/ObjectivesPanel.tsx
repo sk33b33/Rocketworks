@@ -67,7 +67,7 @@ function nextAction(next: ObjectiveId | undefined): string {
     case 'reentry':
       return 'Next: hold belly-first through peak heating. Re-entry guidance banks to steer range.';
     case 'landing':
-      return 'Next: the landing burn flips the ship upright and touches down.';
+      return 'Next: the landing burn flips the ship upright and touches down. For a bonus, switch the autopilot off and fly everything below 5 km yourself.';
     default:
       return 'All objectives complete.';
   }

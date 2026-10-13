@@ -29,6 +29,19 @@ export interface AscentConfig {
   readonly vehicle: FlightVehicle;
   readonly target: AscentTarget;
   readonly failures: readonly ScheduledFailure[];
+  /** Booster propellant held back for recovery burns; staging happens when only this is left. */
+  readonly boosterReserveKg?: number;
+}
+
+/** Booster state at hot staging: the starting point of the recovery replay. */
+export interface StagingSnapshot {
+  readonly tS: number;
+  readonly downrangeM: number;
+  readonly altitudeM: number;
+  readonly vHorizMS: number;
+  readonly vVertMS: number;
+  readonly boosterPropKg: number;
+  readonly boosterEnginesOut: number;
 }
 
 export type AscentStatus =
@@ -79,6 +92,8 @@ export interface AscentState {
   readonly maxAltitudeM: number;
   readonly maxSpeedMS: number;
   readonly booster: BallisticBody | null;
+  /** Set at hot staging (null before, or if the booster never separated). */
+  readonly staging: StagingSnapshot | null;
   readonly status: AscentStatus;
   readonly events: readonly FlightEvent[];
   readonly firedFailures: number;
@@ -120,6 +135,7 @@ export function initialAscentState(vehicle: FlightVehicle): AscentState {
     maxAltitudeM: 0,
     maxSpeedMS: 0,
     booster: null,
+    staging: null,
     status: 'flying',
     events: [],
     firedFailures: 0,
@@ -255,7 +271,9 @@ export function stepAscent(s: AscentState, config: AscentConfig, dt: number): As
   const shipMass = v.ship.dryMassKg + next.shipPropKg;
   const massKg =
     next.stage === 'booster' ? v.booster.dryMassKg + next.boosterPropKg + shipMass : shipMass;
-  const propKg = next.stage === 'booster' ? next.boosterPropKg : next.shipPropKg;
+  const reserveKg = Math.max(0, config.boosterReserveKg ?? 0);
+  const propKg =
+    next.stage === 'booster' ? Math.max(0, next.boosterPropKg - reserveKg) : next.shipPropKg;
 
   // Throttle law: max-Q bucket and acceleration limit.
   const speed = Math.hypot(next.vHorizMS, next.vVertMS);
@@ -349,7 +367,7 @@ export function stepAscent(s: AscentState, config: AscentConfig, dt: number): As
   }
 
   // Staging: booster propellant exhausted -> hot staging.
-  if (state.stage === 'booster' && state.boosterPropKg <= 0) {
+  if (state.stage === 'booster' && state.boosterPropKg <= reserveKg + 1e-6) {
     events.push({ tS: t, kind: 'info', text: 'MECO and hot staging: ship engines ignite.' });
     if (v.ship.engineCount === 0) {
       events.push({ tS: t, kind: 'fail', text: 'Ship has no engines: cannot continue.' });
@@ -362,6 +380,15 @@ export function stepAscent(s: AscentState, config: AscentConfig, dt: number): As
     state = {
       ...state,
       stage: 'ship',
+      staging: {
+        tS: t,
+        downrangeM: state.downrangeM,
+        altitudeM: state.altitudeM,
+        vHorizMS: state.vHorizMS,
+        vVertMS: state.vVertMS,
+        boosterPropKg: state.boosterPropKg,
+        boosterEnginesOut: state.boosterEnginesOut,
+      },
       booster: {
         downrangeM: state.downrangeM,
         altitudeM: state.altitudeM,

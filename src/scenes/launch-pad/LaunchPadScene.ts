@@ -10,6 +10,15 @@ import type { AscentState } from '../../simulation/ascent/ascentModel';
 import { EARTH_RADIUS_M } from '../../simulation/constants';
 import { createPlume, Fireball, LaunchSmoke, updatePlume, type Plume } from './Effects';
 import {
+  collectMovingParts,
+  setGridFins,
+  setLegs,
+  type MovingParts,
+} from '../../render/rocket/partAnimation';
+import type { RecoverySessionView } from '../../recovery/recoverySession';
+import { CATCH_HEIGHT_M } from '../../recovery/recoveryPlan';
+import { ARMS_ABOVE_BASE_M, RecoveryView } from './RecoveryView';
+import {
   buildSpaceBackdrop,
   placeOnEarth,
   skyColor,
@@ -34,6 +43,8 @@ interface PlumeRef {
   readonly plume: Plume;
   readonly stage: 'booster' | 'ship';
   readonly seed: number;
+  /** Centre engines light first for recovery burns. */
+  readonly inner: boolean;
 }
 
 /** Launch Pad: rollout, countdown and ascent of the committed vehicle, with three camera modes. */
@@ -48,6 +59,9 @@ export class LaunchPadScene implements GameScene {
   private space: SpaceBackdrop | null = null;
   private smoke: LaunchSmoke | null = null;
   private fireball: Fireball | null = null;
+  private recoveryView: RecoveryView | null = null;
+  private moving: MovingParts | null = null;
+  private recoveryExploded = false;
   private canvas: HTMLCanvasElement | null = null;
   private envTarget: THREE.WebGLRenderTarget | null = null;
   private unsubscribers: (() => void)[] = [];
@@ -89,7 +103,13 @@ export class LaunchPadScene implements GameScene {
     this.space = buildSpaceBackdrop(this.scene, this.cache);
     this.smoke = new LaunchSmoke(this.cache);
     this.fireball = new Fireball(this.cache);
-    this.scene.add(this.rocket.root, this.smoke.group, this.fireball.group);
+    this.recoveryView = new RecoveryView(this.cache, this.site);
+    this.scene.add(
+      this.rocket.root,
+      this.smoke.group,
+      this.fireball.group,
+      this.recoveryView.droneship,
+    );
   }
 
   enter(): void {
@@ -110,8 +130,11 @@ export class LaunchPadScene implements GameScene {
     this.controller.runtime.update(deltaSeconds);
     const snap = this.controller.runtime.current;
     const live = this.controller.runtime.liveAscent;
+    const recovery = this.controller.runtime.liveRecovery;
     this.syncRocket(snap);
-    this.placeVehicle(snap, live);
+    this.recoveryView?.update(recovery, deltaSeconds);
+    if (recovery) this.placeRecovery(recovery);
+    else this.placeVehicle(snap, live);
     this.smoke?.update(deltaSeconds);
     this.fireball?.update(deltaSeconds);
     this.updateCamera(snap, live);
@@ -167,6 +190,8 @@ export class LaunchPadScene implements GameScene {
     this.builtFor = key;
     this.clearRocket();
     this.exploded = false;
+    this.recoveryExploded = false;
+    this.recoveryView?.reset();
     this.smokeStarted = false;
     this.boosterSpin = 0;
     this.smoke?.clear();
@@ -186,8 +211,14 @@ export class LaunchPadScene implements GameScene {
         plume,
         stage: stages.get(inst.id) ?? 'booster',
         seed: this.plumes.length,
+        inner: inst.parent.socketId.startsWith('engine-inner'),
       });
     }
+    // Inner engines first, so "N engines lit" lights the centre cluster.
+    this.plumes.sort((a, b) => Number(b.inner) - Number(a.inner));
+    this.moving = collectMovingParts(this.rocket, bp, 'booster');
+    setGridFins(this.moving, 0);
+    setLegs(this.moving, 0);
     const shipAft = bp.parts.find((p) => p.partId === 'ship-aft-section');
     this.shipNode = shipAft ? (this.rocket.getInstanceNode(shipAft.id) ?? null) : null;
   }
@@ -331,6 +362,35 @@ export class LaunchPadScene implements GameScene {
     this.setPlumes('booster', false, 0, 0);
   }
 
+  /** Booster recovery replay: the booster alone, from staging to the tower or the platform. */
+  private placeRecovery(v: RecoverySessionView): void {
+    const root = this.rocket.root;
+    if (this.shipNode) this.shipNode.visible = false;
+    const s = v.state;
+    const base = placeOnEarth(s.x, this.recoveryView?.boosterBaseY(v) ?? s.h);
+    root.position.set(base.x, base.y, 0);
+    root.rotation.set(0, 0, vehicleRoll(s.pitchDeg, base.arcRad));
+    const dead = s.phase === 'crashed' || s.phase === 'lost' || s.phase === 'splashed';
+    if (dead && !this.recoveryExploded) {
+      this.recoveryExploded = true;
+      if (s.phase !== 'splashed')
+        this.fireball?.trigger(root.position.clone().add(new THREE.Vector3(0, 15, 0)));
+    }
+    root.visible = !dead;
+    if (this.moving) {
+      setGridFins(this.moving, s.fins);
+      setLegs(this.moving, s.legs);
+    }
+    let lit = 0;
+    for (const p of this.plumes) {
+      if (p.stage !== 'booster') continue;
+      const on = lit < s.enginesLit;
+      if (on) lit++;
+      updatePlume(p.plume, on, s.throttle, Math.max(0, s.h), this.time, p.seed);
+    }
+    this.setPlumes('ship', false, 0, 0);
+  }
+
   // ---------- camera ----------
 
   private vehicleFocus(
@@ -338,10 +398,12 @@ export class LaunchPadScene implements GameScene {
     live: AscentState | null,
     out: THREE.Vector3,
   ): THREE.Vector3 {
-    const node = this.shipDetached && this.shipNode ? this.shipNode : this.rocket.root;
+    const recovering = !!this.controller.runtime.liveRecovery;
+    const node =
+      this.shipDetached && this.shipNode && !recovering ? this.shipNode : this.rocket.root;
     node.getWorldPosition(out);
-    const offset = this.shipDetached ? 10 : STACK_CENTRE_M;
-    const roll = this.shipDetached ? node.rotation.z : this.rocket.root.rotation.z;
+    const offset = recovering ? 20 : this.shipDetached ? 10 : STACK_CENTRE_M;
+    const roll = node.rotation.z;
     out.addScaledVector(this.tmp.set(0, 1, 0).applyAxisAngle(Z_AXIS, roll), offset);
     if (!snap.context) out.set(0, MOUNT_TOP_M + 20, 0);
     void live;
@@ -355,7 +417,22 @@ export class LaunchPadScene implements GameScene {
     const flying =
       snap.phase === 'ascent' || ((snap.phase === 'debrief' || snap.phase === 'handoff') && !!live);
 
-    if (mode === 'follow') {
+    const rec = this.controller.runtime.liveRecovery;
+    if (mode === 'landing' && rec) {
+      // Landing camera: from the target (tower or deck), looking up at the returning booster.
+      const spot = placeOnEarth(
+        rec.target.x,
+        rec.target.mode === 'catch' ? CATCH_HEIGHT_M + ARMS_ABOVE_BASE_M / 2 : 4,
+      );
+      const up = new THREE.Vector3(Math.sin(spot.arcRad), Math.cos(spot.arcRad), 0);
+      cam.position
+        .set(spot.x, spot.y, 0)
+        .addScaledVector(new THREE.Vector3(0, 0, 1), 320 * this.zoom)
+        .addScaledVector(up, 25)
+        .addScaledVector(new THREE.Vector3(Math.cos(spot.arcRad), -Math.sin(spot.arcRad), 0), -180);
+      const d = cam.position.distanceTo(target);
+      cam.fov = THREE.MathUtils.clamp((2 * Math.atan(90 / d) * 180) / Math.PI, 0.5, 55);
+    } else if (mode === 'follow' || mode === 'landing') {
       const dist = 190 * this.zoom;
       const dir = new THREE.Vector3(
         Math.cos(this.pitch) * Math.sin(this.yaw),

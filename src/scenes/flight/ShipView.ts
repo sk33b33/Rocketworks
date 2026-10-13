@@ -7,6 +7,12 @@ import type { RocketBlueprint } from '../../rocket/model/types';
 import { BlueprintRenderer } from '../../render/rocket/BlueprintRenderer';
 import type { ResourceCache } from '../../render/ResourceCache';
 import { createPlume, Fireball, updatePlume, type Plume } from '../launch-pad/Effects';
+import {
+  collectMovingParts,
+  setFlaps,
+  setLegs,
+  type MovingParts,
+} from '../../render/rocket/partAnimation';
 
 /*
  * The ship on its own (booster left behind), oriented from the simulation attitude: model +Y is
@@ -24,6 +30,8 @@ export class ShipView {
   private readonly plasmaMat: THREE.MeshBasicMaterial;
   private readonly fireball: Fireball;
   private builtFor: string | null = null;
+  private moving: MovingParts | null = null;
+  private legDeploy = 0;
   private exploded = false;
   lengthM = 50;
   private readonly basis = new THREE.Matrix4();
@@ -68,6 +76,8 @@ export class ShipView {
     this.plumes = [];
     const ship = shipOnlyBlueprint(bp);
     this.renderer.build(ship);
+    this.moving = collectMovingParts(this.renderer, ship);
+    this.legDeploy = 0;
     this.lengthM = ship.parts.reduce((s, p) => s + (findPart(p.partId)?.heightM ?? 0), 0) || 50;
     for (const inst of ship.parts) {
       if (!findPart(inst.partId)?.thrustN) continue;
@@ -101,6 +111,19 @@ export class ShipView {
     this.renderer.root.quaternion.setFromRotationMatrix(this.basis);
     // Visual-only yaw.
     this.renderer.root.rotateY((s.yawDeg * Math.PI) / 180);
+
+    // Flaps trim the belly-flop (visual): deflect with the angle of attack error and bank.
+    if (this.moving) {
+      const inAir = f.altitudeM < 90_000;
+      const trim = inAir ? Math.max(-0.6, Math.min(0.6, (s.angleOfAttackDeg - 65) / 60)) : 0;
+      const roll = inAir ? (s.bankDeg / 90) * 0.25 : 0;
+      setFlaps(this.moving, trim + roll, -trim * 0.8 + roll);
+      // Legs come down for the final approach once the ship is upright.
+      const wantLegs = f.altitudeM < 2_500 && Math.abs(s.pitchDeg - 90) < 40;
+      this.legDeploy = Math.max(0, Math.min(1, this.legDeploy + (wantLegs ? dt : -dt) / 3));
+      if (s.phase === 'landed') this.legDeploy = 1;
+      setLegs(this.moving, this.legDeploy);
+    }
 
     const dead = s.phase === 'destroyed' || s.phase === 'crashed';
     if (dead && !this.exploded) {

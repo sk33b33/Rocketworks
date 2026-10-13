@@ -370,10 +370,10 @@ export function evaluateReadiness(bp: RocketBlueprint, ctx: ReadinessContext): R
   if (stats.costCredits > ctx.budgetCredits) {
     issues.push({
       id: 'over-budget',
-      severity: 'critical',
-      title: `Over budget by ${fmt(stats.costCredits - ctx.budgetCredits)} cr`,
-      detail: `The design costs ${fmt(stats.costCredits)} cr; the program budget is ${fmt(ctx.budgetCredits)} cr.`,
-      fix: 'Remove parts, or raise the budget through milestones and research.',
+      severity: 'warning',
+      title: `New build over budget by ${fmt(stats.costCredits - ctx.budgetCredits)} cr`,
+      detail: `A new build costs ${fmt(stats.costCredits)} cr; the program budget is ${fmt(ctx.budgetCredits)} cr per mission. Missions need reflown fleet hardware to fit the budget.`,
+      fix: 'Remove parts, recover and refly boosters/ships, or raise the budget through milestones and research.',
       action: { kind: 'open-program' },
       actionLabel: 'Open program',
     });

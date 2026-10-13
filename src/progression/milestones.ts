@@ -1,5 +1,7 @@
 import { certificationStatus } from '../rocket/readiness/certification';
 import type { RocketBlueprint } from '../rocket/model/types';
+import type { FlightRecord } from '../launch/flightRecord';
+import { gradeAtLeast } from '../recovery/rating';
 import { evaluateGuide, STARTER_GUIDE } from '../rocket/tutorial/starterGuide';
 
 /** One-time program achievements. Once earned they are never revoked. */
@@ -14,7 +16,12 @@ export interface Milestone {
 
 export interface MilestoneContext {
   readonly blueprints: readonly RocketBlueprint[];
+  /** Flight history (Stage 6+ recovery milestones). */
+  readonly flights?: readonly FlightRecord[];
 }
+
+const anyFlight = (ctx: MilestoneContext, test: (f: FlightRecord) => boolean) =>
+  (ctx.flights ?? []).some(test);
 
 const stepDone = (bp: RocketBlueprint, ...ids: string[]) =>
   ids.every((id) => STARTER_GUIDE.find((s) => s.id === id)?.isDone(bp) ?? false);
@@ -84,6 +91,56 @@ export const MILESTONES: readonly Milestone[] = [
     description: 'Keep two or more designs with at least 10 parts each.',
     rewardRp: 1,
     isAchieved: (ctx) => ctx.blueprints.filter((bp) => bp.parts.length >= 10).length >= 2,
+  },
+  {
+    id: 'first-catch',
+    title: 'Caught by the tower',
+    description: 'Catch a returning booster with the launch tower arms.',
+    rewardRp: 2,
+    isAchieved: (ctx) => anyFlight(ctx, (f) => f.recovery?.outcome === 'caught'),
+  },
+  {
+    id: 'platform-landing',
+    title: 'Downrange landing',
+    description: 'Land a booster on the ocean platform.',
+    rewardRp: 1,
+    isAchieved: (ctx) => anyFlight(ctx, (f) => f.recovery?.outcome === 'landed'),
+  },
+  {
+    id: 'ship-recovered',
+    title: 'Ship recovered',
+    description: 'Land the ship on a pad, platform or the coast after an orbital flight.',
+    rewardRp: 1,
+    isAchieved: (ctx) => anyFlight(ctx, (f) => f.landing?.shipRecovered === true),
+  },
+  {
+    id: 'manual-ace',
+    title: 'Hands on the stick',
+    description: 'Fly a booster or ship landing yourself and earn an A rating or better.',
+    rewardRp: 1,
+    rewardCredits: 25_000,
+    isAchieved: (ctx) =>
+      anyFlight(
+        ctx,
+        (f) =>
+          (f.recovery?.manual === true && gradeAtLeast(f.recovery.grade, 'A')) ||
+          (f.landing?.manual === true && gradeAtLeast(f.landing.grade, 'A')),
+      ),
+  },
+  {
+    id: 'flight-proven',
+    title: 'Flight-proven',
+    description: 'Recover a booster or ship that had already flown before.',
+    rewardRp: 1,
+    rewardCredits: 25_000,
+    isAchieved: (ctx) =>
+      anyFlight(
+        ctx,
+        (f) =>
+          (!!f.hardware?.boosterId &&
+            (f.recovery?.outcome === 'caught' || f.recovery?.outcome === 'landed')) ||
+          (!!f.hardware?.shipId && f.landing?.shipRecovered === true),
+      ),
   },
 ];
 

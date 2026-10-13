@@ -38,9 +38,13 @@ function sampleData(): Omit<SaveData, 'saveVersion'> {
       conditionsSeed: 42,
       waits: 1,
       commit: { designId: 'bp-a', revision: 3, at: NOW },
+      recovery: null,
+      boosterFleetId: null,
+      shipFleetId: null,
     },
     ui: { guideCollapsed: true, assemblyMode: 'structure', randomFailures: false },
     flights: [],
+    fleet: [],
   };
 }
 
@@ -201,9 +205,9 @@ describe('migration v1 → v2', () => {
   });
 
   it('passes current-version data through and rejects invalid versions', () => {
-    expect(migrateSave({ saveVersion: 4, x: 1 })).toEqual({
+    expect(migrateSave({ saveVersion: 5, x: 1 })).toEqual({
       ok: true,
-      data: { saveVersion: 4, x: 1 },
+      data: { saveVersion: 5, x: 1 },
     });
     expect(migrateSave({ saveVersion: 0 }).ok).toBe(false);
     expect(migrateSave({ saveVersion: 1.5 }).ok).toBe(false);
@@ -300,6 +304,8 @@ describe('migration v3 → v4 and flight history', () => {
       shield: 0.9,
       peakG: 3.5,
       peakHeatKWm2: 510,
+      grade: 'B',
+      manual: true,
     };
     const data = {
       ...sampleData(),
@@ -313,5 +319,86 @@ describe('migration v3 → v4 and flight history', () => {
     expect(result.data.flights[0]?.landing).toEqual(landing);
     expect(result.data.flights[1]?.landing).toBeUndefined();
     expect(result.data.flights).toHaveLength(2);
+  });
+});
+
+describe('migration v4 → v5 and the fleet', () => {
+  const vehicle = {
+    id: 'fv-1',
+    kind: 'booster',
+    name: 'B-1',
+    designId: 'bp-a',
+    designName: 'Alpha',
+    signature: 'sig',
+    flights: 2,
+    wear: 0.2,
+    lastGrade: 'A',
+    recoveredAt: NOW,
+    refurbPending: false,
+  };
+
+  it('adds an empty fleet and default recovery choices to v4 saves', () => {
+    const v5 = JSON.parse(serializeSave(sampleData()));
+    const { fleet, mission, ...rest } = v5;
+    void fleet;
+    const { recovery, boosterFleetId, shipFleetId, ...oldMission } = mission;
+    void recovery;
+    void boosterFleetId;
+    void shipFleetId;
+    const result = parseSave(JSON.stringify({ ...rest, mission: oldMission, saveVersion: 4 }));
+    if (result.status !== 'loaded') throw new Error();
+    expect(result.warnings).toEqual(['Save upgraded from version 4.']);
+    expect(result.data.fleet).toEqual([]);
+    expect(result.data.mission).toMatchObject({
+      recovery: null,
+      boosterFleetId: null,
+      shipFleetId: null,
+    });
+  });
+
+  it('round-trips fleet vehicles and recovery summaries, dropping damaged entries', () => {
+    const recovery = {
+      target: 'catch',
+      outcome: 'caught',
+      grade: 'S',
+      manual: false,
+      simulated: false,
+      missM: 0.4,
+      vertMS: 1.6,
+      heatLoadMJm2: 1.2,
+      summary: 'Caught.',
+    };
+    const flight = {
+      id: 'f1',
+      at: NOW,
+      missionId: 'test-flight',
+      missionName: 'Hop',
+      designId: 'bp-a',
+      designName: 'Alpha',
+      result: 'success',
+      summary: 'ok',
+      credited: true,
+      crewSafe: null,
+      maxAltitudeM: 1,
+      maxSpeedMS: 1,
+      maxQPa: 1,
+      durationS: 1,
+      events: [],
+      recovery,
+      hardware: { boosterId: 'fv-1', shipId: null },
+    };
+    const data = {
+      ...sampleData(),
+      fleet: [vehicle, { ...vehicle, id: 'fv-1' }, { id: 'bad' }],
+      flights: [flight],
+      mission: { ...sampleData().mission!, recovery: 'platform', boosterFleetId: 'fv-1' },
+    };
+    const result = parseSave(serializeSave(data as never));
+    if (result.status !== 'loaded') throw new Error();
+    expect(result.data.fleet).toEqual([vehicle]);
+    expect(result.warnings.join(' ')).toMatch(/2 damaged fleet record/);
+    expect(result.data.flights[0]?.recovery).toEqual(recovery);
+    expect(result.data.flights[0]?.hardware).toEqual({ boosterId: 'fv-1', shipId: null });
+    expect(result.data.mission).toMatchObject({ recovery: 'platform', boosterFleetId: 'fv-1' });
   });
 });

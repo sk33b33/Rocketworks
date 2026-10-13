@@ -3,6 +3,7 @@ import type { ProgressionState } from '../../progression/research';
 import { findInstance } from '../../rocket/assembly/compatibility';
 import { replaceInList } from '../../rocket/library/blueprintLibrary';
 import type { RocketBlueprint } from '../../rocket/model/types';
+import type { FlightRecord } from '../../launch/flightRecord';
 import { calculateRocketStats } from '../../rocket/stats/calculateRocketStats';
 import { STARTER_GUIDE } from '../../rocket/tutorial/starterGuide';
 import { programSummary } from './derived';
@@ -26,8 +27,9 @@ export function newBlueprintId(): string {
 export function awardMilestones(
   progression: ProgressionState,
   blueprints: readonly RocketBlueprint[],
+  flights?: readonly FlightRecord[],
 ): { progression: ProgressionState; text: string } {
-  const achieved = newlyAchieved(progression.milestones, { blueprints });
+  const achieved = newlyAchieved(progression.milestones, { blueprints, flights });
   if (!achieved.length) return { progression, text: '' };
   const text = achieved
     .map((m) => {

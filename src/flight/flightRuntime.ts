@@ -1,5 +1,5 @@
 import { MAX_STEPS_PER_FRAME } from '../simulation/constants';
-import type { FlightRecord, OutcomeInput } from '../launch/flightRecord';
+import type { BoosterRecoverySummary, FlightRecord, OutcomeInput } from '../launch/flightRecord';
 import type { RocketBlueprint } from '../rocket/model/types';
 import {
   attitudeTarget,
@@ -54,6 +54,8 @@ export const THROTTLE_RATE_S = 0.6;
 /** Re-entry counts as survived once the ship slows below this altitude intact. */
 const REENTRY_DONE_ALT_M = 20_000;
 const DEORBIT_PE_M = 80_000;
+/** A landing counts as manual if the player flew everything below this height. */
+export const MANUAL_LANDING_ALT_M = 5_000;
 
 export interface FlightContext {
   readonly outcome: OutcomeInput;
@@ -69,6 +71,9 @@ export interface FlightContext {
     readonly tS: number;
   };
   readonly ascent: FlightOutcomeContext['ascent'];
+  /** Booster recovery result from the launch (carried into the flight record). */
+  readonly recovery: BoosterRecoverySummary | null;
+  readonly hardware: { readonly boosterId: string | null; readonly shipId: string | null };
 }
 
 export type ManualKey =
@@ -158,6 +163,9 @@ export class FlightRuntime {
   private maxAltitudeM = 0;
   private maxSpeedMS = 0;
   private lastAngle = 0;
+  /** Final descent (below MANUAL_LANDING_ALT_M) flown by the player / by the landing program. */
+  private manualDescent = false;
+  private assistedDescent = false;
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -203,6 +211,8 @@ export class FlightRuntime {
     this.maxAltitudeM = localFrame(r).altitudeM;
     this.maxSpeedMS = len(v);
     this.lastAngle = localFrame(r).groundAngle;
+    this.manualDescent = false;
+    this.assistedDescent = false;
     this.set({ ...IDLE, phase: 'flight', context, zone: this.state.zone }, true);
   }
 
@@ -407,6 +417,10 @@ export class FlightRuntime {
     const el = orbitalElements(s.r, s.v);
     this.maxAltitudeM = Math.max(this.maxAltitudeM, f.altitudeM);
     this.maxSpeedMS = Math.max(this.maxSpeedMS, len(s.v));
+    if (f.altitudeM < MANUAL_LANDING_ALT_M && s.phase === 'flight') {
+      if (this.ps.program === 'none') this.manualDescent = true;
+      else this.assistedDescent = true;
+    }
     const dA = wrapAngle(f.groundAngle - this.lastAngle);
     this.lastAngle = f.groundAngle;
     let p = this.progress;
@@ -461,6 +475,9 @@ export class FlightRuntime {
         ascent: st.context.ascent,
         maxAltitudeM: this.maxAltitudeM,
         maxSpeedMS: this.maxSpeedMS,
+        recovery: st.context.recovery,
+        hardware: st.context.hardware,
+        manualLanding: this.manualDescent && !this.assistedDescent,
       },
       this.live,
       this.progress,

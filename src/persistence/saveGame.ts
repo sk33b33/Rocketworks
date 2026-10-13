@@ -12,7 +12,10 @@ import { INITIAL_PROGRESSION, TECH_TREE, type ProgressionState } from '../progre
 import { findCrew } from '../missions/crew';
 import { findMission, findPayload, MISSIONS } from '../missions/missionCatalog';
 import type { MissionSetup } from '../missions/missionSetup';
-import type { FlightRecord, LandingSummary } from '../launch/flightRecord';
+import type { BoosterRecoverySummary, FlightRecord, LandingSummary } from '../launch/flightRecord';
+import type { FleetVehicle } from '../fleet/fleet';
+import type { Grade } from '../recovery/rating';
+import type { RecoveryTarget } from '../recovery/recoveryPlan';
 import { CURRENT_SAVE_VERSION, migrateSave } from './migrations';
 
 export type AssemblyMode = 'catalog' | 'structure';
@@ -35,6 +38,8 @@ export interface SaveData {
   readonly mission: MissionSetup | null;
   /** Flight history, newest last. */
   readonly flights: readonly FlightRecord[];
+  /** Recovered boosters and ships. */
+  readonly fleet: readonly FleetVehicle[];
   readonly ui: UiPrefs;
 }
 
@@ -192,6 +197,8 @@ function parseLanding(raw: unknown): LandingSummary | undefined {
     shield: raw.shield,
     peakG: raw.peakG,
     peakHeatKWm2: raw.peakHeatKWm2,
+    grade: parseGrade(raw.grade),
+    manual: raw.manual === true,
   };
 }
 
@@ -221,6 +228,8 @@ function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
       Array.isArray(r.events)
     ) {
       const landing = parseLanding(r.landing);
+      const recovery = parseRecovery(r.recovery);
+      const hw = isRecord(r.hardware) ? r.hardware : null;
       out.push({
         id: r.id,
         at: r.at,
@@ -238,6 +247,15 @@ function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
         durationS: r.durationS,
         events: r.events.filter(isString).slice(0, 60),
         ...(landing ? { landing } : {}),
+        ...(recovery ? { recovery } : {}),
+        ...(hw
+          ? {
+              hardware: {
+                boosterId: isString(hw.boosterId) ? hw.boosterId : null,
+                shipId: isString(hw.shipId) ? hw.shipId : null,
+              },
+            }
+          : {}),
       });
     }
   }
@@ -284,6 +302,88 @@ function parseMissionSetup(
     conditionsSeed: raw.conditionsSeed as number,
     waits: raw.waits as number,
     commit,
+    recovery: RECOVERY_TARGETS.includes(raw.recovery as RecoveryTarget)
+      ? (raw.recovery as RecoveryTarget)
+      : null,
+    boosterFleetId: isString(raw.boosterFleetId) ? raw.boosterFleetId : null,
+    shipFleetId: isString(raw.shipFleetId) ? raw.shipFleetId : null,
+  };
+}
+
+const RECOVERY_TARGETS: readonly RecoveryTarget[] = ['catch', 'platform', 'expend'];
+const GRADES: readonly Grade[] = ['S', 'A', 'B', 'C', 'D'];
+const parseGrade = (v: unknown): Grade | null =>
+  GRADES.includes(v as Grade) ? (v as Grade) : null;
+
+/** Fleet: malformed vehicles are dropped individually. */
+function parseFleet(raw: unknown, warnings: string[]): FleetVehicle[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    warnings.push('The fleet list was unreadable and has been cleared.');
+    return [];
+  }
+  const out: FleetVehicle[] = [];
+  for (const v of raw) {
+    if (
+      isRecord(v) &&
+      isString(v.id) &&
+      (v.kind === 'booster' || v.kind === 'ship') &&
+      isString(v.name) &&
+      isString(v.designId) &&
+      isString(v.designName) &&
+      isString(v.signature) &&
+      isCount(v.flights) &&
+      isNum(v.wear) &&
+      isString(v.recoveredAt) &&
+      !out.some((o) => o.id === v.id)
+    ) {
+      out.push({
+        id: v.id,
+        kind: v.kind,
+        name: v.name,
+        designId: v.designId,
+        designName: v.designName,
+        signature: v.signature,
+        flights: v.flights,
+        wear: Math.max(0, Math.min(1, v.wear)),
+        lastGrade: parseGrade(v.lastGrade),
+        recoveredAt: v.recoveredAt,
+        refurbPending: v.refurbPending === true,
+      });
+    }
+  }
+  if (out.length < raw.length)
+    warnings.push(`${raw.length - out.length} damaged fleet record(s) were skipped.`);
+  return out;
+}
+
+const BOOSTER_OUTCOMES: readonly BoosterRecoverySummary['outcome'][] = [
+  'caught',
+  'landed',
+  'lost',
+  'expended',
+  'not-attempted',
+];
+
+function parseRecovery(raw: unknown): BoosterRecoverySummary | undefined {
+  if (
+    !isRecord(raw) ||
+    !RECOVERY_TARGETS.includes(raw.target as RecoveryTarget) ||
+    !BOOSTER_OUTCOMES.includes(raw.outcome as BoosterRecoverySummary['outcome']) ||
+    !isNum(raw.heatLoadMJm2) ||
+    !isString(raw.summary)
+  )
+    return undefined;
+  return {
+    target: raw.target as RecoveryTarget,
+    outcome: raw.outcome as BoosterRecoverySummary['outcome'],
+    grade: parseGrade(raw.grade),
+    manual: raw.manual === true,
+    simulated: raw.simulated === true,
+    missM: isNum(raw.missM) ? raw.missM : null,
+    vertMS: isNum(raw.vertMS) ? raw.vertMS : null,
+    heatLoadMJm2: raw.heatLoadMJm2,
+    summary: raw.summary,
   };
 }
 
@@ -346,6 +446,7 @@ export function parseSave(json: string): LoadResult {
         warnings,
       ),
       flights: parseFlights(data.flights, warnings),
+      fleet: parseFleet(data.fleet, warnings),
       ui: {
         guideCollapsed: ui.guideCollapsed === true,
         assemblyMode: ui.assemblyMode === 'structure' ? 'structure' : 'catalog',

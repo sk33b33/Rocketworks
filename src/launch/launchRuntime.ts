@@ -9,18 +9,35 @@ import {
 } from '../simulation/ascent/ascentModel';
 import type { RocketBlueprint } from '../rocket/model/types';
 import { advanceCountdown, COUNTDOWN_START_S, TERMINAL_COUNT_S } from './countdown';
-import { ascentRecord, scrubRecord, type FlightRecord, type OutcomeInput } from './flightRecord';
+import {
+  ascentRecord,
+  scrubRecord,
+  type BoosterRecoverySummary,
+  type FlightRecord,
+  type OutcomeInput,
+} from './flightRecord';
+import {
+  recoveryAvailability,
+  type BoosterSpec,
+  type RecoveryTarget,
+} from '../recovery/recoveryPlan';
+import {
+  RecoverySession,
+  unrecoveredSummary,
+  type BoosterKey,
+  type RecoverySessionView,
+} from '../recovery/recoverySession';
 
 /*
  * Launch runtime: a framework-free state machine for one launch attempt
- * (rollout → pad → countdown → ascent → debrief, or → handoff when an orbital mission reaches
- * orbit and continues in the Flight runtime). The scene calls update() every frame; the
+ * (rollout → pad → countdown → ascent → [booster recovery replay] → debrief, or → handoff when
+ * an orbital mission reaches orbit and continues in the Flight runtime). The scene calls update() every frame; the
  * simulation advances in fixed SIM_DT_S steps (capped per frame) and can be paused or warped.
  * UI subscribes to throttled immutable snapshots, so React never re-renders at frame rate.
  */
 
 export type LaunchPhase =
-  'idle' | 'rollout' | 'pad' | 'countdown' | 'ascent' | 'handoff' | 'debrief';
+  'idle' | 'rollout' | 'pad' | 'countdown' | 'ascent' | 'recovery' | 'handoff' | 'debrief';
 export const WARP_LEVELS = [1, 2, 4, 10] as const;
 export type Warp = (typeof WARP_LEVELS)[number];
 
@@ -40,6 +57,11 @@ export interface LaunchContext {
   readonly crewed: boolean;
   readonly crewNames: readonly string[];
   readonly config: AscentConfig;
+  /** Booster recovery plan (absent = expend). */
+  readonly recovery?: RecoveryTarget;
+  readonly boosterSpec?: BoosterSpec;
+  /** Fleet vehicles flying (null = new build). */
+  readonly hardware?: { readonly boosterId: string | null; readonly shipId: string | null };
 }
 
 export interface LaunchSnapshot {
@@ -54,6 +76,9 @@ export interface LaunchSnapshot {
   /** Altitude/downrange samples for the ascent profile chart. */
   readonly profile: readonly { readonly x: number; readonly h: number }[];
   readonly record: FlightRecord | null;
+  /** Live booster recovery replay (during and after the 'recovery' phase). */
+  readonly recovery: RecoverySessionView | null;
+  readonly recoveryResult: BoosterRecoverySummary | null;
 }
 
 const IDLE: LaunchSnapshot = {
@@ -67,6 +92,8 @@ const IDLE: LaunchSnapshot = {
   ascent: null,
   profile: [],
   record: null,
+  recovery: null,
+  recoveryResult: null,
 };
 
 export class LaunchRuntime {
@@ -76,6 +103,9 @@ export class LaunchRuntime {
   private snap: LaunchSnapshot = IDLE;
   /** Live ascent state (updated every step; published to the UI at a throttled rate). */
   private live: AscentState | null = null;
+  private session: RecoverySession | null = null;
+  private skipped = false;
+  private sinceRecoveryDone = 0;
   private accumulator = 0;
   private sincePublish = 0;
   private sinceTerminal = 0;
@@ -109,6 +139,7 @@ export class LaunchRuntime {
   // ---- commands ----
   prepare(context: LaunchContext, skipRollout = false): void {
     this.live = null;
+    this.session = null;
     this.accumulator = 0;
     this.profile = [];
     this.lastSample = -Infinity;
@@ -123,6 +154,7 @@ export class LaunchRuntime {
 
   reset(): void {
     this.live = null;
+    this.session = null;
     this.set(IDLE);
   }
 
@@ -165,10 +197,45 @@ export class LaunchRuntime {
   }
 
   togglePause(): void {
-    if (this.state.phase === 'ascent') this.set({ ...this.state, paused: !this.state.paused });
+    if (this.state.phase === 'ascent' || this.state.phase === 'recovery')
+      this.set({ ...this.state, paused: !this.state.paused });
+  }
+
+  /** Live booster recovery session (for rendering). */
+  get liveRecovery(): RecoverySessionView | null {
+    return this.session?.view() ?? null;
+  }
+
+  get manualLandingAvailable(): boolean {
+    return !!this.session?.manualAvailable;
+  }
+
+  /** Hands the booster's landing burn to the player (or back to the assist). */
+  setManualLanding(on: boolean): void {
+    if (this.state.phase !== 'recovery' || !this.session) return;
+    this.session.setManual(on);
+    this.publishRecovery();
+  }
+
+  setBoosterKey(key: BoosterKey, down: boolean): void {
+    this.session?.setKey(key, down);
+  }
+
+  setBoosterThrottle(t: number): void {
+    this.session?.setThrottle(t);
+  }
+
+  /** Skips the recovery replay; the assisted result is simulated. */
+  skipRecovery(): void {
+    if (this.state.phase !== 'recovery' || !this.session || this.session.done) return;
+    this.session.skip();
+    this.skipped = true;
+    this.sinceRecoveryDone = DEBRIEF_DELAY_S;
+    this.publishRecovery();
   }
 
   setWarp(warp: Warp): void {
+    if (this.session?.view().manualActive) return; // manual landings fly in real time
     this.set({ ...this.state, warp });
   }
 
@@ -194,6 +261,9 @@ export class LaunchRuntime {
       }
       case 'ascent':
         this.updateAscent(realDtS);
+        break;
+      case 'recovery':
+        this.updateRecovery(realDtS);
         break;
       default:
         break;
@@ -232,19 +302,85 @@ export class LaunchRuntime {
       }
       return;
     }
-    // Terminal: keep the booster falling for the visuals, then open the debrief.
+    // Terminal: linger on the final state, then recover the booster (or wrap up).
     this.sinceTerminal += realDtS;
-    if (continuesInOrbit(ctx, this.live)) {
-      // The flight isn't over: the Flight runtime takes the ship from here.
-      if (this.sinceTerminal >= HANDOFF_DELAY_S)
-        this.set({ ...this.state, phase: 'handoff', ascent: this.live });
+    const success = this.live.status === 'orbit' || this.live.status === 'apogee';
+    if (this.sinceTerminal < (success ? HANDOFF_DELAY_S : DEBRIEF_DELAY_S) || s.record) return;
+    const target = ctx.recovery ?? 'expend';
+    const staging = this.live.staging;
+    if (target === 'expend') return this.finishLaunch(unrecoveredSummary('expend', 'expended'));
+    const spec = ctx.boosterSpec;
+    if (!success || !staging || !spec || !recoveryAvailability(target, spec.hardware).ok)
+      return this.finishLaunch(unrecoveredSummary(target, 'not-attempted'));
+    this.session = new RecoverySession(staging, spec, target);
+    this.skipped = false;
+    this.sinceRecoveryDone = 0;
+    this.accumulator = 0;
+    this.set({
+      ...this.state,
+      phase: 'recovery',
+      ascent: this.live,
+      recovery: this.session.view(),
+    });
+  }
+
+  private updateRecovery(realDtS: number): void {
+    const session = this.session;
+    if (!session || this.state.paused) return;
+    if (!session.done) {
+      // A manual landing flies in real time.
+      if (session.view().manualActive && this.state.warp > 1)
+        this.state = { ...this.state, warp: 1 };
+      this.accumulator += realDtS * this.state.warp;
+      const eventsBefore = session.view().state.events.length;
+      const stepReal = SIM_DT_S / this.state.warp;
+      let steps = 0;
+      while (this.accumulator >= SIM_DT_S && steps < MAX_STEPS_PER_FRAME && !session.done) {
+        session.step(SIM_DT_S, stepReal);
+        this.accumulator -= SIM_DT_S;
+        steps++;
+      }
+      if (steps >= MAX_STEPS_PER_FRAME) this.accumulator = 0;
+      this.sincePublish += realDtS;
+      if (
+        session.view().state.events.length !== eventsBefore ||
+        session.done ||
+        this.sincePublish >= PUBLISH_INTERVAL_S
+      )
+        this.publishRecovery();
       return;
     }
-    if (this.sinceTerminal >= DEBRIEF_DELAY_S && !s.record) {
-      const record = ascentRecord({ ...ctx.outcome, at: this.now() }, this.live);
-      this.set({ ...this.state, phase: 'debrief', record, ascent: this.live });
-      this.onRecord(record);
+    this.sinceRecoveryDone += realDtS;
+    if (
+      this.sinceRecoveryDone >= DEBRIEF_DELAY_S &&
+      !this.state.record &&
+      this.state.phase === 'recovery'
+    )
+      this.finishLaunch(session.summary(this.skipped));
+  }
+
+  /** Ends the launch session: hand-off to orbit or debrief with the flight record. */
+  private finishLaunch(recovery: BoosterRecoverySummary): void {
+    const ctx = this.state.context;
+    const live = this.live;
+    if (!ctx || !live) return;
+    if (continuesInOrbit(ctx, live)) {
+      // The flight isn't over: the Flight runtime takes the ship from here.
+      this.set({ ...this.state, phase: 'handoff', ascent: live, recoveryResult: recovery });
+      return;
     }
+    const record: FlightRecord = {
+      ...ascentRecord({ ...ctx.outcome, at: this.now() }, live),
+      recovery,
+      hardware: ctx.hardware ?? { boosterId: null, shipId: null },
+    };
+    this.set({ ...this.state, phase: 'debrief', record, ascent: live, recoveryResult: recovery });
+    this.onRecord(record);
+  }
+
+  private publishRecovery(): void {
+    this.sincePublish = 0;
+    this.set({ ...this.state, recovery: this.session?.view() ?? null });
   }
 
   /** Ends the launch session after the orbital flight has been recorded. */

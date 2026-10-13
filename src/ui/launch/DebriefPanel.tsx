@@ -2,6 +2,7 @@ import { useGameStore } from '../../app/gameStore';
 import { launchRuntime, syncLaunchWithPlan } from '../../app/launchBinding';
 import type { FlightRecord } from '../../launch/flightRecord';
 import { findMission } from '../../missions/missionCatalog';
+import { RecoveryResultLine } from './RecoveryPanel';
 
 const RESULT = {
   success: { label: '✓ MISSION SUCCESS', tone: 'ok' },
@@ -33,6 +34,7 @@ export function DebriefPanel({ record }: { record: FlightRecord }) {
           {record.crewSafe ? '✓ Crew safe.' : '✕ Crew lost.'}
         </p>
       )}
+      {record.recovery && <RecoveryResultLine r={record.recovery} />}
       {record.credited && mission && (
         <p className="tone-ok">
           Mission credited: +{mission.rewardRp} RP and +{fmt(mission.rewardCredits)} cr budget on

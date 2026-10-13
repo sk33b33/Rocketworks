@@ -1,6 +1,12 @@
-import type { FlightRecord, LandingSummary, OutcomeInput } from '../launch/flightRecord';
+import type {
+  BoosterRecoverySummary,
+  FlightRecord,
+  LandingSummary,
+  OutcomeInput,
+} from '../launch/flightRecord';
+import { rateLanding } from '../recovery/rating';
 import { recordBase } from '../launch/flightRecord';
-import type { FlightState } from './flightModel';
+import { FLIGHT, type FlightState } from './flightModel';
 import { findZoneAt, isLand, missDistanceM, type LandingZone } from './landingZones';
 import { localFrame } from './orbitMath';
 
@@ -73,6 +79,21 @@ export interface FlightOutcomeContext {
   };
   readonly maxAltitudeM: number;
   readonly maxSpeedMS: number;
+  /** Booster recovery from the launch, and the fleet hardware that flew. */
+  readonly recovery?: BoosterRecoverySummary | null;
+  readonly hardware?: { readonly boosterId: string | null; readonly shipId: string | null };
+  /** The player flew the final descent without the landing program. */
+  readonly manualLanding?: boolean;
+}
+
+/** Landing limits used for the ship's precision rating. */
+export function shipRatingLimits(zone: LandingZone) {
+  return {
+    missM: zone.toleranceM,
+    vertMS: FLIGHT.touchdownMaxVertMS,
+    horizMS: FLIGHT.touchdownMaxHorizMS,
+    tiltDeg: FLIGHT.touchdownMaxTiltDeg,
+  };
 }
 
 /** Missions this stage can complete from the flight model. */
@@ -83,6 +104,7 @@ export function landingSummary(
   s: FlightState,
   p: FlightProgress,
   zone: LandingZone,
+  manual = false,
 ): LandingSummary {
   const angle = localFrame(s.r).groundAngle;
   const at = findZoneAt(angle, zone);
@@ -119,6 +141,14 @@ export function landingSummary(
     shield: s.shield,
     peakG: s.peakG,
     peakHeatKWm2: s.peakHeatFluxWm2 / 1000,
+    grade:
+      outcome === 'landed' && s.touchdown
+        ? rateLanding(
+            { ...s.touchdown, missM: missDistanceM(angle, at ?? zone) },
+            shipRatingLimits(at ?? zone),
+          ).grade
+        : null,
+    manual: manual && (outcome === 'landed' || outcome === 'splashdown'),
   };
 }
 
@@ -152,7 +182,7 @@ export function evaluateFlight(
   p: FlightProgress,
   at: string,
 ): FlightRecord {
-  const landing = landingSummary(s, p, ctx.zone);
+  const landing = landingSummary(s, p, ctx.zone, ctx.manualLanding ?? false);
   const safe = landing.outcome === 'landed' || landing.outcome === 'splashdown';
   const creditable = CREDITABLE_IN_FLIGHT.has(ctx.outcome.missionId);
   const objectivesMet = p.orbit && completedOrbits(p) >= 1 && safe;
@@ -188,5 +218,7 @@ export function evaluateFlight(
       ...s.events.map((e) => `T+${Math.round(e.tS)}s ${e.text}`),
     ].slice(-60),
     landing,
+    ...(ctx.recovery ? { recovery: ctx.recovery } : {}),
+    hardware: ctx.hardware ?? { boosterId: null, shipId: null },
   };
 }

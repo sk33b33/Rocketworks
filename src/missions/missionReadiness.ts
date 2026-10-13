@@ -12,6 +12,23 @@ import {
   type MissionDefinition,
 } from './missionCatalog';
 import type { MissionSetup } from './missionSetup';
+import {
+  boosterHardware,
+  defaultRecoveryTarget,
+  RECOVERY_LABELS,
+  recoveryAvailability,
+  RESERVE_FRACTION,
+  stageSignature,
+  type RecoveryTarget,
+} from '../recovery/recoveryPlan';
+import {
+  isRetired,
+  stageCost,
+  stageFlightCost,
+  wearRisk,
+  type FleetVehicle,
+  type HardwareKind,
+} from '../fleet/fleet';
 
 /*
  * Mission readiness: a deterministic "go/no-go poll" across vehicle, propulsion, crew, life support,
@@ -19,11 +36,20 @@ import type { MissionSetup } from './missionSetup';
  */
 
 export type PollArea =
-  'vehicle' | 'propulsion' | 'crew' | 'life-support' | 'guidance' | 'comms' | 'payload' | 'weather';
+  | 'vehicle'
+  | 'propulsion'
+  | 'recovery'
+  | 'crew'
+  | 'life-support'
+  | 'guidance'
+  | 'comms'
+  | 'payload'
+  | 'weather';
 
 export const POLL_LABELS: Record<PollArea, string> = {
   vehicle: 'Vehicle',
   propulsion: 'Propulsion / Δv',
+  recovery: 'Recovery & budget',
   crew: 'Crew',
   'life-support': 'Life support',
   guidance: 'Guidance (RCS)',
@@ -63,6 +89,18 @@ export interface MissionReport {
   readonly lifeSupport: { requiredCrewDays: number; capacityCrewDays: number };
   readonly conditions: LaunchConditions;
   readonly risk: { score: number; level: 'low' | 'moderate' | 'high'; factors: readonly string[] };
+  /** Booster recovery the flight will attempt. */
+  readonly recovery: RecoveryTarget;
+  /** Hardware cost of this mission: new builds vs. reflown fleet vehicles. */
+  readonly cost: MissionCost;
+}
+
+export interface MissionCost {
+  readonly newBuildCredits: number;
+  readonly missionCredits: number;
+  readonly budgetCredits: number | null;
+  readonly booster: FleetVehicle | null;
+  readonly ship: FleetVehicle | null;
 }
 
 export interface MissionContext {
@@ -71,6 +109,12 @@ export interface MissionContext {
   readonly blueprint: RocketBlueprint | undefined;
   readonly vehicleReport: ReadinessReport | undefined;
   readonly completedMissionIds: readonly string[];
+  /** Recovered hardware available to fly again. */
+  readonly fleet?: readonly FleetVehicle[];
+  /** Program budget (per-mission hardware cost cap); omitted = not checked. */
+  readonly budgetCredits?: number;
+  /** "Rapid Reuse" researched (cheaper reflights). */
+  readonly rapidReuse?: boolean;
 }
 
 /** Crew-days of life support per part. Game values. */
@@ -224,8 +268,111 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
     }
   }
 
+  // ---- Recovery, fleet and budget ----
+  const hw = bp ? boosterHardware(bp) : { gridFins: 0, boosterLegs: 0 };
+  const recovery: RecoveryTarget = ctx.setup.recovery ?? defaultRecoveryTarget(hw);
+  const fleet = ctx.fleet ?? [];
+  const assigned = (kind: HardwareKind): FleetVehicle | null => {
+    const id = kind === 'booster' ? ctx.setup.boosterFleetId : ctx.setup.shipFleetId;
+    if (!id) return null;
+    const v = fleet.find((f) => f.id === id);
+    const label = kind === 'booster' ? 'booster' : 'ship';
+    if (!v) {
+      add({
+        id: `fleet-missing-${kind}`,
+        area: 'recovery',
+        severity: 'critical',
+        title: `Assigned ${label} is no longer in the fleet`,
+        detail: 'It was lost or scrapped since it was assigned.',
+        fix: `Pick another ${label} or a new build in the Manifest.`,
+        action: { kind: 'open-tab', tab: 'manifest' },
+        actionLabel: 'Open manifest',
+      });
+      return null;
+    }
+    if (bp && v.signature !== stageSignature(bp, kind)) {
+      add({
+        id: `fleet-mismatch-${kind}`,
+        area: 'recovery',
+        severity: 'critical',
+        title: `${v.name} doesn't match this design`,
+        detail: `${v.name} was built as "${v.designName}"; this design's ${label} has different parts.`,
+        fix: `Pick a matching ${label} or a new build.`,
+        action: { kind: 'open-tab', tab: 'manifest' },
+        actionLabel: 'Open manifest',
+      });
+      return null;
+    }
+    if (isRetired(v)) {
+      add({
+        id: `fleet-retired-${kind}`,
+        area: 'recovery',
+        severity: 'critical',
+        title: `${v.name} is worn out`,
+        detail: 'Refurbish it in the Manifest before flying it again.',
+        fix: 'Refurbish it or pick another vehicle.',
+        action: { kind: 'open-tab', tab: 'manifest' },
+        actionLabel: 'Open manifest',
+      });
+      return null;
+    }
+    if (v.wear >= 0.5) {
+      add({
+        id: `fleet-wear-${kind}`,
+        area: 'recovery',
+        severity: 'warning',
+        title: `${v.name} is ${Math.round(v.wear * 100)}% worn`,
+        detail: 'Worn hardware raises mission risk.',
+        fix: 'Refurbish it to reset wear.',
+      });
+    }
+    risk += wearRisk(v);
+    if (v.wear > 0.2) riskFactors.push(`${v.name} wear ${Math.round(v.wear * 100)}%`);
+    return v;
+  };
+  const boosterVehicle = assigned('booster');
+  const shipVehicle = assigned('ship');
+  if (bp) {
+    const avail = recoveryAvailability(recovery, hw);
+    if (!avail.ok) {
+      add({
+        id: 'recovery-hardware',
+        area: 'recovery',
+        severity: 'critical',
+        title: `Can't fly "${RECOVERY_LABELS[recovery]}"`,
+        detail: avail.reason,
+        fix: 'Choose another recovery option, or add the hardware in the Factory.',
+        action: { kind: 'open-tab', tab: 'manifest' },
+        actionLabel: 'Change recovery',
+      });
+    }
+  }
+  const boosterNew = bp ? stageCost(bp, 'booster') : 0;
+  const shipNew = bp ? stageCost(bp, 'ship') : 0;
+  const cost: MissionCost = {
+    newBuildCredits: boosterNew + shipNew,
+    missionCredits:
+      stageFlightCost(boosterNew, boosterVehicle, ctx.rapidReuse) +
+      stageFlightCost(shipNew, shipVehicle, ctx.rapidReuse),
+    budgetCredits: ctx.budgetCredits ?? null,
+    booster: boosterVehicle,
+    ship: shipVehicle,
+  };
+  if (bp && ctx.budgetCredits !== undefined && cost.missionCredits > ctx.budgetCredits) {
+    add({
+      id: 'mission-over-budget',
+      area: 'recovery',
+      severity: 'critical',
+      title: `Mission over budget by ${fmt(cost.missionCredits - ctx.budgetCredits)} cr`,
+      detail: `The hardware for this flight costs ${fmt(cost.missionCredits)} cr; the program budget is ${fmt(ctx.budgetCredits)} cr per mission.`,
+      fix: 'Fly recovered hardware from the fleet, simplify the design, or raise the budget.',
+      action: { kind: 'open-tab', tab: 'manifest' },
+      actionLabel: 'Open manifest',
+    });
+  }
+
   // ---- Propulsion ----
-  const deltaV = bp ? estimateDeltaV(bp, carriedMassKg) : null;
+  const deltaV = bp ? estimateDeltaV(bp, carriedMassKg, RESERVE_FRACTION[recovery]) : null;
   if (deltaV) {
     const margin = deltaV.totalMs / mission.requiredDeltaVMs - 1;
     if (margin < 0) {
@@ -234,8 +381,11 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
         area: 'propulsion',
         severity: 'critical',
         title: 'Not enough Δv for this mission',
-        detail: `Estimated ${fmt(deltaV.totalMs)} m/s with ${fmt(carriedMassKg / 1000)} t carried; ${fmt(mission.requiredDeltaVMs)} m/s needed.`,
-        fix: 'Lighten the payload, add tanks or use better engines.',
+        detail: `Estimated ${fmt(deltaV.totalMs)} m/s with ${fmt(carriedMassKg / 1000)} t carried${recovery === 'expend' ? '' : ` and ${Math.round(RESERVE_FRACTION[recovery] * 100)}% booster propellant held back for recovery`}; ${fmt(mission.requiredDeltaVMs)} m/s needed.`,
+        fix:
+          recovery === 'catch'
+            ? 'Try a platform landing (smaller reserve), lighten the payload, or add tanks.'
+            : 'Lighten the payload, add tanks, use better engines or expend the booster.',
         action: { kind: 'open-tab', tab: 'manifest' },
         actionLabel: 'Review payload',
       });
@@ -456,6 +606,8 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
     carriedMassKg,
     lifeSupport: { requiredCrewDays, capacityCrewDays: capacity },
     conditions,
+    recovery,
+    cost,
     risk: {
       score,
       level: score < 0.3 ? 'low' : score < 0.55 ? 'moderate' : 'high',

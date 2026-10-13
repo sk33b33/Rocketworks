@@ -1437,3 +1437,43 @@ fieldset.stacked label {
 .dot.pad {
   background: #7dff9a;
 }
+
+/* ---------- Recovery & fleet (Stage 6) ---------- */
+.fleet-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.fleet-list li {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+}
+.recovery-panel .grade {
+  font:
+    700 28px/1 ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    monospace;
+}
+.grade-S,
+.grade-A {
+  color: var(--ok);
+}
+.grade-B,
+.grade-C {
+  color: var(--warn);
+}
+.grade-D {
+  color: var(--danger);
+}
+.manual-pad {
+  display: grid;
+  gap: 4px;
+  margin-top: 6px;
+}
+.manual-pad .progress-fill {
+  transition: none;
+}
