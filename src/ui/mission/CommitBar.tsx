@@ -11,6 +11,7 @@ export function CommitBar() {
   const standDown = useGameStore((s) => s.standDown);
   const requestCamera = useGameStore((s) => s.requestCamera);
   const setTab = useGameStore((s) => s.setMissionTab);
+  const goTo = useGameStore((s) => s.goTo);
   useShortcut(['c', 'C'], () => requestCamera('reset'));
   const state = commitState(setup, bp, report);
   const critical = report.issues.filter((i) => i.severity === 'critical').length;
@@ -27,9 +28,10 @@ export function CommitBar() {
       <div className="toolbar">
         {state === 'committed' ? (
           <>
-            <span className="committed">
-              ✓ Committed · awaiting rollout (Launch Pad opens next stage)
-            </span>
+            <span className="committed">✓ Committed · GO for rollout</span>
+            <button type="button" className="primary" onClick={() => goTo('launch-pad')}>
+              Go to Launch Pad
+            </button>
             <button type="button" onClick={standDown}>
               Stand down
             </button>

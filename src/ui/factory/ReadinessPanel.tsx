@@ -159,9 +159,7 @@ export function ReadinessPanel() {
           </button>
         </div>
         {certifyReason && <p className="hint">{certifyReason}</p>}
-        <p className="footnote">
-          Certified designs will be available to Mission Control in the next stage.
-        </p>
+        <p className="footnote">Mission Control only flies certified designs.</p>
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import { guideProgress, missionReport, programSummary, readinessReport } from '.
 import { createDefaultSetup } from '../missions/missionSetup';
 import { createLibraryActions } from './store/librarySlice';
 import { createMissionActions } from './store/missionSlice';
+import { createFlightActions } from './store/flightSlice';
 import { createProgramActions } from './store/programSlice';
 import type { GameData, GameStore, SaveStatus } from './store/types';
 
@@ -36,6 +37,7 @@ type LoadedSlice = Pick<
   | 'blueprint'
   | 'progression'
   | 'mission'
+  | 'flights'
   | 'ui'
   | 'notice'
   | 'saveStatus'
@@ -54,6 +56,7 @@ function initialData(): LoadedSlice {
       blueprint: active,
       progression: data.progression,
       mission: data.mission ?? createDefaultSetup(active.id),
+      flights: data.flights,
       ui: data.ui,
       notice: problems.length
         ? makeNotice(
@@ -78,6 +81,7 @@ function initialData(): LoadedSlice {
     blueprint: starter,
     progression: INITIAL_PROGRESSION,
     mission: createDefaultSetup(starter.id),
+    flights: [],
     ui: DEFAULT_UI,
     notice:
       loaded.status === 'corrupt' && persistent
@@ -99,6 +103,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   cameraRequest: null,
   vehicleTab: 'stats',
   missionTab: 'briefing',
+  padCamera: 'pad',
   history: { past: [], future: [] },
   ...initialData(),
 
@@ -106,6 +111,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   ...createLibraryActions(set, get),
   ...createProgramActions(set, get),
   ...createMissionActions(set, get),
+  ...createFlightActions(set, get),
 
   goTo: (target) => {
     const result = navigate(get().currentLocation, target);
@@ -153,6 +159,7 @@ useGameStore.subscribe((s, prev) => {
     s.activeBlueprintId === prev.activeBlueprintId &&
     s.progression === prev.progression &&
     s.mission === prev.mission &&
+    s.flights === prev.flights &&
     s.ui === prev.ui
   )
     return;
@@ -164,6 +171,7 @@ useGameStore.subscribe((s, prev) => {
     blueprints: s.blueprints,
     progression: s.progression,
     mission: s.mission,
+    flights: s.flights,
     ui: s.ui,
   });
   useGameStore.setState({

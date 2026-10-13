@@ -1133,3 +1133,154 @@ fieldset.stacked label {
     grid-template-columns: repeat(2, 1fr);
   }
 }
+
+/* ---------- Stage 4: Launch Pad ---------- */
+.launch-hud .hud-right {
+  width: 340px;
+}
+.launch-hud .countdown,
+.launch-hud .telemetry {
+  overflow-y: auto;
+}
+.small-text {
+  font-size: 12px;
+  margin: 2px 0 6px;
+}
+.load-row {
+  display: grid;
+  grid-template-columns: 110px 1fr 40px;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  margin: 4px 0;
+}
+.launch-controls {
+  max-width: calc(100vw - 32px);
+}
+.launch-controls .toolbar {
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: center;
+}
+.mission-clock {
+  font:
+    600 30px ui-monospace,
+    'SF Mono',
+    monospace;
+  letter-spacing: 0.06em;
+  padding: 4px 16px;
+  background: var(--panel-solid);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.mission-clock.held {
+  border-color: var(--warn);
+}
+.clock-tag {
+  font-size: 12px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--warn);
+  color: #111;
+}
+.warp {
+  display: inline-flex;
+  gap: 2px;
+}
+.warp button[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.inline-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  padding: 0 6px;
+}
+.profile {
+  width: 100%;
+  height: auto;
+  margin-top: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+}
+.profile-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+}
+.profile-target {
+  stroke: var(--ok);
+  stroke-dasharray: 4 4;
+  stroke-width: 1;
+}
+.profile-label {
+  fill: var(--muted);
+  font-size: 9px;
+}
+.profile-dot {
+  fill: #fff;
+}
+.event-log {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 12px;
+  display: grid;
+  gap: 3px;
+}
+.event-log li {
+  border-left: 2px solid var(--line-strong);
+  padding-left: 6px;
+}
+.ev-warn {
+  border-left-color: var(--warn) !important;
+}
+.ev-fail {
+  border-left-color: var(--danger) !important;
+  color: #ffc2bb;
+}
+.ev-success {
+  border-left-color: var(--ok) !important;
+  color: #bff5d6;
+}
+.debrief {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -55%);
+  width: min(480px, calc(100vw - 32px));
+  max-height: 70vh;
+  overflow-y: auto;
+  z-index: 4;
+}
+.debrief-title {
+  font-size: 20px;
+  margin: 6px 0;
+}
+.empty-pad {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(460px, calc(100vw - 32px));
+  text-align: center;
+}
+.empty-pad .actions {
+  justify-content: center;
+}
+@media (max-width: 860px) {
+  .launch-hud .hud-col {
+    display: none;
+  }
+  .mission-clock {
+    font-size: 22px;
+  }
+  .launch-controls kbd {
+    display: none;
+  }
+}

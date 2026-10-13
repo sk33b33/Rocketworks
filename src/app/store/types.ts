@@ -2,6 +2,8 @@ import type { AssemblyMode, UiPrefs } from '../../persistence/saveGame';
 import type { ProgressionState } from '../../progression/research';
 import type { MissionFixAction, MissionTab } from '../../missions/missionReadiness';
 import type { MissionSetup } from '../../missions/missionSetup';
+import type { FlightRecord } from '../../launch/flightRecord';
+import type { PadCameraMode } from '../../scenes/launch-pad/launchPadController';
 import type { FixAction } from '../../rocket/readiness/readiness';
 import type { HullFinish, RocketBlueprint, SocketRef, VehicleRole } from '../../rocket/model/types';
 import type { LocationId } from '../locations';
@@ -43,6 +45,10 @@ export interface GameData {
   /** Mission Control plan; survives location changes and reloads. */
   mission: MissionSetup;
   missionTab: MissionTab;
+  /** Launch Pad camera mode (not persisted). */
+  padCamera: PadCameraMode;
+  /** Flight history (persisted, newest last). */
+  flights: readonly FlightRecord[];
   history: History;
   selection: Selection;
   notice: Notice | null;
@@ -107,7 +113,15 @@ export interface UiActions {
   runFixAction(action: FixAction): void;
 }
 
+export interface FlightActions {
+  /** Called by the launch runtime when an attempt ends (scrub, failure or success). */
+  recordFlight(record: FlightRecord): void;
+  setRandomFailures(enabled: boolean): void;
+  setPadCamera(mode: PadCameraMode): void;
+}
+
 export type GameStore = GameData &
+  FlightActions &
   AssemblyActions &
   LibraryActions &
   ProgramActions &

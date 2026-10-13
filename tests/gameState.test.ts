@@ -9,6 +9,7 @@ import {
 import { INITIAL_PROGRESSION } from '../src/progression/research';
 import { validateBlueprint } from '../src/rocket/assembly/validation';
 import { commitBlueprint } from '../src/app/store/commit';
+import type { FlightRecord } from '../src/launch/flightRecord';
 import { generateConditions } from '../src/missions/conditions';
 import { createDefaultSetup } from '../src/missions/missionSetup';
 import {
@@ -42,7 +43,8 @@ describe('navigate', () => {
   });
 
   it('rejects locked locations with a reason and keeps the current one', () => {
-    const result = navigate('factory', 'launch-pad');
+    expect(navigate('factory', 'launch-pad').ok).toBe(true);
+    const result = navigate('factory', 'flight');
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.reason).toContain('later stage');
   });
@@ -257,5 +259,94 @@ describe('game store: Mission Control', () => {
     st().selectMission('station-docking');
     expect(st().notice?.text).toMatch(/Crewed Orbital Shakedown/);
     expect(st().mission.missionId).toBe('test-flight');
+  });
+});
+
+describe('game store: flights', () => {
+  beforeEach(() => {
+    resetStore();
+    useGameStore.setState({ flights: [] });
+  });
+
+  const record = (over: Partial<FlightRecord> = {}): FlightRecord => ({
+    id: `f-${Math.random()}`,
+    at: '2026-01-01T00:00:00.000Z',
+    missionId: 'test-flight',
+    missionName: 'Uncrewed Test Flight',
+    designId: 'bp-starter',
+    designName: 'Starter',
+    result: 'success',
+    summary: 'Suborbital test profile completed.',
+    credited: true,
+    crewSafe: null,
+    maxAltitudeM: 145_000,
+    maxSpeedMS: 5_600,
+    maxQPa: 32_000,
+    durationS: 345,
+    events: [],
+    ...over,
+  });
+
+  it('pays mission rewards once, records history and releases the commitment', () => {
+    useGameStore.setState({
+      mission: { ...st().mission, commit: { designId: 'x', revision: 1, at: 'now' } },
+    });
+    const before = selectProgram(st());
+    const r = record();
+    st().recordFlight(r);
+    st().recordFlight(r); // idempotent
+    expect(st().flights).toHaveLength(1);
+    expect(st().progression.completedMissions).toEqual(['test-flight']);
+    expect(selectProgram(st()).researchAvailable - before.researchAvailable).toBe(2);
+    expect(st().mission.commit).toBeNull();
+    expect(st().notice?.text).toMatch(/Reward/);
+    st().recordFlight(record());
+    expect(selectProgram(st()).researchAvailable - before.researchAvailable).toBe(2);
+  });
+
+  it('keeps the commitment after a scrub and does not credit failures', () => {
+    const commit = { designId: 'x', revision: 1, at: 'now' };
+    useGameStore.setState({ mission: { ...st().mission, commit } });
+    st().recordFlight(record({ result: 'scrubbed', credited: false }));
+    expect(st().mission.commit).toEqual(commit);
+    st().recordFlight(record({ result: 'failure', credited: false }));
+    expect(st().progression.completedMissions).toEqual([]);
+    expect(st().mission.commit).toBeNull();
+  });
+});
+
+describe('launch binding', () => {
+  beforeEach(resetStore);
+
+  it('builds a launch only from a valid commitment', async () => {
+    const { buildLaunchContext } = await import('../src/app/launchBinding');
+    expect(buildLaunchContext(st())).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/No mission is committed/),
+    });
+    st().loadReferenceDesign();
+    st().certify(false);
+    st().setMissionDesign(st().activeBlueprintId);
+    for (
+      let i = 0;
+      i < 200 && generateConditions(st().mission.conditionsSeed).overall === 'red';
+      i++
+    )
+      st().waitForWindow();
+    st().commitMission();
+    const ok = buildLaunchContext(st());
+    expect(ok.ok).toBe(true);
+    if (ok.ok) {
+      expect(ok.context.crewed).toBe(false);
+      expect(ok.context.config.target.kind).toBe('suborbital');
+      expect(ok.context.config.vehicle.booster.engineCount).toBe(13);
+    }
+    // Changing the design voids the commitment.
+    const antenna = st().blueprint.parts.find((p) => p.partId === 'antenna')!;
+    st().removeInstance(antenna.id);
+    expect(buildLaunchContext(st())).toMatchObject({
+      ok: false,
+      reason: expect.stringMatching(/void/),
+    });
   });
 });

@@ -1,6 +1,6 @@
 /** Save-format migrations. Each entry upgrades version N to N+1; never edit a shipped migration. */
 
-export const CURRENT_SAVE_VERSION = 3;
+export const CURRENT_SAVE_VERSION = 4;
 
 type Data = Record<string, unknown>;
 type Migration = (data: Data) => Data;
@@ -44,6 +44,8 @@ const MIGRATIONS: Record<number, Migration> = {
       : data.progression,
     mission: null,
   }),
+  // v4 (Stage 4): flight history.
+  3: (data) => ({ ...data, flights: [] }),
 };
 
 export type MigrationResult =

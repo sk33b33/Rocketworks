@@ -12,6 +12,7 @@ import { INITIAL_PROGRESSION, TECH_TREE, type ProgressionState } from '../progre
 import { findCrew } from '../missions/crew';
 import { findMission, findPayload, MISSIONS } from '../missions/missionCatalog';
 import type { MissionSetup } from '../missions/missionSetup';
+import type { FlightRecord } from '../launch/flightRecord';
 import { CURRENT_SAVE_VERSION, migrateSave } from './migrations';
 
 export type AssemblyMode = 'catalog' | 'structure';
@@ -19,6 +20,8 @@ export type AssemblyMode = 'catalog' | 'structure';
 export interface UiPrefs {
   readonly guideCollapsed: boolean;
   readonly assemblyMode: AssemblyMode;
+  /** Risk-driven random failures during flight (on by default). */
+  readonly randomFailures: boolean;
 }
 
 /** Versioned save data. Independent of Three.js and React. */
@@ -30,12 +33,21 @@ export interface SaveData {
   readonly progression: ProgressionState;
   /** Mission Control plan (null until the player first opens Mission Control). */
   readonly mission: MissionSetup | null;
+  /** Flight history, newest last. */
+  readonly flights: readonly FlightRecord[];
   readonly ui: UiPrefs;
 }
 
 export const SAVE_KEY = 'rocketworks.save';
 export const CORRUPT_BACKUP_KEY = 'rocketworks.save.corrupt';
-export const DEFAULT_UI: UiPrefs = { guideCollapsed: false, assemblyMode: 'catalog' };
+export const DEFAULT_UI: UiPrefs = {
+  guideCollapsed: false,
+  assemblyMode: 'catalog',
+  randomFailures: true,
+};
+
+/** Most recent flights kept in the save. */
+export const MAX_FLIGHT_RECORDS = 30;
 
 /** Minimal Storage subset so tests and private-mode fallbacks can supply their own. */
 export interface KeyValueStorage {
@@ -141,6 +153,64 @@ function parseProgression(raw: unknown, warnings: string[]): ProgressionState {
   return { milestones, tech, completedMissions };
 }
 
+const FLIGHT_RESULTS: readonly FlightRecord['result'][] = [
+  'success',
+  'partial',
+  'failure',
+  'aborted',
+  'scrubbed',
+];
+const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+
+/** Flight history: malformed entries are dropped individually. */
+function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
+  if (raw === undefined) return [];
+  if (!Array.isArray(raw)) {
+    warnings.push('Flight history was unreadable and has been cleared.');
+    return [];
+  }
+  const out: FlightRecord[] = [];
+  for (const r of raw) {
+    if (
+      isRecord(r) &&
+      isString(r.id) &&
+      isString(r.at) &&
+      isString(r.missionId) &&
+      isString(r.missionName) &&
+      isString(r.designId) &&
+      isString(r.designName) &&
+      FLIGHT_RESULTS.includes(r.result as FlightRecord['result']) &&
+      isString(r.summary) &&
+      isNum(r.maxAltitudeM) &&
+      isNum(r.maxSpeedMS) &&
+      isNum(r.maxQPa) &&
+      isNum(r.durationS) &&
+      Array.isArray(r.events)
+    ) {
+      out.push({
+        id: r.id,
+        at: r.at,
+        missionId: r.missionId,
+        missionName: r.missionName,
+        designId: r.designId,
+        designName: r.designName,
+        result: r.result as FlightRecord['result'],
+        summary: r.summary,
+        credited: r.credited === true,
+        crewSafe: typeof r.crewSafe === 'boolean' ? r.crewSafe : null,
+        maxAltitudeM: r.maxAltitudeM,
+        maxSpeedMS: r.maxSpeedMS,
+        maxQPa: r.maxQPa,
+        durationS: r.durationS,
+        events: r.events.filter(isString).slice(0, 60),
+      });
+    }
+  }
+  if (out.length < raw.length)
+    warnings.push(`${raw.length - out.length} damaged flight record(s) were skipped.`);
+  return out.slice(-MAX_FLIGHT_RECORDS);
+}
+
 /** Mission setup is optional; anything unreadable is dropped (the player just re-plans). */
 function parseMissionSetup(
   raw: unknown,
@@ -240,9 +310,11 @@ export function parseSave(json: string): LoadResult {
         blueprints.map((b) => b.id),
         warnings,
       ),
+      flights: parseFlights(data.flights, warnings),
       ui: {
         guideCollapsed: ui.guideCollapsed === true,
         assemblyMode: ui.assemblyMode === 'structure' ? 'structure' : 'catalog',
+        randomFailures: ui.randomFailures !== false,
       },
     },
   };

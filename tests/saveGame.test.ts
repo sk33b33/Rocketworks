@@ -39,7 +39,8 @@ function sampleData(): Omit<SaveData, 'saveVersion'> {
       waits: 1,
       commit: { designId: 'bp-a', revision: 3, at: NOW },
     },
-    ui: { guideCollapsed: true, assemblyMode: 'structure' },
+    ui: { guideCollapsed: true, assemblyMode: 'structure', randomFailures: false },
+    flights: [],
   };
 }
 
@@ -185,7 +186,12 @@ describe('migration v1 → v2', () => {
     expect(result.data.activeBlueprintId).toBe(bp.id);
     expect(result.data.progression).toEqual({ milestones: [], tech: [], completedMissions: [] });
     expect(result.data.mission).toBeNull();
-    expect(result.data.ui).toEqual({ guideCollapsed: true, assemblyMode: 'catalog' });
+    expect(result.data.ui).toEqual({
+      guideCollapsed: true,
+      assemblyMode: 'catalog',
+      randomFailures: true,
+    });
+    expect(result.data.flights).toEqual([]);
   });
 
   it('treats a migrated v1 save with a broken blueprint as corrupt', () => {
@@ -195,9 +201,9 @@ describe('migration v1 → v2', () => {
   });
 
   it('passes current-version data through and rejects invalid versions', () => {
-    expect(migrateSave({ saveVersion: 3, x: 1 })).toEqual({
+    expect(migrateSave({ saveVersion: 4, x: 1 })).toEqual({
       ok: true,
-      data: { saveVersion: 3, x: 1 },
+      data: { saveVersion: 4, x: 1 },
     });
     expect(migrateSave({ saveVersion: 0 }).ok).toBe(false);
     expect(migrateSave({ saveVersion: 1.5 }).ok).toBe(false);
@@ -238,5 +244,48 @@ describe('migration v2 → v3', () => {
     if (partial.status !== 'loaded') throw new Error();
     expect(partial.data.mission?.crewIds).toEqual(['okafor']);
     expect(partial.data.mission?.designId).toBeNull();
+  });
+});
+
+describe('migration v3 → v4 and flight history', () => {
+  const flight = {
+    id: 'f1',
+    at: NOW,
+    missionId: 'test-flight',
+    missionName: 'Uncrewed Test Flight',
+    designId: 'bp-a',
+    designName: 'Alpha',
+    result: 'success',
+    summary: 'ok',
+    credited: true,
+    crewSafe: null,
+    maxAltitudeM: 145_000,
+    maxSpeedMS: 5_600,
+    maxQPa: 32_000,
+    durationS: 345,
+    events: ['T+0s Liftoff!'],
+  };
+
+  it('adds an empty flight history to v3 saves', () => {
+    const v4 = JSON.parse(serializeSave(sampleData()));
+    const { flights, ...rest } = v4;
+    void flights;
+    const result = parseSave(JSON.stringify({ ...rest, saveVersion: 3 }));
+    if (result.status !== 'loaded') throw new Error();
+    expect(result.warnings).toEqual(['Save upgraded from version 3.']);
+    expect(result.data.flights).toEqual([]);
+  });
+
+  it('round-trips flight records and drops damaged ones', () => {
+    const good = JSON.parse(serializeSave({ ...sampleData(), flights: [flight as never] }));
+    const ok = parseSave(JSON.stringify(good));
+    if (ok.status !== 'loaded') throw new Error();
+    expect(ok.data.flights).toEqual([flight]);
+    const bad = parseSave(
+      JSON.stringify({ ...good, flights: [flight, { id: 'x' }, { ...flight, result: 'won' }] }),
+    );
+    if (bad.status !== 'loaded') throw new Error();
+    expect(bad.data.flights).toHaveLength(1);
+    expect(bad.warnings.join(' ')).toMatch(/2 damaged flight record/);
   });
 });

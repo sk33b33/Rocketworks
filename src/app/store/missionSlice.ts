@@ -66,7 +66,7 @@ export function createMissionActions(set: SetState, get: GetState): MissionActio
         mission: r.setup,
         notice: makeNotice(
           'success',
-          `GO for rollout: "${report.mission.name}" is committed with "${bp?.name}". The Launch Pad opens in the next stage.`,
+          `GO for rollout: "${report.mission.name}" is committed with "${bp?.name}". Head to the Launch Pad.`,
         ),
       });
     },

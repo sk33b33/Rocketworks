@@ -37,7 +37,13 @@ Current progress is tracked in `docs/STATUS.md`.
 - Pick a mission, then assign the vehicle, payload and crew in *Manifest*.
 - *Readiness* shows the flight director's GO/NO-GO poll, with a fix button for each issue.
 - *Conditions* shows the launch window and weather. *Wait for next window* is free.
-- *Commit mission · GO for rollout* when every station is GO. The Launch Pad arrives in the next stage.
+- *Commit mission · GO for rollout* when every station is GO, then *Go to Launch Pad*.
+
+**Launching (Stage 4):**
+- The committed vehicle rolls out to the pad. *Skip rollout* if you're in a hurry.
+- *Start countdown*. Space holds or resumes; *Skip to T-10 s*; *Scrub* costs nothing.
+- After liftoff: Space pauses, `[` `]` or the buttons set time warp, 1/2/3 switch cameras (Pad, Follow, Cinematic), and *ABORT* asks you to confirm.
+- The debrief shows the result and rewards. The ascent is a simplified 2D model.
 
 ## Core concept
 
