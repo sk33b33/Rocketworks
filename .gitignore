@@ -11,3 +11,4 @@ test-results/
 .vscode/
 .idea/
 *.log
+*.tsbuildinfo

@@ -2,6 +2,23 @@
 
 A staged project scaffold and instruction package for building a browser-based 3D rocket construction and spaceflight game with Three.js/WebGL.
 
+## Running the game
+
+Requires Node.js 20+ and a browser with WebGL 2.
+
+```bash
+npm install
+npm run dev        # dev server at http://localhost:5173
+npm run build      # typecheck + production build into dist/
+npm run preview    # serve the production build
+npm test           # unit tests (Vitest)
+npm run typecheck  # TypeScript strict check
+npm run lint       # ESLint
+npm run format     # Prettier
+```
+
+Current progress is tracked in `docs/STATUS.md`.
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:
