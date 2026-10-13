@@ -9,7 +9,8 @@ export interface SceneContext {
 
 /**
  * Scene lifecycle contract. A scene owns its geometries, materials, textures, controls and
- * listeners and must release all of them in dispose(). It must not touch game domain state.
+ * listeners and must release all of them in dispose(). It reads and changes game state only
+ * through an injected controller, never by importing the store.
  */
 export interface GameScene {
   readonly id: LocationId;

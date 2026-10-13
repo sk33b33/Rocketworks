@@ -4,6 +4,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  build: { chunkSizeWarningLimit: 800 },
+  // Three.js dominates the bundle (~900 kB min / 250 kB gzip); code-splitting is deferred.
+  build: { chunkSizeWarningLimit: 1000 },
   test: { environment: 'node', include: ['tests/**/*.test.ts'] },
 });

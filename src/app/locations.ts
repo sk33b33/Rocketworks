@@ -17,7 +17,8 @@ export const LOCATIONS: readonly LocationDefinition[] = [
     id: 'mission-control',
     name: 'Mission Control',
     implementedInStage: 3,
-    lockedReason: 'Unlocks in a later stage (Mission Control). Build a rocket first.',
+    lockedReason:
+      'Unlocks in a later stage (Mission Control). Finish the factory milestones first.',
   },
   {
     id: 'launch-pad',
@@ -46,7 +47,7 @@ export const LOCATIONS: readonly LocationDefinition[] = [
 ];
 
 /** Highest roadmap stage implemented by this build. Bump as stages are accepted. */
-export const CURRENT_STAGE = 0;
+export const CURRENT_STAGE = 1;
 
 export const DEFAULT_LOCATION: LocationId = 'factory';
 

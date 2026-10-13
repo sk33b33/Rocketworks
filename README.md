@@ -19,6 +19,12 @@ npm run format     # Prettier
 
 Current progress is tracked in `docs/STATUS.md`.
 
+**Playing the factory (Stage 1):**
+- Follow the *Guided build* panel, or pick any part in the *Parts catalog* and click a green marker on the rocket.
+- Click a placed part to inspect, rotate, replace or remove it.
+- Drag to orbit, right-drag to pan, scroll to zoom. Press `?` for all controls.
+- Your build autosaves in the browser.
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:

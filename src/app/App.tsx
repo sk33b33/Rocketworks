@@ -1,10 +1,12 @@
 import { ErrorBoundary } from '../ui/ErrorBoundary';
+import { FactoryHud } from '../ui/factory/FactoryHud';
 import { LocationSelector } from '../ui/LocationSelector';
 import { NoticeBar } from '../ui/NoticeBar';
-import { ObjectivePanel } from '../ui/ObjectivePanel';
 import { Viewport } from '../ui/Viewport';
+import { useGameStore } from './gameStore';
 
 export function App() {
+  const location = useGameStore((s) => s.currentLocation);
   return (
     <div className="app">
       <header className="topbar">
@@ -14,8 +16,8 @@ export function App() {
       <main className="stage">
         <ErrorBoundary>
           <Viewport />
+          {location === 'factory' && <FactoryHud />}
         </ErrorBoundary>
-        <ObjectivePanel />
         <NoticeBar />
       </main>
     </div>
