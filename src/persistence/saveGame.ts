@@ -12,7 +12,7 @@ import { INITIAL_PROGRESSION, TECH_TREE, type ProgressionState } from '../progre
 import { findCrew } from '../missions/crew';
 import { findMission, findPayload, MISSIONS } from '../missions/missionCatalog';
 import type { MissionSetup } from '../missions/missionSetup';
-import type { FlightRecord } from '../launch/flightRecord';
+import type { FlightRecord, LandingSummary } from '../launch/flightRecord';
 import { CURRENT_SAVE_VERSION, migrateSave } from './migrations';
 
 export type AssemblyMode = 'catalog' | 'structure';
@@ -162,6 +162,39 @@ const FLIGHT_RESULTS: readonly FlightRecord['result'][] = [
 ];
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
+const LANDING_OUTCOMES: readonly LandingSummary['outcome'][] = [
+  'landed',
+  'splashdown',
+  'crash',
+  'breakup',
+  'stranded',
+];
+
+/** Optional orbital-flight landing summary (Stage 5); anything malformed is dropped. */
+function parseLanding(raw: unknown): LandingSummary | undefined {
+  if (
+    !isRecord(raw) ||
+    !LANDING_OUTCOMES.includes(raw.outcome as LandingSummary['outcome']) ||
+    !isNum(raw.orbits) ||
+    !isNum(raw.hull) ||
+    !isNum(raw.shield) ||
+    !isNum(raw.peakG) ||
+    !isNum(raw.peakHeatKWm2)
+  )
+    return undefined;
+  return {
+    outcome: raw.outcome as LandingSummary['outcome'],
+    zoneName: isString(raw.zoneName) ? raw.zoneName : null,
+    missM: isNum(raw.missM) ? raw.missM : null,
+    shipRecovered: raw.shipRecovered === true,
+    orbits: raw.orbits,
+    hull: raw.hull,
+    shield: raw.shield,
+    peakG: raw.peakG,
+    peakHeatKWm2: raw.peakHeatKWm2,
+  };
+}
+
 /** Flight history: malformed entries are dropped individually. */
 function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
   if (raw === undefined) return [];
@@ -187,6 +220,7 @@ function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
       isNum(r.durationS) &&
       Array.isArray(r.events)
     ) {
+      const landing = parseLanding(r.landing);
       out.push({
         id: r.id,
         at: r.at,
@@ -203,6 +237,7 @@ function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
         maxQPa: r.maxQPa,
         durationS: r.durationS,
         events: r.events.filter(isString).slice(0, 60),
+        ...(landing ? { landing } : {}),
       });
     }
   }

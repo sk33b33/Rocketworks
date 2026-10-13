@@ -2,6 +2,7 @@ import { ErrorBoundary } from '../ui/ErrorBoundary';
 import { FactoryHud } from '../ui/factory/FactoryHud';
 import { MissionControlHud } from '../ui/mission/MissionControlHud';
 import { LaunchPadHud } from '../ui/launch/LaunchPadHud';
+import { FlightHud } from '../ui/flight/FlightHud';
 import { LocationSelector } from '../ui/LocationSelector';
 import { NoticeBar } from '../ui/NoticeBar';
 import { Viewport } from '../ui/Viewport';
@@ -21,6 +22,7 @@ export function App() {
           {location === 'factory' && <FactoryHud />}
           {location === 'mission-control' && <MissionControlHud />}
           {location === 'launch-pad' && <LaunchPadHud />}
+          {location === 'flight' && <FlightHud />}
         </ErrorBoundary>
         <NoticeBar />
       </main>

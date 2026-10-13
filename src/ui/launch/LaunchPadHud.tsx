@@ -1,4 +1,5 @@
 import { useGameStore } from '../../app/gameStore';
+import { continueToOrbit } from '../../app/flightBinding';
 import { buildLaunchContext } from '../../app/launchBinding';
 import { CountdownPanel } from './CountdownPanel';
 import { DebriefPanel } from './DebriefPanel';
@@ -59,6 +60,21 @@ export function LaunchPadHud() {
         </section>
       </div>
       {snap.phase === 'debrief' && snap.record && <DebriefPanel record={snap.record} />}
+      {snap.phase === 'handoff' && (
+        <div className="panel debrief" role="dialog" aria-label="Orbit reached">
+          <div className="status-banner tone-ok">✓ ORBIT INSERTION</div>
+          <h2 className="debrief-title">{snap.context?.outcome.missionName}</h2>
+          <p>
+            The ship is in orbit and the booster is on its way home. The mission isn&apos;t over:
+            fly the orbit, deorbit and bring the ship down safely.
+          </p>
+          <div className="actions">
+            <button type="button" className="primary" autoFocus onClick={() => continueToOrbit()}>
+              Continue to Flight / Orbit
+            </button>
+          </div>
+        </div>
+      )}
       <LaunchControls snap={snap} />
     </div>
   );

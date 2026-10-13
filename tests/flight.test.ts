@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { flightContextFromLaunch } from '../src/app/flightBinding';
+import { continueToOrbit, flightContextFromLaunch, handoffPending } from '../src/app/flightBinding';
 import { IDLE_PROGRAM, runProgram, slewRate, type ProgramState } from '../src/flight/autopilot';
 import {
   FLIGHT,
@@ -409,4 +409,9 @@ it('builds a ship-only blueprint rooted at the ship', () => {
   expect(ship.parts.length).toBeGreaterThan(3);
   expect(ship.parts.filter((p) => p.parent.parentId === null)).toHaveLength(1);
   expect(ship.parts.some((p) => p.partId.startsWith('booster'))).toBe(false);
+});
+
+it('only continues to orbit when a launch is waiting to hand off', () => {
+  expect(handoffPending()).toBe(false);
+  expect(continueToOrbit()).toBe(false);
 });

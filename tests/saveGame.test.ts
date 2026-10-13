@@ -288,4 +288,30 @@ describe('migration v3 → v4 and flight history', () => {
     expect(bad.data.flights).toHaveLength(1);
     expect(bad.warnings.join(' ')).toMatch(/2 damaged flight record/);
   });
+
+  it('keeps a valid orbital landing summary and drops a malformed one', () => {
+    const landing = {
+      outcome: 'landed',
+      zoneName: 'Pad',
+      missM: 420,
+      shipRecovered: true,
+      orbits: 1,
+      hull: 1,
+      shield: 0.9,
+      peakG: 3.5,
+      peakHeatKWm2: 510,
+    };
+    const data = {
+      ...sampleData(),
+      flights: [
+        { ...flight, landing },
+        { ...flight, id: 'f2', landing: { outcome: 'teleported' } },
+      ],
+    };
+    const result = parseSave(serializeSave(data as never));
+    if (result.status !== 'loaded') throw new Error();
+    expect(result.data.flights[0]?.landing).toEqual(landing);
+    expect(result.data.flights[1]?.landing).toBeUndefined();
+    expect(result.data.flights).toHaveLength(2);
+  });
 });

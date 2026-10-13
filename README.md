@@ -45,6 +45,12 @@ Current progress is tracked in `docs/STATUS.md`.
 - After liftoff: Space pauses, `[` `]` or the buttons set time warp, 1/2/3 switch cameras (Pad, Follow, Cinematic), and *ABORT* asks you to confirm.
 - The debrief shows the result and rewards. The ascent is a simplified 2D model.
 
+**Flying to orbit and back (Stage 5):**
+- Orbital missions don't end at orbit insertion: the pad offers *Continue to Flight / Orbit*.
+- The autopilot can fly everything. *Circularize* if needed, coast one full orbit (time warp up to 1000× above 110 km), pick a landing zone, then *Deorbit to target*. Re-entry guidance and the landing burn follow automatically.
+- Take over at any time: W/S pitch, Q/E bank, Shift/Ctrl throttle, Z full throttle, X cutoff, Space pause, `.` `,` warp, 1/2/M cameras (chase, orbit, map), `?` help.
+- The debrief shows the landing outcome, miss distance, heat-shield and hull condition, peak g and rewards. The flight model is simplified (planar, no Earth rotation).
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:
