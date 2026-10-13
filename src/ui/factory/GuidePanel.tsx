@@ -4,7 +4,7 @@ import { formatPercent } from '../format';
 /** First-build checklist. Always derived from the blueprint, so it never drifts out of sync. */
 export function GuidePanel() {
   const guide = useGameStore(selectGuide);
-  const collapsed = useGameStore((s) => s.guideCollapsed);
+  const collapsed = useGameStore((s) => s.ui.guideCollapsed);
   const setCollapsed = useGameStore((s) => s.setGuideCollapsed);
   const runStep = useGameStore((s) => s.runGuideStep);
   const selectPart = useGameStore((s) => s.selectCatalogPart);

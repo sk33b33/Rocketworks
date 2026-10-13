@@ -1,18 +1,20 @@
 import { CATEGORY_LABELS, SOCKET_TYPE_LABELS } from '../../rocket/catalog/parts';
 import type { PartDefinition, SocketType } from '../../rocket/model/types';
 import { formatCredits, formatForce, formatMass } from '../format';
+import { usePartAccess } from './usePartAccess';
 
 /** Readable part specification table shared by catalog selection and placed-part inspection. */
 export function PartFacts({ part }: { part: PartDefinition }) {
+  const lockReason = usePartAccess().lockReason(part);
   const socketCounts = new Map<SocketType, number>();
   for (const s of part.sockets) socketCounts.set(s.type, (socketCounts.get(s.type) ?? 0) + 1);
   return (
     <>
       <div className="eyebrow">{CATEGORY_LABELS[part.category]}</div>
       <h3 className="part-name">{part.name}</h3>
-      {!part.unlock.unlocked && (
+      {lockReason && (
         <p className="locked-banner" role="note">
-          🔒 Locked. {part.unlock.reason}
+          🔒 Locked. {lockReason}
         </p>
       )}
       <p className="part-desc">{part.description}</p>
@@ -29,6 +31,10 @@ export function PartFacts({ part }: { part: PartDefinition }) {
           <>
             <dt>Thrust (sea level)</dt>
             <dd>{formatForce(part.thrustN)}</dd>
+            <dt>Isp (sea level / vac)</dt>
+            <dd>
+              {part.ispSeaLevelS ?? '—'} / {part.ispVacuumS ?? '—'} s
+            </dd>
           </>
         ) : null}
         {part.crewCapacity ? (

@@ -4,6 +4,8 @@ import type { RocketBlueprint, SocketRef } from '../../rocket/model/types';
 export interface FactoryView {
   readonly blueprint: RocketBlueprint;
   readonly selection: Selection;
+  /** Parts unlocked through research, so markers reflect what the player can attach. */
+  readonly unlockedPartIds: ReadonlySet<string>;
 }
 
 /**

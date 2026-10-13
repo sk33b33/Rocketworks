@@ -1,7 +1,14 @@
-import { useMemo, useState } from 'react';
-import { selectGuide, useGameStore } from '../../app/gameStore';
+import { useMemo } from 'react';
+import { selectGuide, selectReadiness, useGameStore } from '../../app/gameStore';
 import { calculateRocketStats } from '../../rocket/stats/calculateRocketStats';
-import { formatCredits, formatForce, formatMass, formatPercent, formatTime } from '../format';
+import {
+  formatCredits,
+  formatForce,
+  formatMass,
+  formatPercent,
+  formatSpeed,
+  formatTime,
+} from '../format';
 
 function twrStatus(twr: number | null): { label: string; tone: 'ok' | 'warn' | 'bad' } {
   if (twr === null) return { label: '— no booster engines', tone: 'bad' };
@@ -10,23 +17,18 @@ function twrStatus(twr: number | null): { label: string; tone: 'ok' | 'warn' | '
   return { label: `${twr.toFixed(2)} ✓`, tone: 'ok' };
 }
 
-/** Live vehicle statistics derived from the blueprint, plus save controls. */
+/** Live vehicle statistics derived from the active design. */
 export function StatsPanel() {
   const blueprint = useGameStore((s) => s.blueprint);
   const saveStatus = useGameStore((s) => s.saveStatus);
-  const resetBuild = useGameStore((s) => s.resetBuild);
-  const loadReference = useGameStore((s) => s.loadReferenceDesign);
   const guide = useGameStore(selectGuide);
+  const readiness = useGameStore(selectReadiness);
   const stats = useMemo(() => calculateRocketStats(blueprint), [blueprint]);
-  const [confirm, setConfirm] = useState<'reset' | 'reference' | null>(null);
   const twr = twrStatus(stats.liftoffTwr);
+  const dvOk = readiness.deltaV.totalMs >= readiness.requiredDeltaVMs;
 
   return (
-    <div className="panel stats">
-      <div className="panel-header">
-        <h2>Vehicle stats</h2>
-        <span className="muted">{stats.partCount} parts</span>
-      </div>
+    <div className="stats">
       <div className="completeness">
         <div className="row">
           <span>Build completeness</span>
@@ -44,6 +46,8 @@ export function StatsPanel() {
         </div>
       </div>
       <dl className="facts">
+        <dt>Parts</dt>
+        <dd>{stats.partCount}</dd>
         <dt>Dry mass</dt>
         <dd>{formatMass(stats.dryMassKg)}</dd>
         <dt>Propellant capacity</dt>
@@ -62,6 +66,10 @@ export function StatsPanel() {
         </dd>
         <dt>Liftoff TWR</dt>
         <dd className={`tone-${twr.tone}`}>{twr.label}</dd>
+        <dt>Est. Δv</dt>
+        <dd className={dvOk ? 'tone-ok' : 'tone-bad'}>
+          {formatSpeed(readiness.deltaV.totalMs)} {dvOk ? '✓' : '✕'}
+        </dd>
         <dt>Crew capacity</dt>
         <dd>{stats.crewCapacity}</dd>
         <dt>Estimated cost</dt>
@@ -77,41 +85,6 @@ export function StatsPanel() {
           {saveStatus.state !== 'saved' && `! ${saveStatus.message ?? ''}`}
         </span>
       </div>
-      {confirm ? (
-        <div className="confirm" role="alertdialog" aria-label="Confirm">
-          <p>
-            {confirm === 'reset'
-              ? 'Discard this build and start over from the booster engine section?'
-              : 'Replace this build with the complete reference design?'}
-          </p>
-          <div className="actions">
-            <button
-              type="button"
-              className="danger"
-              autoFocus
-              onClick={() => {
-                if (confirm === 'reset') resetBuild();
-                else loadReference();
-                setConfirm(null);
-              }}
-            >
-              {confirm === 'reset' ? 'Reset build' : 'Load design'}
-            </button>
-            <button type="button" onClick={() => setConfirm(null)}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="actions">
-          <button type="button" onClick={() => setConfirm('reset')}>
-            Reset build
-          </button>
-          <button type="button" onClick={() => setConfirm('reference')}>
-            Load reference design
-          </button>
-        </div>
-      )}
     </div>
   );
 }

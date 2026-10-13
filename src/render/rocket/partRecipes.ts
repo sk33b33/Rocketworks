@@ -195,6 +195,7 @@ export const PART_RECIPES: Readonly<Record<string, Recipe>> = {
     );
     return g;
   },
+  'booster-tank-short': (ctx) => barrel(ctx, 5, 2.5),
   'booster-tank': (ctx) => {
     const g = barrel(ctx, 10, 2);
     g.add(
@@ -277,6 +278,14 @@ export const PART_RECIPES: Readonly<Record<string, Recipe>> = {
     return g;
   },
   'engine-sl': (ctx) => engine(ctx, ENGINE_BELL_LENGTH_M, ENGINE_BELL_RADIUS_M, 'sl'),
+  'engine-sl-b2': (ctx) => {
+    const g = engine(ctx, ENGINE_BELL_LENGTH_M, ENGINE_BELL_RADIUS_M, 'sl');
+    const band = ctx.cache.geometry('engine:b2band', () =>
+      new THREE.TorusGeometry(ENGINE_BELL_RADIUS_M - 0.02, 0.05, 8, 32).rotateX(Math.PI / 2),
+    );
+    g.add(mesh(band, ctx.mats.copper, 0, ENGINE_BELL_LENGTH_M - 0.05, 0));
+    return g;
+  },
   'engine-vac': (ctx) => engine(ctx, 4.2, 1.35, 'vac'),
   'grid-fin': (ctx) => {
     const specs: BoxSpec[] = [

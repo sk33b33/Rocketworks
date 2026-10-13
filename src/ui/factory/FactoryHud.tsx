@@ -1,30 +1,32 @@
 import { useState } from 'react';
 import { useGameStore } from '../../app/gameStore';
+import { BuildPanel } from './BuildPanel';
 import { CameraToolbar } from './CameraToolbar';
-import { CatalogPanel } from './CatalogPanel';
 import { GuidePanel } from './GuidePanel';
 import { InspectorPanel } from './InspectorPanel';
-import { StatsPanel } from './StatsPanel';
+import { VehiclePanel } from './VehiclePanel';
 
-type Tab = 'guide' | 'parts' | 'selected' | 'stats';
+type Tab = 'guide' | 'build' | 'selected' | 'vehicle';
 const TABS: { id: Tab; label: string }[] = [
   { id: 'guide', label: 'Guide' },
-  { id: 'parts', label: 'Parts' },
+  { id: 'build', label: 'Build' },
   { id: 'selected', label: 'Selected' },
-  { id: 'stats', label: 'Stats' },
+  { id: 'vehicle', label: 'Vehicle' },
 ];
 
 /**
- * Factory overlay. Desktop: guide + catalog on the left, stats + inspector on the right.
+ * Factory overlay. Desktop: guide + build panel on the left, inspector + vehicle panel on the right.
  * Narrow screens: one panel at a time in a bottom sheet chosen by tabs.
  */
 export function FactoryHud() {
   const [tab, setTab] = useState<Tab>('guide');
   const selection = useGameStore((s) => s.selection);
-  const [lastSelection, setLastSelection] = useState(selection);
-  if (selection !== lastSelection) {
-    setLastSelection(selection);
-    if (selection?.kind === 'instance') setTab('selected');
+  const vehicleTab = useGameStore((s) => s.vehicleTab);
+  const [last, setLast] = useState({ selection, vehicleTab });
+  if (selection !== last.selection || vehicleTab !== last.vehicleTab) {
+    setLast({ selection, vehicleTab });
+    if (selection !== last.selection && selection?.kind === 'instance') setTab('selected');
+    else if (vehicleTab !== last.vehicleTab) setTab('vehicle');
   }
 
   return (
@@ -33,16 +35,16 @@ export function FactoryHud() {
         <section data-panel="guide">
           <GuidePanel />
         </section>
-        <section data-panel="parts" className="grow">
-          <CatalogPanel />
+        <section data-panel="build" className="grow">
+          <BuildPanel />
         </section>
       </div>
       <div className="hud-col hud-right">
         <section data-panel="selected">
           <InspectorPanel />
         </section>
-        <section data-panel="stats">
-          <StatsPanel />
+        <section data-panel="vehicle" className="grow">
+          <VehiclePanel />
         </section>
       </div>
       <nav className="hud-tabs" aria-label="Factory panels">

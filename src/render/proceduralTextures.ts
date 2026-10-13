@@ -72,3 +72,16 @@ export function createConcreteTexture(): THREE.DataTexture {
 export function createHazardTexture(): THREE.DataTexture {
   return makeTexture(64, (x, y) => ((x + y) % 64 < 32 ? [230, 170, 30] : [24, 24, 24]));
 }
+
+/** Vertical soot streaks and heat tint for the weathered hull finish (multiplied over the hull). */
+export function createSootTexture(): THREE.DataTexture {
+  const rand = mulberry32(13);
+  const size = 256;
+  const columns = Float32Array.from({ length: size }, () => rand());
+  return makeTexture(size, (x, y) => {
+    const streak = Math.pow(columns[x] ?? 0, 6) * 120 * (1 - y / size);
+    const band = Math.sin((y / size) * Math.PI * 6) * 6;
+    const v = Math.max(90, Math.min(255, 238 - streak + band));
+    return [v, v * 0.97, v * 0.92];
+  });
+}

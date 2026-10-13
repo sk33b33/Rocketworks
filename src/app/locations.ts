@@ -18,7 +18,7 @@ export const LOCATIONS: readonly LocationDefinition[] = [
     name: 'Mission Control',
     implementedInStage: 3,
     lockedReason:
-      'Unlocks in a later stage (Mission Control). Finish the factory milestones first.',
+      'Unlocks in a later stage (Mission Control). Certify a design in the Readiness tab to be ready for it.',
   },
   {
     id: 'launch-pad',

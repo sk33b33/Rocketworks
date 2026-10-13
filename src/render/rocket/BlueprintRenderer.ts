@@ -31,7 +31,7 @@ export class BlueprintRenderer {
 
   build(bp: RocketBlueprint): void {
     this.clear();
-    const mats = getRocketMaterials(this.cache);
+    const mats = getRocketMaterials(this.cache, bp.finish);
 
     const standNode = new THREE.Object3D();
     applySocketTransform(standNode, STAND_SOCKET);

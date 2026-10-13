@@ -9,6 +9,7 @@ import { subtreeIds } from '../../rocket/assembly/operations';
 import { getPart, PARTS } from '../../rocket/catalog/parts';
 import { useShortcut } from '../useShortcut';
 import { PartFacts } from './PartFacts';
+import { usePartAccess } from './usePartAccess';
 
 const MAX_LISTED_TARGETS = 24;
 
@@ -17,9 +18,11 @@ function CatalogSelection({ partId }: { partId: string }) {
   const attach = useGameStore((s) => s.attachSelectedTo);
   const fill = useGameStore((s) => s.fillSelected);
   const clear = useGameStore((s) => s.clearSelection);
+  const access = usePartAccess();
   const part = getPart(partId);
-  const targets = part.unlock.unlocked ? compatibleTargets(blueprint, partId) : [];
-  const disabledReason = !part.unlock.unlocked
+  const lockReason = access.lockReason(part);
+  const targets = lockReason ? [] : compatibleTargets(blueprint, partId, access.unlocked);
+  const disabledReason = lockReason
     ? 'This part is locked.'
     : targets.length === 0
       ? 'No free compatible attachment point on the current build.'
@@ -74,6 +77,7 @@ function InstanceSelection({ instanceId }: { instanceId: string }) {
   const replace = useGameStore((s) => s.replaceInstance);
   const clear = useGameStore((s) => s.clearSelection);
   const requestCamera = useGameStore((s) => s.requestCamera);
+  const access = usePartAccess();
   const [confirming, setConfirming] = useState(false);
   const [confirmFor, setConfirmFor] = useState(instanceId);
   if (confirmFor !== instanceId) {
@@ -150,7 +154,7 @@ function InstanceSelection({ instanceId }: { instanceId: string }) {
           <div className="eyebrow section-gap">Replace with</div>
           <ul className="target-list">
             {alternatives.map((alt) => {
-              const reason = alt.unlock.unlocked ? undefined : alt.unlock.reason;
+              const reason = access.lockReason(alt);
               return (
                 <li key={alt.id}>
                   <button

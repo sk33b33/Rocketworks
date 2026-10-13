@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react';
-import { selectGuide, useGameStore } from '../../app/gameStore';
+import { selectGuide, selectProgram, useGameStore } from '../../app/gameStore';
 import { compatibleTargets } from '../../rocket/assembly/compatibility';
 import { CATEGORY_LABELS, PARTS } from '../../rocket/catalog/parts';
 import type { PartCategory } from '../../rocket/model/types';
-import { formatMass } from '../format';
+import { calculateRocketStats } from '../../rocket/stats/calculateRocketStats';
+import { formatCredits, formatMass } from '../format';
+import { usePartAccess } from './usePartAccess';
 
 const CATEGORY_ORDER = Object.keys(CATEGORY_LABELS) as PartCategory[];
 
@@ -13,12 +15,21 @@ export function CatalogPanel() {
   const selection = useGameStore((s) => s.selection);
   const select = useGameStore((s) => s.selectCatalogPart);
   const guide = useGameStore(selectGuide);
+  const program = useGameStore(selectProgram);
+  const access = usePartAccess();
   const [filter, setFilter] = useState('');
 
   const slotCounts = useMemo(
-    () => new Map(PARTS.map((p) => [p.id, compatibleTargets(blueprint, p.id).length])),
-    [blueprint],
+    () =>
+      new Map(
+        PARTS.map((p) => [
+          p.id,
+          compatibleTargets(blueprint, p.id, program.unlockedPartIds).length,
+        ]),
+      ),
+    [blueprint, program.unlockedPartIds],
   );
+  const remaining = program.budgetCredits - calculateRocketStats(blueprint).costCredits;
   const suggested = new Set(guide.currentStep?.partIds ?? []);
   const q = filter.trim().toLowerCase();
   const visible = PARTS.filter(
@@ -29,10 +40,16 @@ export function CatalogPanel() {
   );
 
   return (
-    <div className="panel catalog">
+    <div className="catalog">
       <div className="panel-header">
-        <h2>Parts catalog</h2>
+        <h2 className="sr-only">Parts catalog</h2>
         <span className="muted">{PARTS.length} parts</span>
+        <span
+          className={`spacer ${remaining < 0 ? 'tone-bad' : 'muted'}`}
+          title="Program budget left for this design"
+        >
+          {formatCredits(remaining)} left
+        </span>
       </div>
       <input
         className="search"
@@ -53,29 +70,36 @@ export function CatalogPanel() {
                 {parts.map((p) => {
                   const active = selection?.kind === 'catalog' && selection.partId === p.id;
                   const slots = slotCounts.get(p.id) ?? 0;
-                  const locked = !p.unlock.unlocked;
+                  const lockReason = access.lockReason(p);
+                  const unaffordable = !lockReason && p.costCredits > remaining;
                   return (
                     <li key={p.id}>
                       <button
                         type="button"
-                        className={`part-card ${active ? 'active' : ''} ${locked ? 'locked' : ''}`}
+                        className={`part-card ${active ? 'active' : ''} ${lockReason ? 'locked' : ''}`}
                         aria-pressed={active}
                         onClick={() => select(p.id)}
-                        title={locked && !p.unlock.unlocked ? p.unlock.reason : p.description}
+                        title={lockReason ?? p.description}
                       >
                         <span className="part-card-name">
-                          {locked && <span aria-hidden="true">🔒 </span>}
+                          {lockReason && <span aria-hidden="true">🔒 </span>}
                           {p.name}
-                          {locked && <span className="sr-only"> (locked)</span>}
+                          {lockReason && <span className="sr-only"> (locked)</span>}
                         </span>
                         <span className="part-card-meta">
                           {formatMass(p.dryMassKg)}
-                          {!locked && (
+                          <span className={unaffordable ? 'tone-bad' : ''}>
+                            {formatCredits(p.costCredits)}
+                            {unaffordable && ' ✕'}
+                          </span>
+                          {!lockReason && (
                             <span className={slots ? 'slots' : 'slots none'}>
                               {slots ? `${slots} slot${slots > 1 ? 's' : ''}` : 'no slot'}
                             </span>
                           )}
-                          {suggested.has(p.id) && !locked && <span className="badge">Next</span>}
+                          {suggested.has(p.id) && !lockReason && (
+                            <span className="badge">Next</span>
+                          )}
                         </span>
                       </button>
                     </li>

@@ -25,6 +25,13 @@ Current progress is tracked in `docs/STATUS.md`.
 - Drag to orbit, right-drag to pan, scroll to zoom. Press `?` for all controls.
 - Your build autosaves in the browser.
 
+**Validating and managing designs (Stage 2):**
+- The *Readiness* tab lists what stops the design from flying, with a fix button for each issue. *Certify for flight* when it's ready, or use the tutorial override.
+- The *Program* tab shows your budget, research points, research projects and milestones.
+- The *Designs* tab keeps several named designs: duplicate, rename, delete, choose a hull finish.
+- *Structure list* (left panel) builds the rocket from a list instead of the 3D view.
+- Ctrl+Z / Ctrl+Shift+Z undo and redo.
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:

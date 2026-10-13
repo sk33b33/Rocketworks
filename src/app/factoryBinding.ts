@@ -1,21 +1,24 @@
 import type { FactoryController, FactoryView } from '../scenes/factory/factoryController';
-import { useGameStore } from './gameStore';
+import { selectProgram, useGameStore, type GameStore } from './gameStore';
 
 /** Adapts the game store to the factory scene's controller interface. */
 export function createFactoryController(): FactoryController {
-  const view = (): FactoryView => {
-    const s = useGameStore.getState();
-    return { blueprint: s.blueprint, selection: s.selection };
-  };
+  const toView = (s: GameStore): FactoryView => ({
+    blueprint: s.blueprint,
+    selection: s.selection,
+    unlockedPartIds: selectProgram(s).unlockedPartIds,
+  });
+  const view = (): FactoryView => toView(useGameStore.getState());
   return {
     getView: view,
     subscribe: (listener) =>
       useGameStore.subscribe((s, prev) => {
-        if (s.blueprint !== prev.blueprint || s.selection !== prev.selection) {
-          listener(
-            { blueprint: s.blueprint, selection: s.selection },
-            { blueprint: prev.blueprint, selection: prev.selection },
-          );
+        if (
+          s.blueprint !== prev.blueprint ||
+          s.selection !== prev.selection ||
+          s.progression !== prev.progression
+        ) {
+          listener(toView(s), toView(prev));
         }
       }),
     subscribeCamera: (listener) =>

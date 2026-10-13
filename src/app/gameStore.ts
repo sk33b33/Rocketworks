@@ -1,250 +1,156 @@
 import { create } from 'zustand';
-import { getBrowserStorage, loadGame, writeSave } from '../persistence/saveGame';
-import { describeSocket, findInstance } from '../rocket/assembly/compatibility';
-import {
-  attachPart,
-  fillCompatible,
-  removePart,
-  replacePart,
-  rotatePart,
-} from '../rocket/assembly/operations';
-import { createCompleteStarterDesign, createStarterBlueprint } from '../rocket/catalog/blueprints';
-import { findPart, getPart } from '../rocket/catalog/parts';
-import type { RocketBlueprint, SocketRef } from '../rocket/model/types';
-import { autoCompleteStep, evaluateGuide, STARTER_GUIDE } from '../rocket/tutorial/starterGuide';
+import { DEFAULT_UI, getBrowserStorage, loadGame, writeSave } from '../persistence/saveGame';
+import { INITIAL_PROGRESSION } from '../progression/research';
+import { createStarterBlueprint } from '../rocket/catalog/blueprints';
 import { navigate } from './gameState';
-import { DEFAULT_LOCATION, type LocationId } from './locations';
+import { DEFAULT_LOCATION } from './locations';
+import { createAssemblyActions } from './store/assemblySlice';
+import { makeNotice, now } from './store/commit';
+import { guideProgress, programSummary, readinessReport } from './store/derived';
+import { createLibraryActions } from './store/librarySlice';
+import { createProgramActions } from './store/programSlice';
+import type { GameData, GameStore, SaveStatus } from './store/types';
 
-export type Selection =
-  { kind: 'catalog'; partId: string } | { kind: 'instance'; instanceId: string } | null;
-export type NoticeTone = 'info' | 'success' | 'warning';
-export interface Notice {
-  readonly id: number;
-  readonly tone: NoticeTone;
-  readonly text: string;
-}
-export interface CameraRequest {
-  readonly seq: number;
-  readonly kind: 'reset' | 'focus';
-  readonly instanceId?: string;
-}
-export interface SaveStatus {
-  readonly state: 'saved' | 'error' | 'memory-only';
-  readonly at?: string;
-  readonly message?: string;
-}
+export type {
+  CameraRequest,
+  GameStore,
+  Notice,
+  NoticeTone,
+  SaveStatus,
+  Selection,
+  VehicleTab,
+} from './store/types';
 
-export interface GameStore {
-  currentLocation: LocationId;
-  blueprint: RocketBlueprint;
-  selection: Selection;
-  notice: Notice | null;
-  guideCollapsed: boolean;
-  cameraRequest: CameraRequest | null;
-  saveStatus: SaveStatus;
-
-  goTo(target: LocationId): boolean;
-  notify(tone: NoticeTone, text: string): void;
-  dismissNotice(): void;
-  selectCatalogPart(partId: string): void;
-  selectInstance(instanceId: string): void;
-  clearSelection(): void;
-  attachSelectedTo(ref: SocketRef): boolean;
-  fillSelected(): void;
-  removeInstance(instanceId: string): void;
-  rotateInstance(instanceId: string): void;
-  replaceInstance(instanceId: string, partId: string): void;
-  runGuideStep(stepId: string): void;
-  resetBuild(): void;
-  loadReferenceDesign(): void;
-  setGuideCollapsed(collapsed: boolean): void;
-  requestCamera(kind: CameraRequest['kind'], instanceId?: string): void;
-}
-
-const now = () => new Date().toISOString();
 const { storage, persistent } = getBrowserStorage();
+const MEMORY_ONLY: SaveStatus = {
+  state: 'memory-only',
+  message: 'Browser storage is unavailable; progress will not survive a reload.',
+};
 
-function initialState(): Pick<GameStore, 'blueprint' | 'guideCollapsed' | 'notice' | 'saveStatus'> {
+type LoadedSlice = Pick<
+  GameData,
+  'blueprints' | 'activeBlueprintId' | 'blueprint' | 'progression' | 'ui' | 'notice' | 'saveStatus'
+>;
+
+function initialData(): LoadedSlice {
   const loaded = loadGame(storage);
-  const memoryOnly: SaveStatus = {
-    state: 'memory-only',
-    message: 'Browser storage is unavailable; progress will not survive a reload.',
-  };
   if (loaded.status === 'loaded') {
+    const { data, warnings } = loaded;
+    const active =
+      data.blueprints.find((b) => b.id === data.activeBlueprintId) ?? data.blueprints[0]!;
+    const problems = warnings.filter((w) => !w.startsWith('Save upgraded'));
     return {
-      blueprint: loaded.data.blueprint,
-      guideCollapsed: loaded.data.guideCollapsed,
-      notice: null,
-      saveStatus: persistent ? { state: 'saved', at: loaded.data.savedAt } : memoryOnly,
+      blueprints: data.blueprints,
+      activeBlueprintId: active.id,
+      blueprint: active,
+      progression: data.progression,
+      ui: data.ui,
+      notice: problems.length
+        ? makeNotice(
+            'warning',
+            `Some saved data was damaged: ${problems.join(' ')} A backup of the original was kept.`,
+            true,
+          )
+        : warnings.length
+          ? makeNotice(
+              'info',
+              'Your save was upgraded to the new format (design library and program progress).',
+              true,
+            )
+          : null,
+      saveStatus: persistent ? { state: 'saved', at: data.savedAt } : MEMORY_ONLY,
     };
   }
+  const starter = createStarterBlueprint(now());
   return {
-    blueprint: createStarterBlueprint(now()),
-    guideCollapsed: false,
+    blueprints: [starter],
+    activeBlueprintId: starter.id,
+    blueprint: starter,
+    progression: INITIAL_PROGRESSION,
+    ui: DEFAULT_UI,
     notice:
       loaded.status === 'corrupt' && persistent
-        ? {
-            id: 1,
-            tone: 'warning',
-            text: `Your saved build could not be loaded (${loaded.reason}) A fresh starter build was created; the old data is kept as a backup.`,
-          }
+        ? makeNotice(
+            'warning',
+            `Your save could not be loaded (${loaded.reason}) A fresh program was started; the old data is kept as a backup.`,
+            true,
+          )
         : null,
-    saveStatus: persistent ? { state: 'saved', at: now() } : memoryOnly,
+    saveStatus: persistent ? { state: 'saved', at: now() } : MEMORY_ONLY,
   };
 }
 
-let noticeSeq = 1;
 let cameraSeq = 0;
 
-/** Message listing guide steps that the change just completed. */
-function stepCompletionSuffix(before: RocketBlueprint, after: RocketBlueprint): string {
-  const done = STARTER_GUIDE.filter((s) => !s.isDone(before) && s.isDone(after));
-  return done.length ? ` ✓ Step complete: ${done.map((s) => s.title).join('; ')}.` : '';
-}
+export const useGameStore = create<GameStore>((set, get) => ({
+  currentLocation: DEFAULT_LOCATION,
+  selection: null,
+  cameraRequest: null,
+  vehicleTab: 'stats',
+  history: { past: [], future: [] },
+  ...initialData(),
 
-export const useGameStore = create<GameStore>((set, get) => {
-  /** Applies a new blueprint plus a confirmation notice. */
-  const commit = (
-    blueprint: RocketBlueprint,
-    message: string,
-    extra: Partial<GameStore> = {},
-    reportSteps = true,
-  ) => {
-    const suffix = reportSteps ? stepCompletionSuffix(get().blueprint, blueprint) : '';
-    set({
-      blueprint,
-      notice: { id: ++noticeSeq, tone: 'success', text: message + suffix },
-      ...extra,
-    });
-  };
-  const warn = (text: string) => set({ notice: { id: ++noticeSeq, tone: 'warning', text } });
+  ...createAssemblyActions(set, get),
+  ...createLibraryActions(set, get),
+  ...createProgramActions(set, get),
 
-  return {
-    currentLocation: DEFAULT_LOCATION,
-    selection: null,
-    cameraRequest: null,
-    ...initialState(),
+  goTo: (target) => {
+    const result = navigate(get().currentLocation, target);
+    if (!result.ok) {
+      set({ notice: makeNotice('warning', result.reason) });
+      return false;
+    }
+    set({ currentLocation: result.location });
+    return true;
+  },
+  notify: (tone, text) => set({ notice: makeNotice(tone, text) }),
+  dismissNotice: () => set({ notice: null }),
+  setGuideCollapsed: (guideCollapsed) => set({ ui: { ...get().ui, guideCollapsed } }),
+  setAssemblyMode: (assemblyMode) => set({ ui: { ...get().ui, assemblyMode } }),
+  setVehicleTab: (vehicleTab) => set({ vehicleTab }),
+  requestCamera: (kind, instanceId) =>
+    set({ cameraRequest: { seq: ++cameraSeq, kind, ...(instanceId ? { instanceId } : {}) } }),
+  runFixAction: (action) => {
+    const s = get();
+    switch (action.kind) {
+      case 'select-part':
+        s.selectCatalogPart(action.partId);
+        break;
+      case 'guide-step':
+        s.runGuideStep(action.stepId);
+        break;
+      case 'select-instance':
+        s.selectInstance(action.instanceId);
+        s.requestCamera('focus', action.instanceId);
+        break;
+      case 'set-role':
+        s.setRole(action.role);
+        break;
+      case 'open-program':
+        s.setVehicleTab('program');
+        break;
+    }
+  },
+}));
 
-    goTo: (target) => {
-      const result = navigate(get().currentLocation, target);
-      if (!result.ok) {
-        warn(result.reason);
-        return false;
-      }
-      set({ currentLocation: result.location });
-      return true;
-    },
-    notify: (tone, text) => set({ notice: { id: ++noticeSeq, tone, text } }),
-    dismissNotice: () => set({ notice: null }),
-
-    selectCatalogPart: (partId) => {
-      if (!findPart(partId)) return;
-      set({ selection: { kind: 'catalog', partId } });
-    },
-    selectInstance: (instanceId) => {
-      if (findInstance(get().blueprint, instanceId))
-        set({ selection: { kind: 'instance', instanceId } });
-    },
-    clearSelection: () => set({ selection: null }),
-
-    attachSelectedTo: (ref) => {
-      const { selection, blueprint } = get();
-      if (selection?.kind !== 'catalog') {
-        warn('Select a part from the catalog first, then click a highlighted attachment point.');
-        return false;
-      }
-      const result = attachPart(blueprint, selection.partId, ref, now());
-      if (!result.ok) {
-        warn(result.reason);
-        return false;
-      }
-      commit(
-        result.blueprint,
-        `Attached ${getPart(selection.partId).name} to ${describeSocket(blueprint, ref)}.`,
-      );
-      return true;
-    },
-    fillSelected: () => {
-      const { selection, blueprint } = get();
-      if (selection?.kind !== 'catalog') return;
-      const result = fillCompatible(blueprint, selection.partId, now());
-      if (!result.ok) return warn(result.reason);
-      commit(
-        result.blueprint,
-        `Attached ${result.attachedCount} × ${getPart(selection.partId).name}.`,
-      );
-    },
-    removeInstance: (instanceId) => {
-      const { blueprint, selection } = get();
-      const inst = findInstance(blueprint, instanceId);
-      const result = removePart(blueprint, instanceId, now());
-      if (!result.ok || !inst) return warn(result.ok ? 'Part not found.' : result.reason);
-      const name = getPart(inst.partId).name;
-      const extra =
-        result.removedCount > 1 ? ` and ${result.removedCount - 1} attached part(s)` : '';
-      const keepSelection =
-        selection?.kind === 'instance' &&
-        selection.instanceId !== instanceId &&
-        findInstance(result.blueprint, selection.instanceId);
-      commit(result.blueprint, `Removed ${name}${extra}.`, {
-        selection: keepSelection ? selection : null,
-      });
-    },
-    rotateInstance: (instanceId) => {
-      const result = rotatePart(get().blueprint, instanceId, now());
-      if (!result.ok) return warn(result.reason);
-      commit(result.blueprint, `Rotated to ${result.rotationDeg}°.`);
-    },
-    replaceInstance: (instanceId, partId) => {
-      const { blueprint } = get();
-      const old = findInstance(blueprint, instanceId);
-      const result = replacePart(blueprint, instanceId, partId, now());
-      if (!result.ok || !old) return warn(result.ok ? 'Part not found.' : result.reason);
-      const dropped = result.droppedCount
-        ? ` ${result.droppedCount} part(s) that no longer fit were removed.`
-        : '';
-      commit(
-        result.blueprint,
-        `Replaced ${getPart(old.partId).name} with ${getPart(partId).name}.${dropped}`,
-      );
-    },
-    runGuideStep: (stepId) => {
-      const step = STARTER_GUIDE.find((s) => s.id === stepId);
-      if (!step) return;
-      const result = autoCompleteStep(get().blueprint, step, now());
-      if (!result.ok) return warn(result.reason);
-      commit(
-        result.blueprint,
-        `Assembly crew completed "${step.title}" (${result.attached} part(s)).`,
-      );
-    },
-    resetBuild: () => {
-      set({ selection: null });
-      commit(createStarterBlueprint(now()), 'Build reset to the starter configuration.', {}, false);
-      get().requestCamera('reset');
-    },
-    loadReferenceDesign: () => {
-      set({ selection: null });
-      commit(
-        createCompleteStarterDesign(now()),
-        'Loaded the complete reference design.',
-        {},
-        false,
-      );
-      get().requestCamera('reset');
-    },
-    setGuideCollapsed: (guideCollapsed) => set({ guideCollapsed }),
-    requestCamera: (kind, instanceId) =>
-      set({ cameraRequest: { seq: ++cameraSeq, kind, ...(instanceId ? { instanceId } : {}) } }),
-  };
-});
-
-// Autosave whenever the blueprint or guide preference changes.
-useGameStore.subscribe((state, prev) => {
-  if (state.blueprint === prev.blueprint && state.guideCollapsed === prev.guideCollapsed) return;
+// Autosave whenever persisted data changes.
+useGameStore.subscribe((s, prev) => {
+  if (
+    s.blueprints === prev.blueprints &&
+    s.activeBlueprintId === prev.activeBlueprintId &&
+    s.progression === prev.progression &&
+    s.ui === prev.ui
+  )
+    return;
   if (!persistent) return;
   const at = now();
-  const result = writeSave(storage, state.blueprint, state.guideCollapsed, at);
+  const result = writeSave(storage, {
+    savedAt: at,
+    activeBlueprintId: s.activeBlueprintId,
+    blueprints: s.blueprints,
+    progression: s.progression,
+    ui: s.ui,
+  });
   useGameStore.setState({
     saveStatus: result.ok
       ? { state: 'saved', at }
@@ -252,10 +158,8 @@ useGameStore.subscribe((state, prev) => {
   });
 });
 
-/** Derived guide progress; memoized per blueprint object. */
-let guideCache: { bp: RocketBlueprint; progress: ReturnType<typeof evaluateGuide> } | null = null;
-export function selectGuide(state: Pick<GameStore, 'blueprint'>) {
-  if (guideCache?.bp !== state.blueprint)
-    guideCache = { bp: state.blueprint, progress: evaluateGuide(state.blueprint) };
-  return guideCache.progress;
-}
+// ---- Selectors (memoized, stable references) ----
+export const selectGuide = (s: Pick<GameStore, 'blueprint'>) => guideProgress(s.blueprint);
+export const selectProgram = (s: Pick<GameStore, 'progression'>) => programSummary(s.progression);
+export const selectReadiness = (s: Pick<GameStore, 'blueprint' | 'progression'>) =>
+  readinessReport(s.blueprint, s.progression);

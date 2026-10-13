@@ -57,7 +57,8 @@ export interface SocketDefinition {
 }
 
 export type UnlockStatus =
-  { readonly unlocked: true } | { readonly unlocked: false; readonly reason: string };
+  | { readonly unlocked: true }
+  | { readonly unlocked: false; readonly reason: string; readonly techId?: string };
 
 export interface PartDefinition {
   readonly id: string;
@@ -71,6 +72,9 @@ export interface PartDefinition {
   readonly propellantCapacityKg?: number;
   /** Sea-level thrust, game-tuned. */
   readonly thrustN?: number;
+  /** Specific impulse at sea level / in vacuum (seconds), for the simplified Δv estimate. */
+  readonly ispSeaLevelS?: number;
+  readonly ispVacuumS?: number;
   readonly crewCapacity?: number;
   readonly attachesTo: SocketType;
   readonly sockets: readonly SocketDefinition[];
@@ -97,7 +101,20 @@ export interface PartInstance {
   readonly rotationDeg: number;
 }
 
-export const BLUEPRINT_SCHEMA_VERSION = 1;
+export const BLUEPRINT_SCHEMA_VERSION = 2;
+
+export type HullFinish = 'brushed' | 'polished' | 'weathered';
+/** What the vehicle is meant to fly; drives role-specific readiness rules. */
+export type VehicleRole = 'cargo' | 'crew';
+
+/** Flight certification snapshot; valid only while `revision` matches the blueprint's. */
+export interface Certification {
+  readonly revision: number;
+  readonly role: VehicleRole;
+  /** True when certified despite critical issues (tutorial override). */
+  readonly override: boolean;
+  readonly at: string;
+}
 
 /** Parts are ordered so every parent precedes its children. */
 export interface RocketBlueprint {
@@ -106,8 +123,13 @@ export interface RocketBlueprint {
   readonly name: string;
   readonly createdAt: string;
   readonly updatedAt: string;
+  /** Incremented by every design change; used to expire certifications. */
+  readonly revision: number;
   readonly nextInstanceNumber: number;
   readonly parts: readonly PartInstance[];
+  readonly finish: HullFinish;
+  readonly role: VehicleRole;
+  readonly certification: Certification | null;
 }
 
 export type Result<T> = ({ ok: true } & T) | { ok: false; reason: string };

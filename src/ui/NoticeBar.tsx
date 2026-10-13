@@ -9,7 +9,7 @@ export function NoticeBar() {
   const dismiss = useGameStore((s) => s.dismissNotice);
 
   useEffect(() => {
-    if (!notice) return;
+    if (!notice || notice.sticky) return;
     const timer = window.setTimeout(dismiss, notice.tone === 'warning' ? 8000 : 4500);
     return () => window.clearTimeout(timer);
   }, [notice, dismiss]);

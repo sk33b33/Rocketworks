@@ -10,13 +10,14 @@ import { canAttach, compatibleTargets, findInstance, resolveSocket } from './com
 export type OpResult<T = object> =
   ({ ok: true; blueprint: RocketBlueprint } & T) | { ok: false; reason: string };
 
-function touch(
+/** Records a design change: bumps the revision (expiring any certification) and timestamp. */
+export function touch(
   bp: RocketBlueprint,
   parts: readonly PartInstance[],
   now: string,
   nextInstanceNumber = bp.nextInstanceNumber,
 ): RocketBlueprint {
-  return { ...bp, parts, nextInstanceNumber, updatedAt: now };
+  return { ...bp, parts, nextInstanceNumber, updatedAt: now, revision: bp.revision + 1 };
 }
 
 export function attachPart(

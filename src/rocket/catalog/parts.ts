@@ -74,6 +74,7 @@ function heatShield(
 
 const BOOSTER_ENGINE_SECTION_H = 6;
 const BOOSTER_TANK_H = 10;
+const BOOSTER_TANK_SHORT_H = 5;
 const BOOSTER_FORWARD_H = 5;
 const INTERSTAGE_H = 2.5;
 const SHIP_AFT_H = 6;
@@ -134,6 +135,26 @@ export const PARTS: readonly PartDefinition[] = [
       radial('detail-2', 'Detail slot B', 'detail', 270, 5),
     ],
     visual: 'booster-tank',
+    unlock: UNLOCKED,
+    tags: [],
+  },
+  {
+    id: 'booster-tank-short',
+    name: 'Booster Tank Section (Short)',
+    description: 'Half-length booster barrel for fine-tuning propellant load and stack height.',
+    category: 'tank',
+    stage: 'booster',
+    dryMassKg: 12_000,
+    costCredits: 3_500,
+    propellantCapacityKg: 380_000,
+    attachesTo: 'booster-stack',
+    heightM: BOOSTER_TANK_SHORT_H,
+    rotationStepDeg: 45,
+    sockets: [
+      top('booster-stack', BOOSTER_TANK_SHORT_H),
+      radial('detail-1', 'Detail slot', 'detail', 90, 2.5),
+    ],
+    visual: 'booster-tank-short',
     unlock: UNLOCKED,
     tags: [],
   },
@@ -248,7 +269,11 @@ export const PARTS: readonly PartDefinition[] = [
       radial('detail-2', 'Detail slot B', 'detail', 270, 6),
     ],
     visual: 'ship-tank-extended',
-    unlock: { unlocked: false, reason: 'Research "Extended Tankage" unlocks in a later stage.' },
+    unlock: {
+      unlocked: false,
+      reason: 'Research "Extended Tankage" in the Program panel.',
+      techId: 'extended-tankage',
+    },
     tags: [],
   },
   {
@@ -341,10 +366,33 @@ export const PARTS: readonly PartDefinition[] = [
     dryMassKg: 1_600,
     costCredits: 2_000,
     thrustN: 4_500_000,
+    ispSeaLevelS: 330,
+    ispVacuumS: 350,
     attachesTo: 'engine',
     sockets: [],
     visual: 'engine-sl',
     unlock: UNLOCKED,
+    tags: [],
+  },
+  {
+    id: 'engine-sl-b2',
+    name: 'Forge-SL Block 2 Engine',
+    description:
+      'Uprated sea-level engine: more thrust and slightly better efficiency for little extra mass.',
+    category: 'propulsion',
+    dryMassKg: 1_700,
+    costCredits: 3_200,
+    thrustN: 5_200_000,
+    ispSeaLevelS: 335,
+    ispVacuumS: 356,
+    attachesTo: 'engine',
+    sockets: [],
+    visual: 'engine-sl-b2',
+    unlock: {
+      unlocked: false,
+      reason: 'Research "Engine Block 2" in the Program panel.',
+      techId: 'engine-block-2',
+    },
     tags: [],
   },
   {
@@ -356,10 +404,16 @@ export const PARTS: readonly PartDefinition[] = [
     dryMassKg: 2_100,
     costCredits: 3_500,
     thrustN: 3_200_000,
+    ispSeaLevelS: 250,
+    ispVacuumS: 380,
     attachesTo: 'engine',
     sockets: [],
     visual: 'engine-vac',
-    unlock: { unlocked: false, reason: 'Research "Vacuum Propulsion" unlocks in a later stage.' },
+    unlock: {
+      unlocked: false,
+      reason: 'Research "Vacuum Propulsion" in the Program panel.',
+      techId: 'vacuum-propulsion',
+    },
     tags: ['vacuum'],
   },
 
@@ -511,7 +565,11 @@ export const PARTS: readonly PartDefinition[] = [
     attachesTo: 'detail',
     sockets: [],
     visual: 'solar-array',
-    unlock: { unlocked: false, reason: 'Research "Long-Duration Power" unlocks in a later stage.' },
+    unlock: {
+      unlocked: false,
+      reason: 'Research "Long-Duration Power" in the Program panel.',
+      techId: 'long-duration-power',
+    },
     tags: [],
   },
 ];

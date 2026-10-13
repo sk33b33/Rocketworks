@@ -28,3 +28,7 @@ export function formatTime(iso: string | undefined): string {
     ? ''
     : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
+
+export function formatSpeed(ms: number): string {
+  return `${int.format(ms)} m/s`;
+}

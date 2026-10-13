@@ -46,7 +46,7 @@ function socketsOfTypeOn(parentPartId: string, type: string): number {
 const parentIs = (parentPartId: string) => (ref: SocketRef, bp: RocketBlueprint) =>
   resolveSocket(bp, ref)?.parentPart?.id === parentPartId;
 
-const ENGINES = ['engine-sl', 'engine-vac'];
+const ENGINES = ['engine-sl', 'engine-sl-b2', 'engine-vac'];
 const SHIP_TANKS = ['ship-tank', 'ship-tank-extended'];
 const SHIP_SECTIONS = [
   'ship-aft-section',
@@ -84,7 +84,7 @@ export const STARTER_GUIDE: readonly GuideStep[] = [
     hint: 'Booster Tank Sections snap onto the top ring of the booster stack, one above the other.',
     partIds: ['booster-tank'],
     required: true,
-    isDone: (bp) => countParts(bp, ['booster-tank']) >= 3,
+    isDone: (bp) => countParts(bp, ['booster-tank', 'booster-tank-short']) >= 3,
   },
   {
     id: 'booster-forward',

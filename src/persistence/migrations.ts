@@ -1,19 +1,49 @@
 /** Save-format migrations. Each entry upgrades version N to N+1; never edit a shipped migration. */
 
-export const CURRENT_SAVE_VERSION = 1;
+export const CURRENT_SAVE_VERSION = 2;
 
-type Migration = (data: Record<string, unknown>) => Record<string, unknown>;
+type Data = Record<string, unknown>;
+type Migration = (data: Data) => Data;
 
-/** Index N migrates saveVersion N to N+1. Empty while only version 1 exists. */
-const MIGRATIONS: Record<number, Migration> = {};
+const isRecord = (v: unknown): v is Data =>
+  typeof v === 'object' && v !== null && !Array.isArray(v);
+
+/** v1 blueprint → v2: adds revision, finish, role and certification with neutral defaults. */
+function upgradeBlueprintV1(raw: unknown): unknown {
+  if (!isRecord(raw)) return raw;
+  return {
+    ...raw,
+    schemaVersion: 2,
+    revision: 1,
+    finish: 'brushed',
+    role: 'crew',
+    certification: null,
+  };
+}
+
+/** Index N migrates saveVersion N to N+1. */
+const MIGRATIONS: Record<number, Migration> = {
+  // v1 (Stage 1): a single blueprint. v2 (Stage 2): a design library plus program progression.
+  1: (data) => {
+    const blueprint = upgradeBlueprintV1(data.blueprint);
+    const id = isRecord(blueprint) && typeof blueprint.id === 'string' ? blueprint.id : undefined;
+    return {
+      saveVersion: 2,
+      savedAt: data.savedAt,
+      activeBlueprintId: id,
+      blueprints: blueprint === undefined ? [] : [blueprint],
+      progression: { milestones: [], tech: [] },
+      ui: { guideCollapsed: data.guideCollapsed === true, assemblyMode: 'catalog' },
+    };
+  },
+};
 
 export type MigrationResult =
-  { ok: true; data: Record<string, unknown> } | { ok: false; reason: string };
+  { ok: true; data: Data; migratedFrom?: number } | { ok: false; reason: string };
 
 export function migrateSave(raw: unknown): MigrationResult {
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw))
-    return { ok: false, reason: 'Save is not an object.' };
-  let data = raw as Record<string, unknown>;
+  if (!isRecord(raw)) return { ok: false, reason: 'Save is not an object.' };
+  let data = raw;
   let version = data.saveVersion;
   if (typeof version !== 'number' || !Number.isInteger(version) || version < 1) {
     return { ok: false, reason: 'Save has no valid version number.' };
@@ -21,6 +51,7 @@ export function migrateSave(raw: unknown): MigrationResult {
   if (version > CURRENT_SAVE_VERSION) {
     return { ok: false, reason: `Save was made by a newer version of the game (v${version}).` };
   }
+  const original = version;
   while (version < CURRENT_SAVE_VERSION) {
     const step = MIGRATIONS[version];
     if (!step) return { ok: false, reason: `No migration from save version ${version}.` };
@@ -28,5 +59,7 @@ export function migrateSave(raw: unknown): MigrationResult {
     version += 1;
     data = { ...data, saveVersion: version };
   }
-  return { ok: true, data };
+  return original === CURRENT_SAVE_VERSION
+    ? { ok: true, data }
+    : { ok: true, data, migratedFrom: original };
 }

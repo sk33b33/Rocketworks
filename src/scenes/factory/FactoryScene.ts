@@ -60,7 +60,8 @@ export class FactoryScene implements GameScene {
     this.unsubscribers.push(
       this.controller.subscribe((view, prev) => {
         if (view.blueprint !== prev.blueprint) this.rebuild(view);
-        else if (view.selection !== prev.selection) this.refreshSelection(view);
+        else if (view.selection !== prev.selection || view.unlockedPartIds !== prev.unlockedPartIds)
+          this.refreshSelection(view);
       }),
       this.controller.subscribeCamera((req) => {
         if (req.kind === 'reset') this.resetCamera(false);
@@ -129,7 +130,7 @@ export class FactoryScene implements GameScene {
   private refreshSelection(view: FactoryView): void {
     const sel = view.selection;
     if (sel?.kind === 'catalog') {
-      this.markers.show(listTargets(view.blueprint, sel.partId));
+      this.markers.show(listTargets(view.blueprint, sel.partId, view.unlockedPartIds));
     } else {
       this.markers.clear();
     }

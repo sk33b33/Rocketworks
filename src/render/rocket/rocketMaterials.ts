@@ -1,5 +1,6 @@
 import * as THREE from 'three';
-import { createTileTexture } from '../proceduralTextures';
+import type { HullFinish } from '../../rocket/model/types';
+import { createSootTexture, createTileTexture } from '../proceduralTextures';
 import type { ResourceCache } from '../ResourceCache';
 
 /** Shared rocket materials, created lazily through the scene's resource cache. */
@@ -16,12 +17,39 @@ export interface RocketMaterials {
   solar: THREE.MeshStandardMaterial;
 }
 
-export function getRocketMaterials(cache: ResourceCache): RocketMaterials {
+/** Stainless hull parameters per cosmetic finish. */
+function hullParams(
+  cache: ResourceCache,
+  finish: HullFinish,
+): THREE.MeshStandardMaterialParameters {
+  switch (finish) {
+    case 'polished':
+      return { color: 0xdfe3e8, metalness: 1, roughness: 0.12 };
+    case 'weathered':
+      return {
+        color: 0xb5ada3,
+        metalness: 0.85,
+        roughness: 0.5,
+        map: cache.texture('rocket:sootTex', createSootTexture),
+      };
+    default:
+      return { color: 0xc9ced4, metalness: 0.92, roughness: 0.3 };
+  }
+}
+
+export function getRocketMaterials(
+  cache: ResourceCache,
+  finish: HullFinish = 'brushed',
+): RocketMaterials {
   const std = (key: string, params: THREE.MeshStandardMaterialParameters) =>
     cache.material(`rocket:${key}`, () => new THREE.MeshStandardMaterial(params));
   return {
-    steel: std('steel', { color: 0xc9ced4, metalness: 0.92, roughness: 0.3 }),
-    steelSeam: std('steelSeam', { color: 0x8d949c, metalness: 0.9, roughness: 0.45 }),
+    steel: std(`steel:${finish}`, hullParams(cache, finish)),
+    steelSeam: std(`steelSeam:${finish}`, {
+      color: finish === 'weathered' ? 0x6f6a64 : 0x8d949c,
+      metalness: 0.9,
+      roughness: finish === 'polished' ? 0.25 : 0.45,
+    }),
     darkMetal: std('darkMetal', { color: 0x2f3237, metalness: 0.7, roughness: 0.5 }),
     bell: std('bell', {
       color: 0x3a3c41,
