@@ -48,7 +48,8 @@ export function GuidePanel() {
         </div>
       ) : (
         <p className="step-title">
-          ✓ Starter build complete. Mission Control unlocks in a later stage.
+          ✓ Starter build complete. Certify it in the Readiness tab, then plan a flight in Mission
+          Control.
         </p>
       )}
       {!collapsed && (

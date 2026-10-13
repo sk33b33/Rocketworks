@@ -9,6 +9,9 @@ import {
 import { MAX_BLUEPRINTS } from '../rocket/library/blueprintLibrary';
 import { MILESTONES } from '../progression/milestones';
 import { INITIAL_PROGRESSION, TECH_TREE, type ProgressionState } from '../progression/research';
+import { findCrew } from '../missions/crew';
+import { findMission, findPayload, MISSIONS } from '../missions/missionCatalog';
+import type { MissionSetup } from '../missions/missionSetup';
 import { CURRENT_SAVE_VERSION, migrateSave } from './migrations';
 
 export type AssemblyMode = 'catalog' | 'structure';
@@ -25,6 +28,8 @@ export interface SaveData {
   readonly activeBlueprintId: string;
   readonly blueprints: readonly RocketBlueprint[];
   readonly progression: ProgressionState;
+  /** Mission Control plan (null until the player first opens Mission Control). */
+  readonly mission: MissionSetup | null;
   readonly ui: UiPrefs;
 }
 
@@ -129,7 +134,52 @@ function parseProgression(raw: unknown, warnings: string[]): ProgressionState {
       (raw.tech as unknown[]).includes(r),
     ),
   );
-  return { milestones, tech };
+  const completedMissions = known(
+    raw.completedMissions,
+    MISSIONS.map((m) => m.id),
+  );
+  return { milestones, tech, completedMissions };
+}
+
+/** Mission setup is optional; anything unreadable is dropped (the player just re-plans). */
+function parseMissionSetup(
+  raw: unknown,
+  designIds: readonly string[],
+  warnings: string[],
+): MissionSetup | null {
+  if (raw === null || raw === undefined) return null;
+  const ok =
+    isRecord(raw) &&
+    isString(raw.missionId) &&
+    !!findMission(raw.missionId) &&
+    (raw.designId === null || isString(raw.designId)) &&
+    Array.isArray(raw.crewIds) &&
+    isString(raw.payloadId) &&
+    !!findPayload(raw.payloadId) &&
+    isCount(raw.conditionsSeed) &&
+    isCount(raw.waits);
+  if (!ok) {
+    warnings.push('The saved mission plan was unreadable and has been cleared.');
+    return null;
+  }
+  const crewIds = [
+    ...new Set((raw.crewIds as unknown[]).filter((c): c is string => isString(c) && !!findCrew(c))),
+  ];
+  const designId = isString(raw.designId) && designIds.includes(raw.designId) ? raw.designId : null;
+  const c = raw.commit;
+  const commit =
+    isRecord(c) && isString(c.designId) && isCount(c.revision) && isString(c.at)
+      ? { designId: c.designId, revision: c.revision, at: c.at }
+      : null;
+  return {
+    missionId: raw.missionId as string,
+    designId,
+    crewIds,
+    payloadId: raw.payloadId as string,
+    conditionsSeed: raw.conditionsSeed as number,
+    waits: raw.waits as number,
+    commit,
+  };
 }
 
 /** Parses a save string. Damaged designs are skipped with a warning; the save is corrupt only if nothing usable remains. */
@@ -185,6 +235,11 @@ export function parseSave(json: string): LoadResult {
       activeBlueprintId,
       blueprints,
       progression: parseProgression(data.progression, warnings),
+      mission: parseMissionSetup(
+        data.mission,
+        blueprints.map((b) => b.id),
+        warnings,
+      ),
       ui: {
         guideCollapsed: ui.guideCollapsed === true,
         assemblyMode: ui.assemblyMode === 'structure' ? 'structure' : 'catalog',

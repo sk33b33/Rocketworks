@@ -24,7 +24,8 @@ export const LOCATIONS: readonly LocationDefinition[] = [
     id: 'launch-pad',
     name: 'Launch Pad',
     implementedInStage: 4,
-    lockedReason: 'Unlocks in a later stage (Launch Pad). Requires a mission from Mission Control.',
+    lockedReason:
+      'Unlocks in a later stage (Launch Pad). Commit a mission in Mission Control to be ready for rollout.',
   },
   {
     id: 'flight',
@@ -47,7 +48,7 @@ export const LOCATIONS: readonly LocationDefinition[] = [
 ];
 
 /** Highest roadmap stage implemented by this build. Bump as stages are accepted. */
-export const CURRENT_STAGE = 1;
+export const CURRENT_STAGE = 3;
 
 export const DEFAULT_LOCATION: LocationId = 'factory';
 

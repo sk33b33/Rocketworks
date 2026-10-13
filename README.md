@@ -32,6 +32,13 @@ Current progress is tracked in `docs/STATUS.md`.
 - *Structure list* (left panel) builds the rocket from a list instead of the 3D view.
 - Ctrl+Z / Ctrl+Shift+Z undo and redo.
 
+**Planning a mission (Stage 3):**
+- Certify a design, then open *Mission Control* from the location bar.
+- Pick a mission, then assign the vehicle, payload and crew in *Manifest*.
+- *Readiness* shows the flight director's GO/NO-GO poll, with a fix button for each issue.
+- *Conditions* shows the launch window and weather. *Wait for next window* is free.
+- *Commit mission · GO for rollout* when every station is GO. The Launch Pad arrives in the next stage.
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:

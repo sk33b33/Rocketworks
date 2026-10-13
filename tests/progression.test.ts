@@ -45,7 +45,7 @@ describe('research', () => {
   });
 
   it('spends RP, respects prerequisites and unlocks parts / budget', () => {
-    const rich = { milestones: MILESTONES.map((m) => m.id), tech: [] };
+    const rich = { milestones: MILESTONES.map((m) => m.id), tech: [], completedMissions: [] };
     expect(canResearch(INITIAL_PROGRESSION, 'extended-tankage')).toMatchObject({ ok: false });
     expect(canResearch(rich, 'vacuum-propulsion')).toMatchObject({
       ok: false,

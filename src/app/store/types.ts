@@ -1,5 +1,7 @@
 import type { AssemblyMode, UiPrefs } from '../../persistence/saveGame';
 import type { ProgressionState } from '../../progression/research';
+import type { MissionFixAction, MissionTab } from '../../missions/missionReadiness';
+import type { MissionSetup } from '../../missions/missionSetup';
 import type { FixAction } from '../../rocket/readiness/readiness';
 import type { HullFinish, RocketBlueprint, SocketRef, VehicleRole } from '../../rocket/model/types';
 import type { LocationId } from '../locations';
@@ -38,6 +40,9 @@ export interface GameData {
   activeBlueprintId: string;
   blueprint: RocketBlueprint;
   progression: ProgressionState;
+  /** Mission Control plan; survives location changes and reloads. */
+  mission: MissionSetup;
+  missionTab: MissionTab;
   history: History;
   selection: Selection;
   notice: Notice | null;
@@ -79,6 +84,18 @@ export interface ProgramActions {
   research(techId: string): void;
 }
 
+export interface MissionActions {
+  selectMission(missionId: string): void;
+  setMissionDesign(designId: string): void;
+  setMissionPayload(payloadId: string): void;
+  toggleCrew(crewId: string): void;
+  waitForWindow(): void;
+  commitMission(): void;
+  standDown(): void;
+  setMissionTab(tab: MissionTab): void;
+  runMissionFix(action: MissionFixAction): void;
+}
+
 export interface UiActions {
   goTo(target: LocationId): boolean;
   notify(tone: NoticeTone, text: string): void;
@@ -90,6 +107,11 @@ export interface UiActions {
   runFixAction(action: FixAction): void;
 }
 
-export type GameStore = GameData & AssemblyActions & LibraryActions & ProgramActions & UiActions;
+export type GameStore = GameData &
+  AssemblyActions &
+  LibraryActions &
+  ProgramActions &
+  MissionActions &
+  UiActions;
 export type SetState = (partial: Partial<GameStore>) => void;
 export type GetState = () => GameStore;

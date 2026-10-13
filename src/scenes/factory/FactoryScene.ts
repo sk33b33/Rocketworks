@@ -48,6 +48,7 @@ export class FactoryScene implements GameScene {
   enter(): void {
     const canvas = this.canvas;
     if (!canvas) return;
+    this.cameraRig?.setEnabled(true);
     canvas.tabIndex = 0;
     canvas.setAttribute(
       'aria-label',
@@ -89,6 +90,7 @@ export class FactoryScene implements GameScene {
   }
 
   exit(): void {
+    this.cameraRig?.setEnabled(false);
     const canvas = this.canvas;
     if (canvas) {
       canvas.removeEventListener('pointerdown', this.onPointerDown);

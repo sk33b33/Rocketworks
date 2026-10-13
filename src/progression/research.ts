@@ -4,11 +4,14 @@
  * achieved milestones and purchased tech, so saves stay small and self-consistent.
  */
 import { PARTS } from '../rocket/catalog/parts';
+import { findMission, MISSIONS } from '../missions/missionCatalog';
 import { MILESTONES } from './milestones';
 
 export interface ProgressionState {
   readonly milestones: readonly string[];
   readonly tech: readonly string[];
+  /** Missions flown successfully (first completion pays the reward). */
+  readonly completedMissions: readonly string[];
 }
 
 export interface TechNode {
@@ -62,14 +65,25 @@ export const TECH_TREE: readonly TechNode[] = [
   },
 ];
 
-export const INITIAL_PROGRESSION: ProgressionState = { milestones: [], tech: [] };
+export const INITIAL_PROGRESSION: ProgressionState = {
+  milestones: [],
+  tech: [],
+  completedMissions: [],
+};
 
 export function findTech(id: string): TechNode | undefined {
   return TECH_TREE.find((t) => t.id === id);
 }
 
+const completed = (p: ProgressionState) =>
+  MISSIONS.filter((m) => p.completedMissions.includes(m.id));
+
 export function researchEarned(p: ProgressionState): number {
-  return MILESTONES.filter((m) => p.milestones.includes(m.id)).reduce((s, m) => s + m.rewardRp, 0);
+  const fromMilestones = MILESTONES.filter((m) => p.milestones.includes(m.id)).reduce(
+    (s, m) => s + m.rewardRp,
+    0,
+  );
+  return fromMilestones + completed(p).reduce((s, m) => s + m.rewardRp, 0);
 }
 
 export function researchSpent(p: ProgressionState): number {
@@ -89,7 +103,26 @@ export function budgetCredits(p: ProgressionState): number {
     (s, t) => s + (t.budgetBonusCredits ?? 0),
     0,
   );
-  return BASE_BUDGET_CREDITS + fromMilestones + fromTech;
+  const fromMissions = completed(p).reduce((s, m) => s + m.rewardCredits, 0);
+  return BASE_BUDGET_CREDITS + fromMilestones + fromTech + fromMissions;
+}
+
+/**
+ * Records a successful mission; the first completion pays its RP and budget reward (derived).
+ * Called by the flight stages; repeat flights are allowed but pay nothing extra.
+ */
+export function completeMission(
+  p: ProgressionState,
+  missionId: string,
+): { ok: true; progression: ProgressionState; firstTime: boolean } | { ok: false; reason: string } {
+  if (!findMission(missionId)) return { ok: false, reason: 'Unknown mission.' };
+  if (p.completedMissions.includes(missionId))
+    return { ok: true, progression: p, firstTime: false };
+  return {
+    ok: true,
+    progression: { ...p, completedMissions: [...p.completedMissions, missionId] },
+    firstTime: true,
+  };
 }
 
 /** Parts unlocked through research (parts unlocked by default are not listed). */

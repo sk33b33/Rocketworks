@@ -5,6 +5,8 @@ import {
   unlockedPartIds,
   type ProgressionState,
 } from '../../progression/research';
+import { evaluateMission, type MissionReport } from '../../missions/missionReadiness';
+import type { MissionSetup } from '../../missions/missionSetup';
 import type { RocketBlueprint } from '../../rocket/model/types';
 import { evaluateReadiness, type ReadinessReport } from '../../rocket/readiness/readiness';
 import { evaluateGuide, type GuideProgress } from '../../rocket/tutorial/starterGuide';
@@ -40,18 +42,49 @@ export function guideProgress(bp: RocketBlueprint): GuideProgress {
   return guideCache.v;
 }
 
-let readinessCache: { bp: RocketBlueprint; p: ProgressionState; v: ReadinessReport } | null = null;
+/** Per-design cache so the factory and Mission Control can ask about different designs. */
+const readinessCache = new WeakMap<RocketBlueprint, { p: ProgressionState; v: ReadinessReport }>();
 export function readinessReport(bp: RocketBlueprint, p: ProgressionState): ReadinessReport {
-  if (readinessCache?.bp !== bp || readinessCache.p !== p) {
-    const prog = programSummary(p);
-    readinessCache = {
-      bp,
+  const hit = readinessCache.get(bp);
+  if (hit && hit.p === p) return hit.v;
+  const prog = programSummary(p);
+  const v = evaluateReadiness(bp, {
+    unlockedPartIds: prog.unlockedPartIds,
+    budgetCredits: prog.budgetCredits,
+  });
+  readinessCache.set(bp, { p, v });
+  return v;
+}
+
+let missionCache: {
+  setup: MissionSetup;
+  blueprints: readonly RocketBlueprint[];
+  p: ProgressionState;
+  v: MissionReport;
+} | null = null;
+/** Mission readiness for the current plan (the assigned design is looked up in the library). */
+export function missionReport(
+  setup: MissionSetup,
+  blueprints: readonly RocketBlueprint[],
+  p: ProgressionState,
+): MissionReport {
+  if (
+    missionCache?.setup !== setup ||
+    missionCache.blueprints !== blueprints ||
+    missionCache.p !== p
+  ) {
+    const bp = blueprints.find((b) => b.id === setup.designId);
+    missionCache = {
+      setup,
+      blueprints,
       p,
-      v: evaluateReadiness(bp, {
-        unlockedPartIds: prog.unlockedPartIds,
-        budgetCredits: prog.budgetCredits,
+      v: evaluateMission({
+        setup,
+        blueprint: bp,
+        vehicleReport: bp ? readinessReport(bp, p) : undefined,
+        completedMissionIds: p.completedMissions,
       }),
     };
   }
-  return readinessCache.v;
+  return missionCache.v;
 }

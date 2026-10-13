@@ -6,8 +6,10 @@ import { navigate } from './gameState';
 import { DEFAULT_LOCATION } from './locations';
 import { createAssemblyActions } from './store/assemblySlice';
 import { makeNotice, now } from './store/commit';
-import { guideProgress, programSummary, readinessReport } from './store/derived';
+import { guideProgress, missionReport, programSummary, readinessReport } from './store/derived';
+import { createDefaultSetup } from '../missions/missionSetup';
 import { createLibraryActions } from './store/librarySlice';
+import { createMissionActions } from './store/missionSlice';
 import { createProgramActions } from './store/programSlice';
 import type { GameData, GameStore, SaveStatus } from './store/types';
 
@@ -29,7 +31,14 @@ const MEMORY_ONLY: SaveStatus = {
 
 type LoadedSlice = Pick<
   GameData,
-  'blueprints' | 'activeBlueprintId' | 'blueprint' | 'progression' | 'ui' | 'notice' | 'saveStatus'
+  | 'blueprints'
+  | 'activeBlueprintId'
+  | 'blueprint'
+  | 'progression'
+  | 'mission'
+  | 'ui'
+  | 'notice'
+  | 'saveStatus'
 >;
 
 function initialData(): LoadedSlice {
@@ -44,6 +53,7 @@ function initialData(): LoadedSlice {
       activeBlueprintId: active.id,
       blueprint: active,
       progression: data.progression,
+      mission: data.mission ?? createDefaultSetup(active.id),
       ui: data.ui,
       notice: problems.length
         ? makeNotice(
@@ -67,6 +77,7 @@ function initialData(): LoadedSlice {
     activeBlueprintId: starter.id,
     blueprint: starter,
     progression: INITIAL_PROGRESSION,
+    mission: createDefaultSetup(starter.id),
     ui: DEFAULT_UI,
     notice:
       loaded.status === 'corrupt' && persistent
@@ -87,12 +98,14 @@ export const useGameStore = create<GameStore>((set, get) => ({
   selection: null,
   cameraRequest: null,
   vehicleTab: 'stats',
+  missionTab: 'briefing',
   history: { past: [], future: [] },
   ...initialData(),
 
   ...createAssemblyActions(set, get),
   ...createLibraryActions(set, get),
   ...createProgramActions(set, get),
+  ...createMissionActions(set, get),
 
   goTo: (target) => {
     const result = navigate(get().currentLocation, target);
@@ -139,6 +152,7 @@ useGameStore.subscribe((s, prev) => {
     s.blueprints === prev.blueprints &&
     s.activeBlueprintId === prev.activeBlueprintId &&
     s.progression === prev.progression &&
+    s.mission === prev.mission &&
     s.ui === prev.ui
   )
     return;
@@ -149,6 +163,7 @@ useGameStore.subscribe((s, prev) => {
     activeBlueprintId: s.activeBlueprintId,
     blueprints: s.blueprints,
     progression: s.progression,
+    mission: s.mission,
     ui: s.ui,
   });
   useGameStore.setState({
@@ -163,3 +178,5 @@ export const selectGuide = (s: Pick<GameStore, 'blueprint'>) => guideProgress(s.
 export const selectProgram = (s: Pick<GameStore, 'progression'>) => programSummary(s.progression);
 export const selectReadiness = (s: Pick<GameStore, 'blueprint' | 'progression'>) =>
   readinessReport(s.blueprint, s.progression);
+export const selectMissionReport = (s: Pick<GameStore, 'mission' | 'blueprints' | 'progression'>) =>
+  missionReport(s.mission, s.blueprints, s.progression);

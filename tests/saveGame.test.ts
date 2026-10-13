@@ -25,7 +25,20 @@ function sampleData(): Omit<SaveData, 'saveVersion'> {
     savedAt: NOW,
     activeBlueprintId: 'bp-b',
     blueprints: [a, { ...b, finish: 'weathered', role: 'cargo' }],
-    progression: { milestones: ['booster-lit', 'full-stack'], tech: ['program-expansion'] },
+    progression: {
+      milestones: ['booster-lit', 'full-stack'],
+      tech: ['program-expansion'],
+      completedMissions: ['test-flight'],
+    },
+    mission: {
+      missionId: 'orbital-flight',
+      designId: 'bp-a',
+      crewIds: ['okafor', 'lindqvist'],
+      payloadId: 'science-pod',
+      conditionsSeed: 42,
+      waits: 1,
+      commit: { designId: 'bp-a', revision: 3, at: NOW },
+    },
     ui: { guideCollapsed: true, assemblyMode: 'structure' },
   };
 }
@@ -42,6 +55,7 @@ describe('save/load v2', () => {
     expect(loaded.data.blueprints).toEqual(data.blueprints);
     expect(loaded.data.activeBlueprintId).toBe('bp-b');
     expect(loaded.data.progression).toEqual(data.progression);
+    expect(loaded.data.mission).toEqual(data.mission);
     expect(loaded.data.ui).toEqual(data.ui);
   });
 
@@ -106,6 +120,7 @@ describe('save/load v2', () => {
     good.progression = {
       milestones: ['full-stack', 'made-up', 'full-stack', 3],
       tech: ['vacuum-propulsion', 'nope'],
+      completedMissions: ['test-flight', 'mars'],
     };
     good.blueprints[1] = {
       ...good.blueprints[1],
@@ -116,7 +131,11 @@ describe('save/load v2', () => {
     good.ui = { guideCollapsed: 'yes', assemblyMode: 'vr' };
     const result = parseSave(JSON.stringify(good));
     if (result.status !== 'loaded') throw new Error('expected loaded');
-    expect(result.data.progression).toEqual({ milestones: ['full-stack'], tech: [] }); // vacuum needs block 2
+    expect(result.data.progression).toEqual({
+      milestones: ['full-stack'],
+      tech: [], // vacuum needs block 2
+      completedMissions: ['test-flight'],
+    });
     const b = result.data.blueprints[1]!;
     expect([b.finish, b.role, b.certification]).toEqual(['brushed', 'crew', null]);
     expect(result.data.ui).toEqual(DEFAULT_UI);
@@ -164,7 +183,8 @@ describe('migration v1 → v2', () => {
     ]);
     expect(bp.parts).toHaveLength(createCompleteStarterDesign(NOW).parts.length);
     expect(result.data.activeBlueprintId).toBe(bp.id);
-    expect(result.data.progression).toEqual({ milestones: [], tech: [] });
+    expect(result.data.progression).toEqual({ milestones: [], tech: [], completedMissions: [] });
+    expect(result.data.mission).toBeNull();
     expect(result.data.ui).toEqual({ guideCollapsed: true, assemblyMode: 'catalog' });
   });
 
@@ -175,11 +195,48 @@ describe('migration v1 → v2', () => {
   });
 
   it('passes current-version data through and rejects invalid versions', () => {
-    expect(migrateSave({ saveVersion: 2, x: 1 })).toEqual({
+    expect(migrateSave({ saveVersion: 3, x: 1 })).toEqual({
       ok: true,
-      data: { saveVersion: 2, x: 1 },
+      data: { saveVersion: 3, x: 1 },
     });
     expect(migrateSave({ saveVersion: 0 }).ok).toBe(false);
     expect(migrateSave({ saveVersion: 1.5 }).ok).toBe(false);
+  });
+});
+
+describe('migration v2 → v3', () => {
+  it('adds completed missions and an empty mission plan', () => {
+    const v3 = JSON.parse(serializeSave(sampleData()));
+    const { mission, ...rest } = v3;
+    void mission;
+    const v2 = {
+      ...rest,
+      saveVersion: 2,
+      progression: { milestones: ['full-stack'], tech: ['program-expansion'] },
+    };
+    const result = parseSave(JSON.stringify(v2));
+    if (result.status !== 'loaded') throw new Error('expected loaded');
+    expect(result.warnings).toEqual(['Save upgraded from version 2.']);
+    expect(result.data.progression.completedMissions).toEqual([]);
+    expect(result.data.progression.tech).toEqual(['program-expansion']);
+    expect(result.data.mission).toBeNull();
+    expect(result.data.blueprints).toHaveLength(2);
+  });
+
+  it('drops an unreadable mission plan and unknown crew / designs', () => {
+    const good = JSON.parse(serializeSave(sampleData()));
+    const bad = parseSave(JSON.stringify({ ...good, mission: { missionId: 'mars' } }));
+    if (bad.status !== 'loaded') throw new Error();
+    expect(bad.data.mission).toBeNull();
+    expect(bad.warnings.join(' ')).toMatch(/mission plan/);
+    const partial = parseSave(
+      JSON.stringify({
+        ...good,
+        mission: { ...good.mission, crewIds: ['okafor', 'ghost'], designId: 'gone' },
+      }),
+    );
+    if (partial.status !== 'loaded') throw new Error();
+    expect(partial.data.mission?.crewIds).toEqual(['okafor']);
+    expect(partial.data.mission?.designId).toBeNull();
   });
 });

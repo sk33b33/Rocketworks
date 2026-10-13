@@ -97,12 +97,21 @@ export class FactoryCamera {
     p.y = THREE.MathUtils.clamp(p.y, 1.2, HALL.height - 12);
   }
 
+  /** Disables mouse/touch/keyboard input while the scene is not the active location. */
+  setEnabled(enabled: boolean): void {
+    this.controls.enabled = enabled;
+    this.enabled = enabled;
+  }
+
   dispose(): void {
     this.dom.removeEventListener('keydown', this.onKeyDown);
     this.controls.dispose();
   }
 
+  private enabled = true;
+
   private readonly onKeyDown = (event: KeyboardEvent): void => {
+    if (!this.enabled) return;
     const offset = this.camera.position.clone().sub(this.controls.target);
     const spherical = new THREE.Spherical().setFromVector3(offset);
     const step = 0.08;

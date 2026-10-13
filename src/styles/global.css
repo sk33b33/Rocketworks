@@ -946,3 +946,190 @@ fieldset label {
   border: 1px solid var(--ok);
   border-radius: 6px;
 }
+
+/* ---------- Stage 3: Mission Control ---------- */
+.hud-right.wide {
+  width: 380px;
+}
+.mission-hud .hud-right > section[data-panel='plan'] {
+  flex: 1;
+  max-height: none;
+}
+.mission-hud .missions {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.mission-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.mission-card {
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.02);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.mission-card:hover {
+  border-color: var(--muted);
+}
+.mission-card.active {
+  border-color: var(--accent);
+  background: rgba(240, 168, 48, 0.12);
+}
+.mission-card.locked {
+  border-style: dashed;
+  color: var(--muted);
+}
+.mission-card .muted,
+.mission-lock,
+.mission-reward {
+  font-size: 12px;
+}
+.mission-name {
+  font-weight: 600;
+}
+.mission-lock {
+  color: var(--warn);
+}
+.mission-reward {
+  color: var(--ok);
+}
+.lead {
+  font-weight: 600;
+  margin-top: 0;
+}
+.briefing p {
+  line-height: 1.45;
+}
+.plain-list {
+  margin: 4px 0;
+  padding-left: 20px;
+  font-size: 13px;
+}
+.plain-list li {
+  margin: 2px 0;
+}
+fieldset.stacked {
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+fieldset.stacked label {
+  align-items: flex-start;
+  font-size: 13px;
+}
+.crew-list {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.crew-list li {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: 13px;
+}
+.crew-list li.assigned {
+  border-color: var(--ok);
+  background: rgba(61, 220, 132, 0.06);
+}
+.crew-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.crew-status {
+  font-size: 12px;
+}
+.status-ready {
+  color: var(--ok);
+}
+.status-fatigued {
+  color: var(--warn);
+}
+.status-medical-hold {
+  color: var(--danger);
+}
+.crew-bio {
+  margin: 3px 0 6px;
+  color: var(--muted);
+}
+.crew-list button {
+  min-height: 28px;
+  padding: 3px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.03);
+}
+.poll {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.poll li {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+}
+.cond-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+  margin: 6px 0;
+}
+.cond-table th,
+.cond-table td {
+  text-align: left;
+  padding: 5px 4px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+.cond-table th[scope='col'] {
+  color: var(--muted);
+  font-weight: 500;
+}
+.small {
+  font-size: 11px;
+  font-weight: 400;
+}
+.commit-bar .committed {
+  color: var(--ok);
+  align-self: center;
+  padding: 0 6px;
+  font-weight: 600;
+}
+.commit-note {
+  max-width: min(520px, calc(100vw - 32px));
+  font-size: 13px;
+}
+@media (max-width: 860px) {
+  .factory-hud[data-tab='missions'] .hud-col > section[data-panel='missions'],
+  .factory-hud[data-tab='plan'] .hud-col > section[data-panel='plan'] {
+    display: flex;
+    max-height: 52vh;
+  }
+  .hud-right.wide {
+    width: 100%;
+  }
+  .mission-hud .missions,
+  .mission-hud .mission-panel {
+    height: 52vh;
+  }
+  .hud-tabs.two {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

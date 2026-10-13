@@ -1,9 +1,16 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { navigate } from '../src/app/gameState';
-import { selectGuide, selectProgram, useGameStore } from '../src/app/gameStore';
+import {
+  selectGuide,
+  selectMissionReport,
+  selectProgram,
+  useGameStore,
+} from '../src/app/gameStore';
 import { INITIAL_PROGRESSION } from '../src/progression/research';
 import { validateBlueprint } from '../src/rocket/assembly/validation';
 import { commitBlueprint } from '../src/app/store/commit';
+import { generateConditions } from '../src/missions/conditions';
+import { createDefaultSetup } from '../src/missions/missionSetup';
 import {
   createCompleteStarterDesign,
   createStarterBlueprint,
@@ -19,6 +26,9 @@ function resetStore() {
     activeBlueprintId: starter.id,
     blueprint: starter,
     progression: INITIAL_PROGRESSION,
+    mission: createDefaultSetup(starter.id),
+    missionTab: 'briefing',
+    currentLocation: 'factory',
     history: { past: [], future: [] },
     selection: null,
     notice: null,
@@ -27,6 +37,10 @@ function resetStore() {
 }
 
 describe('navigate', () => {
+  it('opens Mission Control and still locks the Launch Pad', () => {
+    expect(navigate('factory', 'mission-control').ok).toBe(true);
+  });
+
   it('rejects locked locations with a reason and keeps the current one', () => {
     const result = navigate('factory', 'launch-pad');
     expect(result.ok).toBe(false);
@@ -181,5 +195,67 @@ describe('game store: certification, library and program', () => {
     expect(st().vehicleTab).toBe('program');
     st().runFixAction({ kind: 'guide-step', stepId: 'booster-engines' });
     expect(selectGuide(st()).steps.find((s) => s.step.id === 'booster-engines')?.done).toBe(true);
+  });
+});
+
+describe('game store: Mission Control', () => {
+  beforeEach(resetStore);
+
+  it('plans, commits, survives a trip to the factory, and voids on design change', () => {
+    expect(st().goTo('mission-control')).toBe(true);
+    st().loadReferenceDesign();
+    st().certify(false);
+    const designId = st().activeBlueprintId;
+    st().selectMission('orbital-flight');
+    st().setMissionDesign(designId);
+    st().toggleCrew('okafor');
+    st().toggleCrew('lindqvist');
+    st().toggleCrew('adeyemi');
+    expect(st().notice?.text).toMatch(/medical hold/);
+    for (
+      let i = 0;
+      i < 200 && generateConditions(st().mission.conditionsSeed).overall !== 'green';
+      i++
+    ) {
+      st().waitForWindow();
+    }
+    expect(selectMissionReport(st()).status).not.toBe('no-go');
+    st().commitMission();
+    expect(st().mission.commit?.designId).toBe(designId);
+
+    // Leave for the factory and come back: the plan is intact.
+    const plan = st().mission;
+    expect(st().goTo('factory')).toBe(true);
+    expect(st().goTo('mission-control')).toBe(true);
+    expect(st().mission).toBe(plan);
+
+    // Editing the vehicle voids the commitment (revision changes, certification expires).
+    st().goTo('factory');
+    const antenna = st().blueprint.parts.find((p) => p.partId === 'antenna')!;
+    st().removeInstance(antenna.id);
+    const report = selectMissionReport(st());
+    expect(report.status).toBe('no-go');
+    expect(report.issues.map((i) => i.id)).toContain('not-certified');
+  });
+
+  it('refuses to commit a NO-GO plan and routes fix actions', () => {
+    st().goTo('mission-control');
+    st().commitMission();
+    expect(st().notice?.tone).toBe('warning');
+    expect(st().mission.commit).toBeNull();
+    st().runMissionFix({ kind: 'open-tab', tab: 'manifest' });
+    expect(st().missionTab).toBe('manifest');
+    const seed = st().mission.conditionsSeed;
+    st().runMissionFix({ kind: 'wait-window' });
+    expect(st().mission.conditionsSeed).not.toBe(seed);
+    st().runMissionFix({ kind: 'go-factory', tab: 'readiness' });
+    expect(st().currentLocation).toBe('factory');
+    expect(st().vehicleTab).toBe('readiness');
+  });
+
+  it('refuses locked missions with the unlock reason', () => {
+    st().selectMission('station-docking');
+    expect(st().notice?.text).toMatch(/Crewed Orbital Shakedown/);
+    expect(st().mission.missionId).toBe('test-flight');
   });
 });

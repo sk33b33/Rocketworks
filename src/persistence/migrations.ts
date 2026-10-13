@@ -1,6 +1,6 @@
 /** Save-format migrations. Each entry upgrades version N to N+1; never edit a shipped migration. */
 
-export const CURRENT_SAVE_VERSION = 2;
+export const CURRENT_SAVE_VERSION = 3;
 
 type Data = Record<string, unknown>;
 type Migration = (data: Data) => Data;
@@ -36,6 +36,14 @@ const MIGRATIONS: Record<number, Migration> = {
       ui: { guideCollapsed: data.guideCollapsed === true, assemblyMode: 'catalog' },
     };
   },
+  // v3 (Stage 3): mission plan and completed missions.
+  2: (data) => ({
+    ...data,
+    progression: isRecord(data.progression)
+      ? { ...data.progression, completedMissions: [] }
+      : data.progression,
+    mission: null,
+  }),
 };
 
 export type MigrationResult =

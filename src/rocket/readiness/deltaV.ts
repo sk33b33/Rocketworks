@@ -31,7 +31,11 @@ function stageDeltaV(ispS: number, m0: number, mf: number): number {
   return STANDARD_GRAVITY_MS2 * ispS * Math.log(m0 / mf);
 }
 
-export function estimateDeltaV(bp: RocketBlueprint): DeltaVEstimate {
+/**
+ * @param extraShipMassKg mass carried by the ship that is not part of the design (payload, crew,
+ *   consumables). It is never burned, so it adds to the ship's initial and final mass.
+ */
+export function estimateDeltaV(bp: RocketBlueprint, extraShipMassKg = 0): DeltaVEstimate {
   const stages = instanceStages(bp);
   const acc = {
     booster: { dry: 0, prop: 0, thrust: 0, ispThrust: 0 },
@@ -53,6 +57,7 @@ export function estimateDeltaV(bp: RocketBlueprint): DeltaVEstimate {
       a.ispThrust += isp * part.thrustN;
     }
   }
+  acc.ship.dry += Math.max(0, extraShipMassKg);
   const shipWet = acc.ship.dry + acc.ship.prop;
   const totalWet = acc.booster.dry + acc.booster.prop + shipWet;
   const boosterIsp = acc.booster.thrust ? acc.booster.ispThrust / acc.booster.thrust : 0;
