@@ -1,6 +1,7 @@
 import { calculateRocketStats } from '../rocket/stats/calculateRocketStats';
 import { certificationStatus } from '../rocket/readiness/certification';
-import { estimateDeltaV, type DeltaVEstimate } from '../rocket/readiness/deltaV';
+import { estimateDeltaV, ORBIT_DELTA_V_MS, type DeltaVEstimate } from '../rocket/readiness/deltaV';
+import { checkLegs, refuelCost, tankerFlights, type LegCheck } from '../moon/lunarRules';
 import type { ReadinessReport } from '../rocket/readiness/readiness';
 import type { RocketBlueprint } from '../rocket/model/types';
 import { generateConditions, type LaunchConditions } from './conditions';
@@ -85,6 +86,8 @@ export interface MissionReport {
   readonly poll: readonly { area: PollArea; status: PollStatus }[];
   readonly deltaV: DeltaVEstimate | null;
   readonly requiredDeltaVMs: number;
+  /** Moon missions: Δv per leg after reaching orbit (null otherwise). */
+  readonly lunarLegs: LegCheck[] | null;
   readonly carriedMassKg: number;
   readonly lifeSupport: { requiredCrewDays: number; capacityCrewDays: number };
   readonly conditions: LaunchConditions;
@@ -97,7 +100,12 @@ export interface MissionReport {
 
 export interface MissionCost {
   readonly newBuildCredits: number;
+  /** Hardware (new builds plus reflights) and refuelling for this mission. */
   readonly missionCredits: number;
+  /** Refuelling bought for a Moon mission (included in missionCredits). */
+  readonly refuelCredits: number;
+  /** Tanker flights needed to fill the ship in Earth orbit. */
+  readonly tankerFlights: number;
   readonly budgetCredits: number | null;
   readonly booster: FleetVehicle | null;
   readonly ship: FleetVehicle | null;
@@ -349,11 +357,17 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
   }
   const boosterNew = bp ? stageCost(bp, 'booster') : 0;
   const shipNew = bp ? stageCost(bp, 'ship') : 0;
+  const deltaV = bp ? estimateDeltaV(bp, carriedMassKg, RESERVE_FRACTION[recovery]) : null;
+  const shipCapacityKg = deltaV ? deltaV.ship.initialMassKg - deltaV.ship.finalMassKg : 0;
+  const refuelCredits = mission.lunar && bp ? refuelCost(ctx.setup.refuel, shipCapacityKg) : 0;
   const cost: MissionCost = {
     newBuildCredits: boosterNew + shipNew,
+    refuelCredits,
+    tankerFlights: tankerFlights(shipCapacityKg),
     missionCredits:
       stageFlightCost(boosterNew, boosterVehicle, ctx.rapidReuse) +
-      stageFlightCost(shipNew, shipVehicle, ctx.rapidReuse),
+      stageFlightCost(shipNew, shipVehicle, ctx.rapidReuse) +
+      refuelCredits,
     budgetCredits: ctx.budgetCredits ?? null,
     booster: boosterVehicle,
     ship: shipVehicle,
@@ -372,7 +386,6 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
   }
 
   // ---- Propulsion ----
-  const deltaV = bp ? estimateDeltaV(bp, carriedMassKg, RESERVE_FRACTION[recovery]) : null;
   if (deltaV) {
     const margin = deltaV.totalMs / mission.requiredDeltaVMs - 1;
     if (margin < 0) {
@@ -400,6 +413,34 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
       });
       risk += 0.1;
       riskFactors.push('Thin Δv margin');
+    }
+  }
+
+  // Moon missions: Δv for each leg after orbit, with the refuelling bought.
+  let lunarLegs: LegCheck[] | null = null;
+  if (mission.lunar && deltaV) {
+    lunarLegs = checkLegs(
+      mission.lunar,
+      ctx.setup.refuel,
+      deltaV.ship.deltaVMs,
+      Math.max(0, deltaV.totalMs - ORBIT_DELTA_V_MS),
+    );
+    for (const c of lunarLegs) {
+      if (c.ok) continue;
+      const bought = ctx.setup.refuel[c.leg.refuel];
+      const refuelName = c.leg.refuel === 'leo' ? 'orbital refuelling' : 'the lunar depot top-up';
+      add({
+        id: `lunar-dv-${c.leg.id}`,
+        area: 'propulsion',
+        severity: 'critical',
+        title: `Not enough Δv: ${c.leg.label.toLowerCase()}`,
+        detail: `About ${fmt(c.availableMS)} m/s available for this leg; ${fmt(c.leg.requiredDvMS)} m/s needed.${bought ? '' : ` Buying ${refuelName} fills the tanks before it.`}`,
+        fix: bought
+          ? 'Lighten the payload, add ship tanks or use better vacuum engines.'
+          : `Add ${refuelName} in the Manifest.`,
+        action: { kind: 'open-tab', tab: 'manifest' },
+        actionLabel: 'Open manifest',
+      });
     }
   }
 
@@ -603,6 +644,7 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
     poll,
     deltaV,
     requiredDeltaVMs: mission.requiredDeltaVMs,
+    lunarLegs,
     carriedMassKg,
     lifeSupport: { requiredCrewDays, capacityCrewDays: capacity },
     conditions,

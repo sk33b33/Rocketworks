@@ -1,4 +1,5 @@
 import type { RecoveryTarget } from '../recovery/recoveryPlan';
+import { defaultRefuel, type RefuelChoice } from '../moon/lunarRules';
 import { CREW_ROSTER, findCrew } from './crew';
 import { initialConditionsSeed, nextWindowSeed } from './conditions';
 import { findMission, missionAvailability, MISSIONS } from './missionCatalog';
@@ -24,6 +25,8 @@ export interface MissionSetup {
   /** Recovered hardware assigned to fly again (null = new build). */
   readonly boosterFleetId: string | null;
   readonly shipFleetId: string | null;
+  /** Moon missions: tanker flights in Earth orbit and the lunar depot top-up. */
+  readonly refuel: RefuelChoice;
 }
 
 export type SetupResult = { ok: true; setup: MissionSetup } | { ok: false; reason: string };
@@ -41,6 +44,7 @@ export function createDefaultSetup(designId: string | null): MissionSetup {
     recovery: null,
     boosterFleetId: null,
     shipFleetId: null,
+    refuel: defaultRefuel(first.lunar),
   };
 }
 
@@ -65,6 +69,7 @@ export function selectMission(
       conditionsSeed: initialConditionsSeed(missionId),
       waits: 0,
       commit: null,
+      refuel: defaultRefuel(mission.lunar),
     },
   };
 }
@@ -134,4 +139,15 @@ export function assignFleet(
 ): MissionSetup {
   const key = kind === 'booster' ? 'boosterFleetId' : 'shipFleetId';
   return setup[key] === vehicleId ? setup : { ...setup, [key]: vehicleId, commit: null };
+}
+
+/** Buys or drops a refuelling option (Moon missions). */
+export function setRefuel(
+  setup: MissionSetup,
+  kind: keyof RefuelChoice,
+  on: boolean,
+): MissionSetup {
+  return setup.refuel[kind] === on
+    ? setup
+    : { ...setup, refuel: { ...setup.refuel, [kind]: on }, commit: null };
 }

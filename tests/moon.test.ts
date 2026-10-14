@@ -23,6 +23,28 @@ import { coastDt, coastStep, propagate, predictLunarPass } from '../src/moon/pro
 import { MOON_BODY, planTli, timeToPeriapsis } from '../src/moon/lunarTransfer';
 import { EARTH_MU_M3S2, EARTH_RADIUS_M } from '../src/simulation/constants';
 import { MOON_MU_M3S2 } from '../src/moon/moonOrbit';
+import { flightContextFromLaunch } from '../src/app/flightBinding';
+import { FlightRuntime } from '../src/flight/flightRuntime';
+import { NO_PROGRESS, objectivesFor, orbitalGoalsMet } from '../src/flight/flightOutcome';
+import type { FlightRecord } from '../src/launch/flightRecord';
+import type { LaunchContext } from '../src/launch/launchRuntime';
+import { createCompleteStarterDesign } from '../src/rocket/catalog/blueprints';
+import { RESERVE_FRACTION } from '../src/recovery/recoveryPlan';
+import { simulateAscent } from '../src/simulation/ascent/ascentModel';
+import { deriveFlightVehicle } from '../src/simulation/ascent/flightVehicle';
+import { SIM_DT_S } from '../src/simulation/constants';
+import { NO_LUNAR_PROGRESS, type LunarMissionPlan } from '../src/moon/lunarFlight';
+import {
+  checkLegs,
+  defaultRefuel,
+  DEPOT_TOPUP_CREDITS,
+  FLYBY_RULES,
+  LANDING_RULES,
+  NO_REFUEL,
+  refuelCost,
+  TANKER_FLIGHT_CREDITS,
+  tankerFlights,
+} from '../src/moon/lunarRules';
 
 const env: GravityEnv = { moon: { angle0: 1, t0: 0 } };
 const spec: ShipSpec = {
@@ -210,5 +232,126 @@ describe('trans-lunar planning', () => {
     expect(pass!.periAltM).toBeLessThan(400_000);
     expect(pass!.sense).toBe(1);
     expect((pass!.periT - s.tS) / 86_400).toBeLessThan(4.5);
+  });
+});
+
+describe('Moon missions', () => {
+  const NOW = '2026-01-01T00:00:00.000Z';
+
+  function lunarContext(missionId: string, plan: LunarMissionPlan) {
+    const bp = createCompleteStarterDesign(NOW);
+    const vehicle = deriveFlightVehicle(bp, 300);
+    const lc: LaunchContext = {
+      outcome: {
+        id: 'f1',
+        at: NOW,
+        missionId,
+        missionName: 'Moon',
+        designId: bp.id,
+        designName: bp.name,
+        crewed: true,
+      },
+      blueprint: bp,
+      designRevision: bp.revision,
+      crewed: true,
+      crewNames: ['A', 'B'],
+      config: {
+        vehicle,
+        target: { kind: 'orbit', altitudeM: 150_000 },
+        failures: [],
+        boosterReserveKg: vehicle.booster.propellantKg * RESERVE_FRACTION.platform,
+      },
+    };
+    const asc = simulateAscent(lc.config, SIM_DT_S);
+    return flightContextFromLaunch(lc, asc, null, undefined, plan);
+  }
+
+  function runtime(missionId: string, plan: LunarMissionPlan) {
+    const records: FlightRecord[] = [];
+    const rt = new FlightRuntime(
+      (r) => records.push(r),
+      () => NOW,
+    );
+    rt.start(lunarContext(missionId, plan));
+    const frames = (n: number, until: () => boolean) => {
+      for (let i = 0; i < n && !until(); i++) {
+        if (rt.current.warp < rt.current.maxWarp) rt.setWarp(rt.current.maxWarp);
+        rt.update(0.1);
+      }
+    };
+    return { rt, records, frames };
+  }
+
+  it('refuels in orbit only when bought and only in a low orbit', () => {
+    const { rt, frames } = runtime('lunar-transfer', {
+      goal: 'flyby',
+      landing: false,
+      refuel: { leo: false, depot: false },
+    });
+    frames(50_000, () => rt.current.program.program === 'none' && rt.current.progress.orbit);
+    expect(rt.refuel().ok).toBe(false);
+    expect(rt.engage('lunar-orbit').ok).toBe(false);
+    expect(rt.engage('trans-earth').ok).toBe(false);
+  });
+
+  it('flies a credited lunar flyby: refuel, injection, free return, aerocapture and landing', () => {
+    const { rt, records, frames } = runtime('lunar-transfer', {
+      goal: 'flyby',
+      landing: false,
+      refuel: { leo: true, depot: false },
+    });
+    frames(50_000, () => rt.current.program.program === 'none' && rt.current.progress.orbit);
+    expect(rt.refuel().ok).toBe(true);
+    frames(50_000, () => !!rt.current.progress.lunar?.refuelLeo);
+    expect(rt.current.state!.propKg).toBeGreaterThan(1_000_000);
+    expect(rt.engage('translunar').ok).toBe(true);
+    frames(400_000, () => rt.current.program.program === 'none');
+    const l = rt.current.progress.lunar!;
+    expect(l).toMatchObject({ tli: true, flyby: true, earthReturn: true });
+    expect(rt.current.maxWarp).toBeLessThanOrEqual(1000);
+    rt.setZone('rtls');
+    expect(rt.engage('deorbit').ok).toBe(true);
+    frames(200_000, () => rt.current.phase === 'debrief');
+    expect(records[0]).toMatchObject({ result: 'success', credited: true, crewSafe: true });
+    expect(records[0]?.lunar?.flyby).toBe(true);
+    expect(records[0]?.landing?.outcome).toBe('landed');
+  }, 60_000);
+});
+
+describe('Moon mission rules', () => {
+  it('checks each leg against the refuelling bought', () => {
+    const none = checkLegs(LANDING_RULES, NO_REFUEL, 7_400, 1_200);
+    expect(none.map((c) => c.ok)).toEqual([false, false]);
+    const both = checkLegs(LANDING_RULES, { leo: true, depot: true }, 7_400, 1_200);
+    expect(both.map((c) => c.ok)).toEqual([true, true]);
+    const leoOnly = checkLegs(LANDING_RULES, { leo: true, depot: false }, 7_400, 1_200);
+    expect(leoOnly[1]!.availableMS).toBeCloseTo(7_400 - 4_250, 0);
+    expect(leoOnly[1]!.ok).toBe(false);
+    expect(refuelCost({ leo: true, depot: true }, 1_070_000)).toBe(
+      tankerFlights(1_070_000) * TANKER_FLIGHT_CREDITS + DEPOT_TOPUP_CREDITS,
+    );
+    expect(defaultRefuel(FLYBY_RULES)).toEqual({ leo: true, depot: false });
+  });
+
+  it('lists lunar objectives and credits only completed Moon goals', () => {
+    expect(objectivesFor('lunar-transfer', { leo: true, depot: false })).toEqual([
+      'orbit',
+      'refuel',
+      'tli',
+      'flyby',
+      'earth-return',
+      'deorbit',
+      'reentry',
+      'landing',
+    ]);
+    expect(objectivesFor('lunar-landing', { leo: true, depot: true })).toContain('surface');
+    const base = { ...NO_LUNAR_PROGRESS, tli: true, flyby: true };
+    expect(orbitalGoalsMet('lunar-transfer', { ...NO_PROGRESS, lunar: base })).toBe(false);
+    expect(
+      orbitalGoalsMet('lunar-transfer', { ...NO_PROGRESS, lunar: { ...base, earthReturn: true } }),
+    ).toBe(true);
+    expect(
+      orbitalGoalsMet('lunar-landing', { ...NO_PROGRESS, lunar: { ...base, earthReturn: true } }),
+    ).toBe(false);
   });
 });

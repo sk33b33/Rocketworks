@@ -7,6 +7,7 @@ import type { FlightController } from '../scenes/flight/flightController';
 import type { StationController } from '../scenes/station/stationController';
 import { useGameStore } from './gameStore';
 import { launchRuntime } from './launchBinding';
+import { findMission } from '../missions/missionCatalog';
 
 /** The single orbital-flight runtime; its outcome closes the launch session and is recorded. */
 export const flightRuntime = new FlightRuntime((record) => {
@@ -20,6 +21,7 @@ export function flightContextFromLaunch(
   ascent: AscentState,
   recovery: BoosterRecoverySummary | null = null,
   station?: { crew: number; cargo: boolean },
+  lunar?: FlightContext['lunar'],
 ): FlightContext {
   const { r, v } = ascentToInertial(ascent);
   return {
@@ -33,6 +35,7 @@ export function flightContextFromLaunch(
     recovery,
     hardware: ctx.hardware ?? { boosterId: null, shipId: null },
     ...(station ? { station } : {}),
+    ...(lunar ? { lunar } : {}),
     ascent: {
       maxAltitudeM: ascent.maxAltitudeM,
       maxSpeedMS: ascent.maxSpeedMS,
@@ -53,11 +56,19 @@ export function continueToOrbit(): boolean {
   if (!flightRuntime.active) {
     if (snap.phase !== 'handoff' || !snap.context || !snap.ascent) return false;
     const mission = useGameStore.getState().mission;
+    const rules = findMission(snap.context.outcome.missionId)?.lunar;
     flightRuntime.start(
-      flightContextFromLaunch(snap.context, snap.ascent, snap.recoveryResult, {
-        crew: snap.context.crewNames.length,
-        cargo: mission.payloadId === 'station-supplies',
-      }),
+      flightContextFromLaunch(
+        snap.context,
+        snap.ascent,
+        snap.recoveryResult,
+        {
+          crew: snap.context.crewNames.length,
+          cargo:
+            mission.payloadId === 'station-supplies' || mission.payloadId === 'surface-science',
+        },
+        rules ? { goal: rules.goal, landing: rules.landing, refuel: mission.refuel } : undefined,
+      ),
     );
   }
   return useGameStore.getState().goTo('flight');

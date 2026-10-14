@@ -1,3 +1,5 @@
+import { FLYBY_RULES, LANDING_RULES, type LunarMissionRules } from '../moon/lunarRules';
+
 /*
  * Mission and payload catalog. Destinations are fictionalized; Δv requirements, durations and
  * rewards are game values chosen for progression, not mission-design data.
@@ -41,6 +43,8 @@ export interface MissionDefinition {
   readonly rewardRp: number;
   readonly rewardCredits: number;
   readonly unlock: MissionUnlock;
+  /** Moon missions: the goal and the Δv legs flown after reaching orbit. */
+  readonly lunar?: LunarMissionRules;
 }
 
 export interface PayloadDefinition {
@@ -87,6 +91,13 @@ export const PAYLOADS: readonly PayloadDefinition[] = [
     name: 'Lunar relay satellite',
     description: 'Comms relay for future far-side operations.',
     massKg: 8_000,
+    requiresBay: true,
+  },
+  {
+    id: 'surface-science',
+    name: 'Surface science package',
+    description: 'Seismometer, heat-flow probe and a sample return kit, unloaded on the Moon.',
+    massKg: 6_000,
     requiresBay: true,
   },
 ];
@@ -204,15 +215,17 @@ export const MISSIONS: readonly MissionDefinition[] = [
     destinationLabel: 'Lunar flyby',
     summary: 'Send a crew around the Moon and back on a free-return trajectory.',
     briefing:
-      'Our first deep-space flight. Expect long communication delays and a high-energy re-entry on return. Propellant margins are tight; extended tanks or vacuum engines are recommended.',
+      'Our first deep-space flight. Tankers fill the ship in low Earth orbit, then trans-lunar injection sends it past the Moon on a free return. The way home ends with an aerocapture pass through the upper atmosphere at nearly 11 km/s before a normal deorbit and landing.',
     objectives: [
+      'Refuel in low Earth orbit',
       'Trans-lunar injection',
       'Lunar flyby photography',
-      'Return and high-speed re-entry',
+      'Aerocapture and return to orbit',
+      'Re-entry and landing',
     ],
     abortCriteria: ['Trans-lunar injection under-burn', 'Life-support margin below 20%'],
-    durationDays: 8,
-    requiredDeltaVMs: 11_800,
+    durationDays: 9,
+    requiredDeltaVMs: 9_750,
     requirements: {
       minCrew: 2,
       maxCrew: 6,
@@ -226,18 +239,25 @@ export const MISSIONS: readonly MissionDefinition[] = [
     rewardRp: 5,
     rewardCredits: 60_000,
     unlock: { kind: 'after', missionIds: ['station-docking'] },
+    lunar: FLYBY_RULES,
   },
   {
     id: 'lunar-landing',
     name: 'Lunar Landing',
     destination: 'lunar-surface',
     destinationLabel: 'Lunar surface',
-    summary: 'Land a crew on the Moon and return them safely.',
-    briefing: 'Planned for the Moon program.',
-    objectives: ['Land at the selected site', 'Surface operations', 'Ascent and return'],
-    abortCriteria: ['Landing site hazards exceed limits'],
-    durationDays: 14,
-    requiredDeltaVMs: 15_000,
+    summary: 'Land a crew on the Moon, work on the surface and bring them home.',
+    briefing:
+      'Refuel in low Earth orbit, fly to lunar orbit and top up at the depot. Then pick a landing site, descend under guidance (take over for the final few hundred metres if you like), run the surface tasks, lift off and fly home. Steep or boulder-strewn ground can tip the ship over.',
+    objectives: [
+      'Refuel in Earth orbit and at the lunar depot',
+      'Land at the selected site',
+      'Surface operations',
+      'Ascent to lunar orbit and the trip home',
+    ],
+    abortCriteria: ['Landing site hazards exceed limits', 'Propellant below the ascent reserve'],
+    durationDays: 12,
+    requiredDeltaVMs: 9_750,
     requirements: {
       minCrew: 2,
       maxCrew: 4,
@@ -246,14 +266,12 @@ export const MISSIONS: readonly MissionDefinition[] = [
       antenna: 'critical',
       reentry: true,
     },
-    payloadIds: ['none'],
+    payloadIds: ['none', 'surface-science'],
     baseRisk: 0.7,
     rewardRp: 8,
     rewardCredits: 100_000,
-    unlock: {
-      kind: 'later-stage',
-      reason: 'Moon landings arrive with the Moon program in a later stage.',
-    },
+    unlock: { kind: 'after', missionIds: ['lunar-transfer'] },
+    lunar: LANDING_RULES,
   },
 ];
 

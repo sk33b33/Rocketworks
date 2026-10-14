@@ -41,6 +41,7 @@ function sampleData(): Omit<SaveData, 'saveVersion'> {
       recovery: null,
       boosterFleetId: null,
       shipFleetId: null,
+      refuel: { leo: false, depot: false },
     },
     ui: { guideCollapsed: true, assemblyMode: 'structure', randomFailures: false },
     flights: [],
@@ -205,9 +206,9 @@ describe('migration v1 → v2', () => {
   });
 
   it('passes current-version data through and rejects invalid versions', () => {
-    expect(migrateSave({ saveVersion: 5, x: 1 })).toEqual({
+    expect(migrateSave({ saveVersion: 6, x: 1 })).toEqual({
       ok: true,
-      data: { saveVersion: 5, x: 1 },
+      data: { saveVersion: 6, x: 1 },
     });
     expect(migrateSave({ saveVersion: 0 }).ok).toBe(false);
     expect(migrateSave({ saveVersion: 1.5 }).ok).toBe(false);
@@ -394,6 +395,23 @@ describe('migration v4 → v5 and the fleet', () => {
         violations: 0,
         tasksDone: true,
       },
+      lunar: {
+        closestAltM: 110_000,
+        flyby: true,
+        lunarOrbit: true,
+        refuels: 2,
+        landing: {
+          siteId: 'tranquil',
+          siteName: 'Sea of Calm',
+          outcome: 'landed',
+          grade: 'A',
+          manual: true,
+          missM: 42,
+        },
+        surfaceDone: true,
+        ascent: true,
+        earthReturn: true,
+      },
     };
     const data = {
       ...sampleData(),
@@ -408,6 +426,17 @@ describe('migration v4 → v5 and the fleet', () => {
     expect(result.data.flights[0]?.recovery).toEqual(recovery);
     expect(result.data.flights[0]?.hardware).toEqual({ boosterId: 'fv-1', shipId: null });
     expect(result.data.flights[0]?.docking).toEqual(flight.docking);
+    expect(result.data.flights[0]?.lunar).toEqual(flight.lunar);
     expect(result.data.mission).toMatchObject({ recovery: 'platform', boosterFleetId: 'fv-1' });
+  });
+
+  it('migrates v5 mission plans to v6 with no refuelling bought', () => {
+    const data = { ...sampleData(), saveVersion: 5 } as Record<string, unknown>;
+    const mission = { ...(data.mission as Record<string, unknown>) };
+    delete mission.refuel;
+    const result = parseSave(JSON.stringify({ ...data, mission }));
+    if (result.status !== 'loaded') throw new Error();
+    expect(result.data.mission?.refuel).toEqual({ leo: false, depot: false });
+    expect(result.warnings.join(' ')).toMatch(/upgraded from version 5/);
   });
 });

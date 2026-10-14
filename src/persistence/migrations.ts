@@ -1,6 +1,6 @@
 /** Save-format migrations. Each entry upgrades version N to N+1; never edit a shipped migration. */
 
-export const CURRENT_SAVE_VERSION = 5;
+export const CURRENT_SAVE_VERSION = 6;
 
 type Data = Record<string, unknown>;
 type Migration = (data: Data) => Data;
@@ -52,6 +52,13 @@ const MIGRATIONS: Record<number, Migration> = {
     fleet: [],
     mission: isRecord(data.mission)
       ? { ...data.mission, recovery: null, boosterFleetId: null, shipFleetId: null }
+      : data.mission,
+  }),
+  // v6 (Stage 8): mission plans gain refuelling choices (Moon missions).
+  5: (data) => ({
+    ...data,
+    mission: isRecord(data.mission)
+      ? { ...data.mission, refuel: { leo: false, depot: false } }
       : data.mission,
   }),
 };

@@ -2,6 +2,7 @@ import type {
   BoosterRecoverySummary,
   FlightRecord,
   LandingSummary,
+  LunarSummary,
   OutcomeInput,
 } from '../launch/flightRecord';
 import { rateLanding, type Grade } from '../recovery/rating';
@@ -17,7 +18,23 @@ import type { LunarProgress } from '../moon/lunarFlight';
  */
 
 export type ObjectiveId =
-  'orbit' | 'lap' | 'rendezvous' | 'dock' | 'tasks' | 'deorbit' | 'reentry' | 'landing';
+  | 'orbit'
+  | 'lap'
+  | 'rendezvous'
+  | 'dock'
+  | 'tasks'
+  | 'refuel'
+  | 'tli'
+  | 'flyby'
+  | 'lunar-orbit'
+  | 'depot'
+  | 'moon-landing'
+  | 'surface'
+  | 'moon-ascent'
+  | 'earth-return'
+  | 'deorbit'
+  | 'reentry'
+  | 'landing';
 
 export interface FlightProgress {
   /** Stable orbit reached (periapsis ≥ the stable threshold). */
@@ -60,6 +77,15 @@ export const OBJECTIVE_LABELS: Record<ObjectiveId, string> = {
   rendezvous: 'Rendezvous: reach the hold point near the station',
   dock: 'Dock with the station',
   tasks: 'Complete the docked tasks, undock and depart',
+  refuel: 'Refuel in low Earth orbit',
+  tli: 'Trans-lunar injection',
+  flyby: 'Fly past the Moon (photography within 20,000 km)',
+  'lunar-orbit': 'Enter lunar orbit',
+  depot: 'Top up at the lunar depot',
+  'moon-landing': 'Land on the Moon',
+  surface: 'Complete the surface tasks',
+  'moon-ascent': 'Lift off back to lunar orbit',
+  'earth-return': 'Return to Earth orbit (aerocapture)',
   deorbit: 'Deorbit burn (periapsis into the atmosphere)',
   reentry: 'Survive re-entry',
   landing: 'Land or splash down safely',
@@ -81,13 +107,32 @@ export function objectiveDone(id: ObjectiveId, p: FlightProgress, s: FlightState
       return !!p.docking?.grade;
     case 'tasks':
       return !!p.docking?.tasksDone;
+    case 'refuel':
+      return !!p.lunar?.refuelLeo;
+    case 'tli':
+      return !!p.lunar?.tli;
+    case 'flyby':
+      return !!p.lunar?.flyby;
+    case 'lunar-orbit':
+      return !!p.lunar?.lunarOrbit;
+    case 'depot':
+      return !!p.lunar?.refuelDepot;
+    case 'moon-landing':
+      return p.lunar?.landing?.outcome === 'landed';
+    case 'surface':
+      return !!p.lunar?.surfaceDone;
+    case 'moon-ascent':
+      return !!p.lunar?.ascent;
+    case 'earth-return':
+      return !!p.lunar?.earthReturn;
     case 'deorbit':
       return p.deorbit;
     case 'reentry':
       return p.reentry;
     case 'landing':
       return (
-        s.phase === 'landed' || (s.phase === 'splashdown' && !isLand(localFrame(s.r).groundAngle))
+        (s.phase === 'landed' && s.touchdown?.body !== 'moon') ||
+        (s.phase === 'splashdown' && !isLand(localFrame(s.r).groundAngle))
       );
   }
 }
@@ -123,21 +168,63 @@ export function shipRatingLimits(zone: LandingZone) {
 }
 
 /** Missions completed in the orbital flight (plus a safe return). */
-export const CREDITABLE_IN_FLIGHT = new Set(['orbital-flight', 'station-docking']);
+export const CREDITABLE_IN_FLIGHT = new Set([
+  'orbital-flight',
+  'station-docking',
+  'lunar-transfer',
+  'lunar-landing',
+]);
 
 /** The objective checklist for a mission's orbital flight. */
-export function objectivesFor(missionId: string): ObjectiveId[] {
-  return missionId === 'station-docking'
-    ? ['orbit', 'rendezvous', 'dock', 'tasks', 'deorbit', 'reentry', 'landing']
-    : ['orbit', 'lap', 'deorbit', 'reentry', 'landing'];
+export function objectivesFor(
+  missionId: string,
+  refuel: { readonly leo: boolean; readonly depot: boolean } | null = null,
+): ObjectiveId[] {
+  const leo: ObjectiveId[] = refuel?.leo ? ['refuel'] : [];
+  switch (missionId) {
+    case 'station-docking':
+      return ['orbit', 'rendezvous', 'dock', 'tasks', 'deorbit', 'reentry', 'landing'];
+    case 'lunar-transfer':
+      return ['orbit', ...leo, 'tli', 'flyby', 'earth-return', 'deorbit', 'reentry', 'landing'];
+    case 'lunar-landing':
+      return [
+        'orbit',
+        ...leo,
+        'tli',
+        'lunar-orbit',
+        ...(refuel?.depot ? (['depot'] as ObjectiveId[]) : []),
+        'moon-landing',
+        'surface',
+        'moon-ascent',
+        'earth-return',
+        'reentry',
+        'landing',
+      ];
+    default:
+      return ['orbit', 'lap', 'deorbit', 'reentry', 'landing'];
+  }
 }
 
-/** Mission-specific goals met in orbit (the safe return is checked separately). */
+/** Mission-specific goals met before the safe return (which is checked separately). */
 export function orbitalGoalsMet(missionId: string, p: FlightProgress): boolean {
-  if (missionId === 'station-docking')
-    return p.orbit && !!p.docking?.grade && !!p.docking.tasksDone;
-  return p.orbit && completedOrbits(p) >= 1;
+  const l = p.lunar;
+  switch (missionId) {
+    case 'station-docking':
+      return p.orbit && !!p.docking?.grade && !!p.docking.tasksDone;
+    case 'lunar-transfer':
+      return !!l && l.tli && l.flyby && l.earthReturn;
+    case 'lunar-landing':
+      return !!l && l.landing?.outcome === 'landed' && l.surfaceDone && l.ascent && l.earthReturn;
+    default:
+      return p.orbit && completedOrbits(p) >= 1;
+  }
 }
+
+const INCOMPLETE: Record<string, string> = {
+  'station-docking': 'dock with the station and finish the docked tasks.',
+  'lunar-transfer': 'fly past the Moon and return to Earth orbit.',
+  'lunar-landing': 'land on the Moon, finish the surface tasks and fly home.',
+};
 
 /** Classifies how the flight ended. `ended` = the player ended the flight while still flying. */
 export function landingSummary(
@@ -243,11 +330,16 @@ export function evaluateFlight(
           ? 'success'
           : 'partial';
   let summary = summarize(landing, ctx.zone);
+  const onMoon = s.touchdown?.body === 'moon';
+  if (onMoon)
+    summary =
+      s.phase === 'crashed'
+        ? 'The ship crashed on the Moon.'
+        : s.phase === 'tipped'
+          ? 'The ship tipped over on the Moon and is lost; the crew is assumed rescued by a later flight.'
+          : 'Flight ended with the ship on the Moon; the crew is assumed rescued by a later flight.';
   if (safe && creditable && !objectivesMet)
-    summary +=
-      ctx.outcome.missionId === 'station-docking'
-        ? ' Mission objectives incomplete: dock with the station and finish the docked tasks.'
-        : ' Mission objectives incomplete: fly at least one full orbit.';
+    summary += ` Mission objectives incomplete: ${INCOMPLETE[ctx.outcome.missionId] ?? 'fly at least one full orbit.'}`;
   if (safe && !creditable) summary += ' The rest of this mission arrives in a later stage.';
   // A stranded crew is assumed rescued (gameplay simplification); breakup or a crash is fatal.
   const crewSafe = ctx.outcome.crewed
@@ -269,7 +361,22 @@ export function evaluateFlight(
     ].slice(-60),
     landing,
     ...(p.docking ? { docking: p.docking } : {}),
+    ...(p.lunar ? { lunar: lunarSummary(p.lunar) } : {}),
     ...(ctx.recovery ? { recovery: ctx.recovery } : {}),
     hardware: ctx.hardware ?? { boosterId: null, shipId: null },
+  };
+}
+
+/** The Moon part of a flight record. */
+export function lunarSummary(l: LunarProgress): LunarSummary {
+  return {
+    closestAltM: l.closestAltM,
+    flyby: l.flyby,
+    lunarOrbit: l.lunarOrbit,
+    refuels: (l.refuelLeo ? 1 : 0) + (l.refuelDepot ? 1 : 0),
+    landing: l.landing,
+    surfaceDone: l.surfaceDone,
+    ascent: l.ascent,
+    earthReturn: l.earthReturn,
   };
 }

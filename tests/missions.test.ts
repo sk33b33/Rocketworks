@@ -110,12 +110,15 @@ describe('mission catalog', () => {
     const locked = missionAvailability(station, []);
     expect(locked.available === false && locked.reason).toMatch(/Crewed Orbital Shakedown/);
     expect(missionAvailability(station, ['orbital-flight']).available).toBe(true);
+    expect(missionAvailability(findMission('lunar-landing')!, ['station-docking']).available).toBe(
+      false,
+    );
     expect(
       missionAvailability(
         findMission('lunar-landing')!,
         MISSIONS.map((m) => m.id),
       ).available,
-    ).toBe(false);
+    ).toBe(true);
   });
 
   it('roster is fictional-only data with valid skills and at least one unavailable astronaut', () => {
@@ -267,7 +270,12 @@ describe('evaluateMission', () => {
     let s = createDefaultSetup(bp.id);
     s = { ...s, missionId: 'lunar-transfer', crewIds: ['okafor', 'lindqvist'] };
     const found = ids(ctx(greenSetup(s), bp, ['orbital-flight', 'station-docking']));
-    expect(found).toContain('delta-v');
+    expect(found).toContain('lunar-dv-trip');
+    // Orbital refuelling fills the tanks for the trip.
+    const fueled = { ...s, refuel: { leo: true, depot: false } };
+    expect(ids(ctx(greenSetup(fueled), bp, ['orbital-flight', 'station-docking']))).not.toContain(
+      'lunar-dv-trip',
+    );
   });
 
   it('station missions need a docking adapter and RCS', () => {

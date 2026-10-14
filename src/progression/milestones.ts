@@ -149,6 +149,36 @@ export const MILESTONES: readonly Milestone[] = [
           (!!f.hardware?.shipId && f.landing?.shipRecovered === true),
       ),
   },
+  {
+    id: 'lunar-flyby',
+    title: 'Around the Moon',
+    description: 'Fly past the Moon with a crew aboard.',
+    rewardRp: 2,
+    isAchieved: (ctx) => anyFlight(ctx, (f) => f.lunar?.flyby === true && f.crewSafe === true),
+  },
+  {
+    id: 'boots-on-the-moon',
+    title: 'Boots on the Moon',
+    description: 'Land a crewed ship on the Moon.',
+    rewardRp: 3,
+    rewardCredits: 50_000,
+    isAchieved: (ctx) => anyFlight(ctx, (f) => f.lunar?.landing?.outcome === 'landed'),
+  },
+  {
+    id: 'precision-lunar-landing',
+    title: 'Pinpoint touchdown',
+    description: 'Fly the final lunar descent yourself and earn an A rating or better.',
+    rewardRp: 1,
+    rewardCredits: 25_000,
+    isAchieved: (ctx) =>
+      anyFlight(
+        ctx,
+        (f) =>
+          f.lunar?.landing?.outcome === 'landed' &&
+          f.lunar.landing.manual &&
+          gradeAtLeast(f.lunar.landing.grade, 'A'),
+      ),
+  },
 ];
 
 /** Milestones achieved by the context that are not yet recorded. */

@@ -1,4 +1,5 @@
 import type { FlightEvent, FlightState, ShipSpec } from '../flight/flightModel';
+import type { LunarSummary } from '../launch/flightRecord';
 import { localFrame, orbitalElements, type OrbitalElements, type Vec2 } from '../flight/orbitMath';
 import {
   bodyFrame,
@@ -45,6 +46,11 @@ export interface LunarProgress {
   readonly refuelDepot: boolean;
   /** Back in a closed Earth orbit (or re-entering) after the Moon. */
   readonly earthReturn: boolean;
+  /** Lunar landing result (landing missions). */
+  readonly landing: LunarSummary['landing'];
+  readonly surfaceDone: boolean;
+  /** Lifted off and reached lunar orbit again. */
+  readonly ascent: boolean;
 }
 
 export const NO_LUNAR_PROGRESS: LunarProgress = {
@@ -56,6 +62,9 @@ export const NO_LUNAR_PROGRESS: LunarProgress = {
   lunarOrbit: false,
   refuelDepot: false,
   earthReturn: false,
+  landing: null,
+  surfaceDone: false,
+  ascent: false,
 };
 
 /** A flyby counts (photography objective) within this altitude of the Moon. */

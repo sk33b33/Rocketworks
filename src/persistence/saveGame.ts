@@ -12,7 +12,13 @@ import { INITIAL_PROGRESSION, TECH_TREE, type ProgressionState } from '../progre
 import { findCrew } from '../missions/crew';
 import { findMission, findPayload, MISSIONS } from '../missions/missionCatalog';
 import type { MissionSetup } from '../missions/missionSetup';
-import type { BoosterRecoverySummary, FlightRecord, LandingSummary } from '../launch/flightRecord';
+import type {
+  BoosterRecoverySummary,
+  FlightRecord,
+  LandingSummary,
+  LunarLandingOutcome,
+  LunarSummary,
+} from '../launch/flightRecord';
 import type { FleetVehicle } from '../fleet/fleet';
 import type { Grade } from '../recovery/rating';
 import type { RecoveryTarget } from '../recovery/recoveryPlan';
@@ -242,6 +248,7 @@ function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
             }
           : null;
       const hw = isRecord(r.hardware) ? r.hardware : null;
+      const lunar = parseLunar(r.lunar);
       out.push({
         id: r.id,
         at: r.at,
@@ -261,6 +268,7 @@ function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
         ...(landing ? { landing } : {}),
         ...(recovery ? { recovery } : {}),
         ...(docking ? { docking } : {}),
+        ...(lunar ? { lunar } : {}),
         ...(hw
           ? {
               hardware: {
@@ -320,6 +328,42 @@ function parseMissionSetup(
       : null,
     boosterFleetId: isString(raw.boosterFleetId) ? raw.boosterFleetId : null,
     shipFleetId: isString(raw.shipFleetId) ? raw.shipFleetId : null,
+    refuel: isRecord(raw.refuel)
+      ? { leo: raw.refuel.leo === true, depot: raw.refuel.depot === true }
+      : { leo: false, depot: false },
+  };
+}
+
+const LUNAR_OUTCOMES: readonly LunarLandingOutcome[] = ['landed', 'tipped', 'crashed'];
+
+/** Moon-mission summary on a flight record (Stage 8+); malformed parts are dropped. */
+function parseLunar(raw: unknown): LunarSummary | null {
+  if (!isRecord(raw)) return null;
+  const l = isRecord(raw.landing) ? raw.landing : null;
+  const landing =
+    l &&
+    isString(l.siteId) &&
+    isString(l.siteName) &&
+    LUNAR_OUTCOMES.includes(l.outcome as LunarLandingOutcome) &&
+    isNum(l.missM)
+      ? {
+          siteId: l.siteId,
+          siteName: l.siteName,
+          outcome: l.outcome as LunarLandingOutcome,
+          grade: parseGrade(l.grade),
+          manual: l.manual === true,
+          missM: l.missM,
+        }
+      : null;
+  return {
+    closestAltM: isNum(raw.closestAltM) ? raw.closestAltM : null,
+    flyby: raw.flyby === true,
+    lunarOrbit: raw.lunarOrbit === true,
+    refuels: isCount(raw.refuels) ? raw.refuels : 0,
+    landing,
+    surfaceDone: raw.surfaceDone === true,
+    ascent: raw.ascent === true,
+    earthReturn: raw.earthReturn === true,
   };
 }
 

@@ -35,8 +35,32 @@ export interface FlightRecord {
   };
   /** Booster recovery (Stage 6+). */
   readonly recovery?: BoosterRecoverySummary;
+  /** Moon missions (Stage 8+). */
+  readonly lunar?: LunarSummary;
   /** Fleet vehicles that flew (null = new build). */
   readonly hardware?: { readonly boosterId: string | null; readonly shipId: string | null };
+}
+
+export type LunarLandingOutcome = 'landed' | 'tipped' | 'crashed';
+
+export interface LunarSummary {
+  /** Closest approach to the Moon (altitude, m). */
+  readonly closestAltM: number | null;
+  readonly flyby: boolean;
+  readonly lunarOrbit: boolean;
+  /** Refuelling operations completed (tankers in Earth orbit, the lunar depot). */
+  readonly refuels: number;
+  readonly landing: {
+    readonly siteId: string;
+    readonly siteName: string;
+    readonly outcome: LunarLandingOutcome;
+    readonly grade: Grade | null;
+    readonly manual: boolean;
+    readonly missM: number;
+  } | null;
+  readonly surfaceDone: boolean;
+  readonly ascent: boolean;
+  readonly earthReturn: boolean;
 }
 
 export type BoosterOutcome = 'caught' | 'landed' | 'lost' | 'expended' | 'not-attempted';
