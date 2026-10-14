@@ -59,8 +59,7 @@ export function MissionListPanel() {
         })}
       </ul>
       <p className="footnote">
-        Rewards are paid the first time a mission is flown successfully (flight arrives in later
-        stages).
+        Rewards are paid the first time a mission is flown successfully and credited.
       </p>
     </div>
   );

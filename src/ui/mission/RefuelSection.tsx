@@ -15,7 +15,7 @@ export function RefuelSection() {
   const legs = report.lunarLegs ?? [];
   const hasDepotLeg = rules.legs.some((l) => l.refuel === 'depot');
   return (
-    <fieldset className="stacked">
+    <fieldset className="stacked section-gap">
       <legend className="eyebrow">Refuelling</legend>
       <label>
         <input

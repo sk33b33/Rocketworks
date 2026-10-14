@@ -51,6 +51,8 @@ export class FlightScene implements GameScene {
   private mapZoom = 1;
   /** Map camera distance at zoom 1 (larger on Moon missions). */
   private mapBase = EARTH_RADIUS_M * 3.4;
+  /** Map focus relative to Earth's centre (halfway to the Moon in the Earth–Moon view). */
+  private readonly mapFocus = new THREE.Vector3();
   private drag: { x: number; y: number } | null = null;
   private readonly centre = new THREE.Vector3();
   private readonly tmp = new THREE.Vector3();
@@ -127,10 +129,13 @@ export class FlightScene implements GameScene {
     const lunar = snap.lunar;
     const m = lunar ? moonState(lunar.env.moon, s.tS) : null;
     // Moon missions: the map frames the Earth–Moon system once the ship heads out.
-    this.mapBase =
-      lunar && (lunar.path.length > 1 || s.ref === 'moon' || Math.hypot(...s.r) > 30_000_000)
-        ? MOON_DISTANCE_M * 2.6
-        : EARTH_RADIUS_M * 3.4;
+    const system =
+      !!lunar &&
+      !!m &&
+      (lunar.path.length > 1 || s.ref === 'moon' || Math.hypot(...s.r) > 30_000_000);
+    this.mapBase = system ? MOON_DISTANCE_M * 1.9 : EARTH_RADIUS_M * 3.4;
+    if (system && m) this.mapFocus.set(m.r[0] / 2, m.r[1] / 2, 0);
+    else this.mapFocus.set(0, 0, 0);
     this.updateCamera(mode, s);
     if (m)
       this.camera.far = Math.max(
@@ -258,9 +263,10 @@ export class FlightScene implements GameScene {
         -Math.cos(this.mapYaw) * Math.cos(this.mapPitch),
         Math.sin(this.mapPitch),
       );
-      cam.position.copy(this.centre).addScaledVector(dir, dist);
+      const target = this.tmp.copy(this.centre).add(this.mapFocus);
+      cam.position.copy(target).addScaledVector(dir, dist);
       cam.up.set(0, 1, 0);
-      cam.lookAt(this.centre);
+      cam.lookAt(target);
       cam.fov = 40;
       const extent = Math.max(EARTH_RADIUS_M * 1.5, this.mapBase * 0.6);
       cam.near = Math.max(1_000, dist - extent);

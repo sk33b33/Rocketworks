@@ -37,6 +37,8 @@ export function LunarPanel({
   const refuel = lunar.refuel;
   const avail = lunar.refuelAvailable;
   const flying = snap.phase === 'flight' && s.phase === 'flight';
+  const remaining =
+    (lunar.plan.refuel.leo && !p.refuelLeo) || (lunar.plan.refuel.depot && !p.refuelDepot);
   return (
     <div className="panel">
       <div className="panel-header">
@@ -108,7 +110,7 @@ export function LunarPanel({
                 · {formatDuration(Math.max(0, refuel.endT - t))} left (time warp is available)
               </p>
             </>
-          ) : (
+          ) : remaining && !surface ? (
             <>
               <button
                 type="button"
@@ -126,7 +128,7 @@ export function LunarPanel({
                 <p className="small-text muted">Switch the autopilot off first.</p>
               )}
             </>
-          )}
+          ) : null}
           <p className="small-text muted">
             {p.refuelLeo
               ? '✓ Earth-orbit tankers'

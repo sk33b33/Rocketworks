@@ -68,12 +68,17 @@ export function VehiclePanel({ snap }: { snap: FlightSnapshot }) {
         <dd>
           {fmt(s.pitchDeg)}° · {fmt(s.bankDeg)}°
         </dd>
-        <dt>Angle of attack</dt>
-        <dd>{fmt(s.angleOfAttackDeg)}°</dd>
-        <dt>Heating</dt>
-        <dd className={heat > 300 ? 'tone-warn' : undefined}>
-          {fmt(heat)} kW/m² <span className="muted">(peak {fmt(s.peakHeatFluxWm2 / 1000)})</span>
-        </dd>
+        {s.ref !== 'moon' && (
+          <>
+            <dt>Angle of attack</dt>
+            <dd>{fmt(s.angleOfAttackDeg)}°</dd>
+            <dt>Heating</dt>
+            <dd className={heat > 300 ? 'tone-warn' : undefined}>
+              {fmt(heat)} kW/m²{' '}
+              <span className="muted">(peak {fmt(s.peakHeatFluxWm2 / 1000)})</span>
+            </dd>
+          </>
+        )}
         <dt>Acceleration</dt>
         <dd className={highG ? 'tone-bad' : undefined}>
           {fmt(s.gLoad, 2)} g <span className="muted">(peak {fmt(s.peakG, 1)})</span>

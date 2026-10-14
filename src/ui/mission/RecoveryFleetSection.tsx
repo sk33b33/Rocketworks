@@ -194,7 +194,11 @@ export function RecoveryFleetSection({ bp }: { bp: RocketBlueprint | undefined }
       <dl className="facts">
         <dt>New-build cost</dt>
         <dd>{formatCredits(cost.newBuildCredits)}</dd>
-        <dt>This mission's hardware</dt>
+        <dt>
+          {cost.refuelCredits > 0
+            ? "This mission's hardware + refuelling"
+            : "This mission's hardware"}
+        </dt>
         <dd
           className={
             over ? 'tone-bad' : cost.missionCredits < cost.newBuildCredits ? 'tone-ok' : undefined

@@ -77,7 +77,7 @@ export function FlightHud() {
             <LunarPanel snap={snap} />
           </section>
         )}
-        {snap.station && snap.phase === 'flight' && (
+        {snap.station && !snap.lunar && snap.phase === 'flight' && (
           <section data-panel="station">
             <StationPanel snap={snap} />
           </section>

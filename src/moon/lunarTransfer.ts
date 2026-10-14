@@ -874,6 +874,17 @@ export function lunarProgramAvailability(
       if (s.ref !== 'moon')
         return { ok: false, reason: "Only inside the Moon's sphere of influence." };
       if (inLunarOrbit) return { ok: false, reason: 'Already in lunar orbit.' };
+      // Only on arrival (an escape path or a very wide orbit), not during a descent or ascent.
+      const mel = orbitalElements(
+        relPosition(s, 'moon', env),
+        relVelocity(s, 'moon', env),
+        MOON_BODY,
+      );
+      if (mel.status !== 'escape' && mel.apoapsisAltM < 2_000_000)
+        return {
+          ok: false,
+          reason: 'Already captured by the Moon: use the landing or ascent programs.',
+        };
       if (noProp) return { ok: false, reason: 'No propellant for the insertion burn.' };
       return { ok: true };
     }
