@@ -135,13 +135,13 @@ export class MarsScene implements GameScene {
     const basic = (key: string, color: number) =>
       this.cache.material(key, () => new THREE.MeshBasicMaterial({ color }));
     const sunMesh = new THREE.Mesh(dot, basic('mars:sysSun', 0xffd27a));
-    sunMesh.scale.setScalar(5);
+    sunMesh.scale.setScalar(7);
     this.sysEarth = new THREE.Mesh(dot, basic('mars:sysEarth', 0x4f9dff));
     this.sysMars = new THREE.Mesh(dot, basic('mars:sysMars', 0xe0663a));
     this.sysShip = new THREE.Mesh(dot, basic('mars:sysShip', 0xff4fd8));
-    this.sysEarth.scale.setScalar(2.4);
-    this.sysMars.scale.setScalar(2);
-    this.sysShip.scale.setScalar(1.6);
+    this.sysEarth.scale.setScalar(5);
+    this.sysMars.scale.setScalar(4.5);
+    this.sysShip.scale.setScalar(3.5);
     const ring = (radiusM: number, color: number, key: string) => {
       const r = radiusM * SYSTEM_SCALE;
       const pts = Array.from({ length: 257 }, (_, i) => {
@@ -292,15 +292,19 @@ export class MarsScene implements GameScene {
     }
     pos.needsUpdate = true;
     this.sysPath!.geometry.setDrawRange(0, n);
-    // Looking down on the plane, tilted by the drag, framing both orbits.
+    // Looking down on the plane (tilted by the drag), framing both orbits between the HUD
+    // panels: the view is shifted so the Sun sits a little above the screen's centre.
     const cam = this.camera;
-    const dist = 560 * this.zoom;
-    const tilt = THREE.MathUtils.clamp(0.35 + this.pitch, 0.05, 1.3);
+    const dist = 720 * this.zoom;
+    const tilt = THREE.MathUtils.clamp(0.12 + this.pitch * 0.6, 0.08, 1.3);
+    const turn = this.yaw - 0.9;
+    const shift = this.tmp.set(0, -70 * this.zoom, 0).applyAxisAngle(AXIS_Z, turn);
     cam.position
       .set(0, -Math.sin(tilt) * dist, Math.cos(tilt) * dist)
-      .applyAxisAngle(AXIS_Z, this.yaw - 0.9);
+      .applyAxisAngle(AXIS_Z, turn)
+      .add(shift);
     cam.up.set(0, 0, 1);
-    cam.lookAt(0, 0, 0);
+    cam.lookAt(shift);
     cam.near = 1;
     cam.far = 5_000;
     cam.fov = 45;

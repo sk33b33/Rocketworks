@@ -471,7 +471,7 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
       const wait = Math.ceil(window.opensDay - day);
       add({
         id: 'mars-window',
-        area: 'guidance',
+        area: 'weather',
         severity: 'critical',
         title: `Outside the Mars launch window (opens in ${fmt(wait)} days)`,
         detail: `Earth and Mars line up for a transfer about every 26 months. The next window opens on day ${fmt(Math.ceil(window.opensDay))} and closes on day ${fmt(Math.floor(window.closesDay))}; today is day ${fmt(day)}.`,

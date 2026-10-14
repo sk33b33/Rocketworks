@@ -76,6 +76,7 @@ describe('countdown', () => {
     expect(propellantLoad(-10 * 60)).toEqual({ booster: 1, ship: 1 });
     expect(formatTMinus(-125)).toBe('T-02:05');
     expect(formatTMinus(3725)).toBe('T+1:02:05');
+    expect(formatTMinus(3 * 86_400 + 3725)).toBe('T+3d 01:02:05');
   });
 });
 

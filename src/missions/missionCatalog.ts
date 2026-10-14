@@ -301,7 +301,8 @@ export const MISSIONS: readonly MissionDefinition[] = [
     ],
     abortCriteria: ['Injection outside the launch window', 'Heat shield below entry limits'],
     durationDays: 280,
-    requiredDeltaVMs: 9_750,
+    // Just orbit (with a small reserve): refuelling fills the tanks for the legs after it.
+    requiredDeltaVMs: 9_300,
     requirements: {
       minCrew: 0,
       maxCrew: 0,

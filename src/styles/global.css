@@ -1662,7 +1662,9 @@ fieldset.stacked label {
 .next-step {
   margin-left: auto;
   min-height: 40px;
-  max-width: 420px;
+  min-width: 0;
+  flex: 0 1 auto;
+  max-width: 300px;
   text-align: left;
   font-size: 13px;
   white-space: nowrap;

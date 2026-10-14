@@ -117,6 +117,22 @@ export function drawMainDisplay(
     case 'station':
       ctx.ellipse(ex, cy, er * 1.5, er * 1.35, 0, 0, Math.PI * 2);
       break;
+    case 'mars-surface': {
+      // Half an ellipse around the (off-screen) Sun to a small red planet.
+      const mx = w * 0.84;
+      ctx.moveTo(ex + er, cy);
+      ctx.bezierCurveTo(w * 0.42, cy - h * 0.42, mx - 40, cy - h * 0.38, mx, cy - er * 0.4);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = '#d9653a';
+      ctx.beginPath();
+      ctx.arc(mx, cy, er * 0.38, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = C.text;
+      ctx.fillText('MARS', mx - 22, cy + er * 0.38 + 10);
+      ctx.beginPath();
+      break;
+    }
     default: {
       const mx = w * 0.8;
       ctx.moveTo(ex + er, cy);
@@ -148,7 +164,11 @@ export function drawMainDisplay(
     `Δv est. ${dv} / ${report.requiredDeltaVMs.toLocaleString('en-US')} m/s`,
     `Payload + crew ${(report.carriedMassKg / 1000).toFixed(1)} t`,
     `Duration ${report.mission.durationDays} d · Risk ${report.risk.level.toUpperCase()}`,
-    `Window opens T-${report.conditions.windowOpensInHours} h`,
+    report.mars
+      ? report.mars.window.open
+        ? 'Mars window OPEN'
+        : `Mars window opens in ${Math.ceil(report.mars.window.opensInDays)} d`
+      : `Window opens T-${report.conditions.windowOpensInHours} h`,
   ];
   ctx.font = '22px system-ui, sans-serif';
   lines.forEach((line, i) => {

@@ -14,7 +14,7 @@ import {
 const clock = (page: import('@playwright/test').Page) => page.locator('.mission-clock').first();
 /** The T+ part of the clock, without the PAUSED/warp tags. */
 const clockTime = async (page: import('@playwright/test').Page) =>
-  ((await clock(page).innerText()).match(/T[+-][\d:]+/) ?? [''])[0];
+  ((await clock(page).innerText()).match(/T[+-][\dd: ]+\d/) ?? [''])[0];
 
 test('a flight in orbit survives reloads and resumes paused at the same time', async ({ page }) => {
   await freshStart(page);
