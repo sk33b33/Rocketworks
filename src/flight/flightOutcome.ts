@@ -3,6 +3,7 @@ import type {
   FlightRecord,
   LandingSummary,
   LunarSummary,
+  MarsSummary,
   OutcomeInput,
 } from '../launch/flightRecord';
 import { rateLanding, type Grade } from '../recovery/rating';
@@ -11,6 +12,7 @@ import { FLIGHT, type FlightState } from './flightModel';
 import { findZoneAt, isLand, missDistanceM, type LandingZone } from './landingZones';
 import { localFrame } from './orbitMath';
 import type { LunarProgress } from '../moon/lunarFlight';
+import type { MarsProgress } from '../mars/marsFlight';
 
 /*
  * Objectives and outcome evaluation for the orbital part of a flight. Pure: the runtime tracks
@@ -32,6 +34,10 @@ export type ObjectiveId =
   | 'surface'
   | 'moon-ascent'
   | 'earth-return'
+  | 'tmi'
+  | 'mars-arrival'
+  | 'mars-landing'
+  | 'mars-surface'
   | 'deorbit'
   | 'reentry'
   | 'landing';
@@ -51,6 +57,8 @@ export interface FlightProgress {
   readonly docking?: DockingSummary | null;
   /** Moon missions: lunar objectives. */
   readonly lunar?: LunarProgress;
+  /** Mars missions: the voyage and landing. */
+  readonly mars?: MarsProgress;
 }
 
 export interface DockingSummary {
@@ -86,6 +94,10 @@ export const OBJECTIVE_LABELS: Record<ObjectiveId, string> = {
   surface: 'Complete the surface tasks',
   'moon-ascent': 'Lift off back to lunar orbit',
   'earth-return': 'Return to Earth orbit (aerocapture)',
+  tmi: 'Trans-Mars injection',
+  'mars-arrival': 'Cruise to Mars (course corrections)',
+  'mars-landing': 'Land at the selected Mars site',
+  'mars-surface': 'Unload and start the propellant plant',
   deorbit: 'Deorbit burn (periapsis into the atmosphere)',
   reentry: 'Survive re-entry',
   landing: 'Land or splash down safely',
@@ -108,7 +120,7 @@ export function objectiveDone(id: ObjectiveId, p: FlightProgress, s: FlightState
     case 'tasks':
       return !!p.docking?.tasksDone;
     case 'refuel':
-      return !!p.lunar?.refuelLeo;
+      return !!(p.lunar?.refuelLeo || p.mars?.refuelLeo);
     case 'tli':
       return !!p.lunar?.tli;
     case 'flyby':
@@ -125,13 +137,21 @@ export function objectiveDone(id: ObjectiveId, p: FlightProgress, s: FlightState
       return !!p.lunar?.ascent;
     case 'earth-return':
       return !!p.lunar?.earthReturn;
+    case 'tmi':
+      return !!p.mars?.tmi;
+    case 'mars-arrival':
+      return p.mars?.arrivedT !== null && p.mars?.arrivedT !== undefined;
+    case 'mars-landing':
+      return p.mars?.landing?.outcome === 'landed';
+    case 'mars-surface':
+      return !!p.mars?.surfaceDone;
     case 'deorbit':
       return p.deorbit;
     case 'reentry':
       return p.reentry;
     case 'landing':
       return (
-        (s.phase === 'landed' && s.touchdown?.body !== 'moon') ||
+        (s.phase === 'landed' && s.touchdown?.body === undefined) ||
         (s.phase === 'splashdown' && !isLand(localFrame(s.r).groundAngle))
       );
   }
@@ -155,6 +175,8 @@ export interface FlightOutcomeContext {
   readonly hardware?: { readonly boosterId: string | null; readonly shipId: string | null };
   /** The player flew the final descent without the landing program. */
   readonly manualLanding?: boolean;
+  /** Mars missions: the voyage and landing summary. */
+  readonly mars?: MarsSummary;
 }
 
 /** Landing limits used for the ship's precision rating. */
@@ -173,6 +195,7 @@ export const CREDITABLE_IN_FLIGHT = new Set([
   'station-docking',
   'lunar-transfer',
   'lunar-landing',
+  'mars-cargo',
 ]);
 
 /** The objective checklist for a mission's orbital flight. */
@@ -186,6 +209,8 @@ export function objectivesFor(
       return ['orbit', 'rendezvous', 'dock', 'tasks', 'deorbit', 'reentry', 'landing'];
     case 'lunar-transfer':
       return ['orbit', ...leo, 'tli', 'flyby', 'earth-return', 'deorbit', 'reentry', 'landing'];
+    case 'mars-cargo':
+      return ['orbit', ...leo, 'tmi', 'mars-arrival', 'mars-landing', 'mars-surface'];
     case 'lunar-landing':
       return [
         'orbit',
@@ -215,6 +240,8 @@ export function orbitalGoalsMet(missionId: string, p: FlightProgress): boolean {
       return !!l && l.tli && l.flyby && l.earthReturn;
     case 'lunar-landing':
       return !!l && l.landing?.outcome === 'landed' && l.surfaceDone && l.ascent && l.earthReturn;
+    case 'mars-cargo':
+      return p.mars?.landing?.outcome === 'landed' && !!p.mars.surfaceDone;
     default:
       return p.orbit && completedOrbits(p) >= 1;
   }
@@ -224,6 +251,7 @@ const INCOMPLETE: Record<string, string> = {
   'station-docking': 'dock with the station and finish the docked tasks.',
   'lunar-transfer': 'fly past the Moon and return to Earth orbit.',
   'lunar-landing': 'land on the Moon, finish the surface tasks and fly home.',
+  'mars-cargo': 'land on Mars and finish the surface tasks.',
 };
 
 /** Classifies how the flight ended. `ended` = the player ended the flight while still flying. */
@@ -316,6 +344,7 @@ export function evaluateFlight(
   p: FlightProgress,
   at: string,
 ): FlightRecord {
+  if (ctx.mars) return evaluateMarsFlight(ctx, ctx.mars, s, p, at);
   const landing = landingSummary(s, p, ctx.zone, ctx.manualLanding ?? false);
   const safe = landing.outcome === 'landed' || landing.outcome === 'splashdown';
   const creditable = CREDITABLE_IN_FLIGHT.has(ctx.outcome.missionId);
@@ -378,5 +407,94 @@ export function lunarSummary(l: LunarProgress): LunarSummary {
     surfaceDone: l.surfaceDone,
     ascent: l.ascent,
     earthReturn: l.earthReturn,
+  };
+}
+
+/**
+ * Mars cargo flights end on Mars by design: the ship stays as the propellant plant's tanker.
+ * Success is a landing at the site with the surface tasks done.
+ */
+function evaluateMarsFlight(
+  ctx: FlightOutcomeContext,
+  m: MarsSummary,
+  s: FlightState,
+  p: FlightProgress,
+  at: string,
+): FlightRecord {
+  const onMars = s.touchdown?.body === 'mars';
+  const outcome: LandingSummary['outcome'] =
+    s.phase === 'destroyed'
+      ? 'breakup'
+      : s.phase === 'crashed' || s.phase === 'tipped'
+        ? 'crash'
+        : s.phase === 'landed' && onMars
+          ? 'landed'
+          : 'stranded';
+  const landing: LandingSummary = {
+    outcome,
+    zoneName: m.landing?.siteName ?? null,
+    missM: m.landing?.missM ?? null,
+    shipRecovered: false,
+    orbits: completedOrbits(p),
+    hull: s.hull,
+    shield: s.shield,
+    peakG: s.peakG,
+    peakHeatKWm2: s.peakHeatFluxWm2 / 1000,
+    grade: m.landing?.grade ?? null,
+    manual: !!m.landing?.manual,
+  };
+  const goals = orbitalGoalsMet(ctx.outcome.missionId, p);
+  const credited = CREDITABLE_IN_FLIGHT.has(ctx.outcome.missionId) && goals;
+  const result: FlightRecord['result'] =
+    outcome === 'landed'
+      ? credited
+        ? 'success'
+        : 'partial'
+      : outcome === 'stranded'
+        ? 'aborted'
+        : 'failure';
+  const site = m.landing?.siteName ?? 'Mars';
+  let summary: string;
+  switch (outcome) {
+    case 'landed':
+      summary = `Landed at ${site}${m.landing?.grade ? ` (rated ${m.landing.grade})` : ''}, ${Math.round(m.landing?.missM ?? 0)} m from the target.`;
+      summary += m.plantRunning
+        ? ' The propellant plant is running; the ship stays on Mars as its tanker.'
+        : m.surfaceDone
+          ? ' Cargo delivered; the ship stays on Mars.'
+          : ` Mission objectives incomplete: ${INCOMPLETE[ctx.outcome.missionId] ?? 'finish the surface tasks.'}`;
+      break;
+    case 'crash':
+      summary =
+        s.phase === 'tipped'
+          ? `The ship tipped over on landing at ${site} and is lost.`
+          : `The ship crashed on Mars.`;
+      break;
+    case 'breakup':
+      summary = 'The ship broke up during Mars entry.';
+      break;
+    default:
+      summary = m.departed
+        ? 'Flight ended with the ship still in space on the way to Mars.'
+        : 'Flight ended before leaving Earth orbit.';
+  }
+  return {
+    ...recordBase({ ...ctx.outcome, at }),
+    result,
+    summary,
+    credited,
+    crewSafe: ctx.outcome.crewed ? outcome !== 'crash' && outcome !== 'breakup' : null,
+    maxAltitudeM: Math.max(ctx.ascent.maxAltitudeM, ctx.maxAltitudeM),
+    maxSpeedMS: Math.max(ctx.ascent.maxSpeedMS, ctx.maxSpeedMS),
+    maxQPa: ctx.ascent.maxQPa,
+    durationS: s.tS,
+    events: [
+      ...ctx.ascent.events,
+      ...s.events.map((e) => `T+${Math.round(e.tS)}s ${e.text}`),
+    ].slice(-60),
+    landing,
+    mars: m,
+    ...(ctx.recovery ? { recovery: ctx.recovery } : {}),
+    hardware: ctx.hardware ?? { boosterId: null, shipId: null },
   };
 }

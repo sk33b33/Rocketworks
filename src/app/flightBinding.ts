@@ -23,6 +23,7 @@ export function flightContextFromLaunch(
   recovery: BoosterRecoverySummary | null = null,
   station?: { crew: number; cargo: boolean },
   lunar?: FlightContext['lunar'],
+  mars?: FlightContext['mars'],
 ): FlightContext {
   const { r, v } = ascentToInertial(ascent);
   return {
@@ -37,6 +38,7 @@ export function flightContextFromLaunch(
     hardware: ctx.hardware ?? { boosterId: null, shipId: null },
     ...(station ? { station } : {}),
     ...(lunar ? { lunar } : {}),
+    ...(mars ? { mars } : {}),
     ascent: {
       maxAltitudeM: ascent.maxAltitudeM,
       maxSpeedMS: ascent.maxSpeedMS,

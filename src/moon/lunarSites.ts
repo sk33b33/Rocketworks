@@ -102,12 +102,24 @@ interface Crater {
   readonly depth: number;
 }
 
-/** Terrain around one site: along-track x (m, + = east of the target) and cross-track z (m). */
-export class SiteTerrain {
+/** What the terrain generator needs from a site (lunar or Martian). */
+export type TerrainSite = Pick<
+  LunarSite,
+  'roughness' | 'boulderDensity' | 'seed' | 'hazard' | 'seleno'
+>;
+
+/**
+ * Terrain around one site: along-track x (m, + = east of the target) and cross-track z (m).
+ * Heights are relative to the site's surroundings; `radiusM` converts angles to distances.
+ */
+export class SiteTerrain<S extends TerrainSite = LunarSite> {
   private readonly craters: Crater[] = [];
   readonly halfSpanM = 40_000;
 
-  constructor(readonly site: LunarSite) {
+  constructor(
+    readonly site: S,
+    private readonly radiusM: number = MOON_RADIUS_M,
+  ) {
     const n = Math.round(30 + site.roughness * 70);
     for (let i = 0; i < n; i++) {
       const radius = 30 + hash(i * 4 + 2, site.seed) ** 2 * (200 + site.roughness * 900);
@@ -181,7 +193,7 @@ export class SiteTerrain {
     let a = seleno - this.site.seleno;
     while (a > Math.PI) a -= 2 * Math.PI;
     while (a < -Math.PI) a += 2 * Math.PI;
-    return a * MOON_RADIUS_M;
+    return a * this.radiusM;
   }
 
   /**

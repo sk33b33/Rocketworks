@@ -77,6 +77,11 @@ export interface FlightState {
   readonly ref?: ReferenceBody;
   /** Landing thrusters running (final lunar descent). */
   readonly landingThrusters?: boolean;
+  /**
+   * Mars missions after leaving Earth: r and v are then relative to the Sun (cruise) or to Mars
+   * (approach, entry, landing) instead of Earth. Absent = Earth-centred.
+   */
+  readonly origin?: 'sun' | 'mars';
 }
 
 /** Model constants (gameplay values). */
@@ -239,45 +244,19 @@ export function stepFlight(
     (spec.stage.thrustVacPerEngineN - spec.stage.thrustSlPerEngineN) * vacFrac;
   const isp = spec.stage.ispSlS + (spec.stage.ispVacS - spec.stage.ispSlS) * vacFrac;
   const landingThrusters = !!rf && rf.altitudeM < FLIGHT.landingThrusterAltM && s.propKg > 0;
-  let throttle = s.propKg > 0 && running > 0 ? Math.max(0, Math.min(1, c.throttle)) : 0;
+  let throttle: number;
   let thrustN: number;
   if (landingThrusters) {
     throttle = s.propKg > 0 ? Math.max(0, Math.min(1, c.throttle)) : 0;
     thrustN = throttle * FLIGHT.landingThrusterAccelMS2 * mass;
   } else {
-    if (throttle > 0) {
-      const full = running * perEngine;
-      const cap = (FLIGHT.maxThrustG * G0_MS2 * mass) / full;
-      throttle = Math.max(FLIGHT.minThrottlePerEngine / running, Math.min(throttle, cap));
-    }
-    thrustN = running * perEngine * throttle;
+    ({ throttle, thrustN } = mainEngineThrust(s.propKg, running, perEngine, c.throttle, mass));
   }
   const burned = Math.min(s.propKg, isp > 0 ? (thrustN / (isp * G0_MS2)) * dt : 0);
   const nose = noseDirection(s.r, pitchDeg, rf?.up);
   const aThrust = scale(nose, thrustN / mass);
 
-  // Aerodynamics: drag area blends nose-on and side-on; lift peaks at mid angles.
-  let aAero: Vec2 = [0, 0];
-  let flux = 0;
-  if (rho > 1e-9 && speed > 1) {
-    const q = 0.5 * rho * speed * speed;
-    const aoaRad = (aoa * Math.PI) / 180;
-    const endArea = Math.PI * spec.radiusM * spec.radiusM;
-    const sideArea = spec.lengthM * spec.radiusM * 2;
-    const cdA =
-      FLIGHT.noseCd * endArea * Math.cos(aoaRad) ** 2 +
-      FLIGHT.sideCd * sideArea * Math.sin(aoaRad) ** 2;
-    const drag = (q * cdA) / mass;
-    const vHat = scale(s.v, 1 / speed);
-    const liftMag =
-      drag * FLIGHT.liftToDragAtBelly * Math.sin(2 * Math.abs(aoaRad)) * Math.sign(aoaRad || 1);
-    // In-plane "up" normal to the velocity; bank tilts lift out of the plane (lost in 2D).
-    const liftDir: Vec2 = [-vHat[1], vHat[0]];
-    const towardUp = dot(liftDir, f.up) >= 0 ? liftDir : scale(liftDir, -1);
-    const inPlaneLift = liftMag * Math.cos((c.bankDeg * Math.PI) / 180);
-    aAero = add(scale(vHat, -drag), scale(towardUp, inPlaneLift));
-    flux = heatFlux(rho, speed);
-  }
+  const { a: aAero, flux } = aeroAcceleration(spec, s.v, speed, rho, aoa, c.bankDeg, f.up, mass);
 
   const rMag = len(s.r);
   const aGrav = env
@@ -288,26 +267,7 @@ export function stepFlight(
   const r = add(s.r, scale(v, dt));
   const gLoad = len(add(aThrust, aAero)) / G0_MS2;
 
-  // Heating: tiles take the load when the belly faces the flow; otherwise (or through gaps) steel does.
-  let shield = s.shield;
-  let hull = s.hull;
-  if (flux > 0) {
-    const bellyOn = Math.abs(aoa) >= FLIGHT.minBellyAoaDeg;
-    const tileShare = bellyOn ? spec.shieldCoverage : 0;
-    const heat = flux * dt;
-    if (shield > 0)
-      shield = Math.max(
-        0,
-        shield -
-          (heat * tileShare) / (FLIGHT.shieldCapacityJm2 * Math.max(0.05, spec.shieldCoverage)),
-      );
-    const steelShare = 1 - tileShare + (shield <= 0 ? tileShare : 0);
-    hull = Math.max(0, hull - (heat * steelShare) / FLIGHT.steelCapacityJm2);
-    if (s.shield > 0.25 && shield <= 0.25)
-      events.push({ tS: t, kind: 'warn', text: 'Heat shield below 25%.' });
-    if (s.hull > 0.5 && hull <= 0.5)
-      events.push({ tS: t, kind: 'warn', text: 'Hull overheating: structural damage.' });
-  }
+  const { shield, hull } = applyHeating(s, spec, flux, aoa, dt, events, t);
   if (s.peakG < FLIGHT.crewGWarning && gLoad >= FLIGHT.crewGWarning) {
     events.push({ tS: t, kind: 'warn', text: `High g-load (${gLoad.toFixed(1)} g) on the crew.` });
   }
@@ -351,15 +311,100 @@ export function stepFlight(
   return events.length ? { ...next, events: [...s.events, ...events] } : next;
 }
 
+/** Main-engine throttle (governed, with the per-engine floor) and thrust. Shared with Mars. */
+export function mainEngineThrust(
+  propKg: number,
+  running: number,
+  perEngineN: number,
+  command: number,
+  mass: number,
+  minThrottlePerEngine: number = FLIGHT.minThrottlePerEngine,
+): { throttle: number; thrustN: number } {
+  let throttle = propKg > 0 && running > 0 ? Math.max(0, Math.min(1, command)) : 0;
+  if (throttle > 0) {
+    const full = running * perEngineN;
+    const cap = (FLIGHT.maxThrustG * G0_MS2 * mass) / full;
+    throttle = Math.max(minThrottlePerEngine / running, Math.min(throttle, cap));
+  }
+  return { throttle, thrustN: running * perEngineN * throttle };
+}
+
+/**
+ * Aerodynamic acceleration (drag area blends nose-on and side-on; lift peaks at mid angles) and
+ * stagnation heat flux, for air of density `rho` flowing at `speed` against velocity `v`.
+ */
+export function aeroAcceleration(
+  spec: ShipSpec,
+  v: Vec2,
+  speed: number,
+  rho: number,
+  aoa: number,
+  bankDeg: number,
+  up: Vec2,
+  mass: number,
+): { a: Vec2; flux: number } {
+  if (!(rho > 1e-9 && speed > 1)) return { a: [0, 0], flux: 0 };
+  const q = 0.5 * rho * speed * speed;
+  const aoaRad = (aoa * Math.PI) / 180;
+  const endArea = Math.PI * spec.radiusM * spec.radiusM;
+  const sideArea = spec.lengthM * spec.radiusM * 2;
+  const cdA =
+    FLIGHT.noseCd * endArea * Math.cos(aoaRad) ** 2 +
+    FLIGHT.sideCd * sideArea * Math.sin(aoaRad) ** 2;
+  const drag = (q * cdA) / mass;
+  const vHat = scale(v, 1 / speed);
+  const liftMag =
+    drag * FLIGHT.liftToDragAtBelly * Math.sin(2 * Math.abs(aoaRad)) * Math.sign(aoaRad || 1);
+  // In-plane "up" normal to the velocity; bank tilts lift out of the plane (lost in 2D).
+  const liftDir: Vec2 = [-vHat[1], vHat[0]];
+  const towardUp = dot(liftDir, up) >= 0 ? liftDir : scale(liftDir, -1);
+  const inPlaneLift = liftMag * Math.cos((bankDeg * Math.PI) / 180);
+  return { a: add(scale(vHat, -drag), scale(towardUp, inPlaneLift)), flux: heatFlux(rho, speed) };
+}
+
+/** Heating: tiles take the load when the belly faces the flow; otherwise (or through gaps) steel does. */
+export function applyHeating(
+  s: FlightState,
+  spec: ShipSpec,
+  flux: number,
+  aoa: number,
+  dt: number,
+  events: FlightEvent[],
+  t: number,
+): { shield: number; hull: number } {
+  let shield = s.shield;
+  let hull = s.hull;
+  if (flux > 0) {
+    const bellyOn = Math.abs(aoa) >= FLIGHT.minBellyAoaDeg;
+    const tileShare = bellyOn ? spec.shieldCoverage : 0;
+    const heat = flux * dt;
+    if (shield > 0)
+      shield = Math.max(
+        0,
+        shield -
+          (heat * tileShare) / (FLIGHT.shieldCapacityJm2 * Math.max(0.05, spec.shieldCoverage)),
+      );
+    const steelShare = 1 - tileShare + (shield <= 0 ? tileShare : 0);
+    hull = Math.max(0, hull - (heat * steelShare) / FLIGHT.steelCapacityJm2);
+    if (s.shield > 0.25 && shield <= 0.25)
+      events.push({ tS: t, kind: 'warn', text: 'Heat shield below 25%.' });
+    if (s.hull > 0.5 && hull <= 0.5)
+      events.push({ tS: t, kind: 'warn', text: 'Hull overheating: structural damage.' });
+  }
+  return { shield, hull };
+}
+
 export interface TouchdownResult {
   readonly vertMS: number;
   readonly horizMS: number;
   readonly tiltDeg: number;
-  /** Set for touchdowns on the Moon. */
-  readonly body?: 'moon';
+  /** Set for touchdowns on the Moon or Mars. */
+  readonly body?: 'moon' | 'mars';
   readonly slopeDeg?: number;
   /** Selenographic angle of the touchdown point (radians). */
   readonly seleno?: number;
+  /** Mars: along-track distance from the site target (m). */
+  readonly siteOffsetM?: number;
 }
 
 export function touchdownMetrics(r: Vec2, v: Vec2, pitchDeg: number): TouchdownResult {

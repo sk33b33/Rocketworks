@@ -37,6 +37,8 @@ export interface FlightRecord {
   readonly recovery?: BoosterRecoverySummary;
   /** Moon missions (Stage 8+). */
   readonly lunar?: LunarSummary;
+  /** Mars missions: the voyage, landing and surface work. */
+  readonly mars?: MarsSummary;
   /** Fleet vehicles that flew (null = new build). */
   readonly hardware?: { readonly boosterId: string | null; readonly shipId: string | null };
 }
@@ -61,6 +63,30 @@ export interface LunarSummary {
   readonly surfaceDone: boolean;
   readonly ascent: boolean;
   readonly earthReturn: boolean;
+}
+
+export interface MarsSummary {
+  readonly launchDay: number;
+  /** Trans-Mars injection done, and the days from launch to arrival at Mars. */
+  readonly departed: boolean;
+  readonly cruiseDays: number | null;
+  readonly corrections: number;
+  readonly correctionDvMS: number;
+  readonly entrySpeedMS: number | null;
+  readonly landing: {
+    readonly siteId: string;
+    readonly siteName: string;
+    readonly outcome: LunarLandingOutcome;
+    readonly grade: Grade | null;
+    readonly manual: boolean;
+    readonly missM: number;
+  } | null;
+  readonly surfaceDone: boolean;
+  /** The propellant plant is producing (cargo landings that carried it). */
+  readonly plantRunning: boolean;
+  readonly ice: number | null;
+  /** Program day the ship touched down (for the base's production clock). */
+  readonly landedDay: number | null;
 }
 
 export type BoosterOutcome = 'caught' | 'landed' | 'lost' | 'expended' | 'not-attempted';

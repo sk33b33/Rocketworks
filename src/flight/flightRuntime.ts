@@ -52,6 +52,8 @@ import {
 } from '../station/proximitySession';
 import type { AssistMode } from '../station/proximity';
 import { EARTH_RADIUS_M } from '../simulation/constants';
+import { BELLY_AOA_DEG } from './autopilot';
+import { marsFlightPathDeg, marsSlewRate } from '../mars/marsModel';
 import {
   isLunarProgram,
   LunarFlight,
@@ -66,6 +68,15 @@ import {
 } from '../moon/lunarTransfer';
 import { coastDt } from '../moon/propagate';
 import type { GravityEnv } from '../moon/moonOrbit';
+import {
+  isMarsProgram,
+  MarsFlight,
+  MARS_PROGRAM_LABELS,
+  type MarsMissionPlan,
+  type MarsProgramId,
+  type MarsSnapshot,
+  type MarsView,
+} from '../mars/marsFlight';
 
 /*
  * Flight runtime: one orbital flight session from orbit insertion to touchdown. Framework-free
@@ -74,10 +85,12 @@ import type { GravityEnv } from '../moon/moonOrbit';
  * and the UI subscribes to throttled snapshots.
  */
 
-export type FlightSessionPhase = 'idle' | 'flight' | 'proximity' | 'surface' | 'debrief';
+export type FlightSessionPhase = 'idle' | 'flight' | 'proximity' | 'surface' | 'voyage' | 'debrief';
 /** The station's transfer window opens about this far (phase, rad) after orbit insertion. */
 export const STATION_PHASE_LEAD_RAD = 0.05;
-export const FLIGHT_WARP_LEVELS = [1, 2, 5, 10, 50, 100, 500, 1000, 5000, 10000] as const;
+export const FLIGHT_WARP_LEVELS = [
+  1, 2, 5, 10, 50, 100, 500, 1000, 5000, 10000, 100000, 1000000,
+] as const;
 export type FlightWarp = (typeof FLIGHT_WARP_LEVELS)[number];
 
 /** Fine step (atmosphere, burns) and coarse step (vacuum coasting at high warp). */
@@ -120,6 +133,8 @@ export interface FlightContext {
   readonly station?: { readonly crew: number; readonly cargo: boolean };
   /** Moon missions: the goal and the refuelling bought in Mission Control. */
   readonly lunar?: LunarMissionPlan;
+  /** Mars missions: launch day, refuelling and cargo. */
+  readonly mars?: MarsMissionPlan;
 }
 
 export type ManualKey =
@@ -154,6 +169,8 @@ export interface FlightSnapshot {
   readonly proximity: ProximityView | null;
   /** Moon missions: the Moon, lunar guidance, refuelling and lunar objectives. */
   readonly lunar: LunarView | null;
+  /** Mars missions: the voyage, the site, entry and landing, and the surface. */
+  readonly mars: MarsView | null;
 }
 
 const DEFAULT_ZONE = findZone('platform') ?? LANDING_ZONES[0]!;
@@ -177,12 +194,13 @@ const IDLE: FlightSnapshot = {
   rendezvous: RENDEZVOUS_START,
   proximity: null,
   lunar: null,
+  mars: null,
 };
 
 /** Everything needed to resume a flight after a reload (plain data; see persistence/flightSave). */
 export interface RuntimeSnapshot {
   readonly v: 1;
-  readonly phase: 'flight' | 'proximity' | 'surface';
+  readonly phase: 'flight' | 'proximity' | 'surface' | 'voyage';
   readonly context: FlightContext;
   readonly zoneId: string;
   readonly live: FlightState;
@@ -201,6 +219,8 @@ export interface RuntimeSnapshot {
   readonly rdv: RendezvousState;
   readonly prox: ProxSnapshot | null;
   readonly lunar: LunarSnapshot | null;
+  /** Absent in saves made before Mars missions existed. */
+  readonly mars?: MarsSnapshot | null;
 }
 
 /** Highest warp allowed for a state (pure; exported for tests and the UI). */
@@ -251,6 +271,7 @@ export class FlightRuntime {
   private rdv: RendezvousState = RENDEZVOUS_START;
   private prox: ProximitySession | null = null;
   private lunar: LunarFlight | null = null;
+  private mars: MarsFlight | null = null;
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -302,6 +323,7 @@ export class FlightRuntime {
     this.rdv = RENDEZVOUS_START;
     this.prox = null;
     this.lunar = context.lunar ? new LunarFlight(context.lunar) : null;
+    this.mars = context.mars ? new MarsFlight(context.mars) : null;
     if (this.progress.orbit) this.trackStation(this.live);
     this.set({ ...IDLE, phase: 'flight', context, zone: this.state.zone }, true);
   }
@@ -314,8 +336,14 @@ export class FlightRuntime {
     const st = this.state;
     const live = this.live;
     if (!live || !st.context) return null;
-    if (st.phase !== 'flight' && st.phase !== 'proximity' && st.phase !== 'surface') return null;
-    if (st.phase === 'flight' && live.phase !== 'flight') return null;
+    if (
+      st.phase !== 'flight' &&
+      st.phase !== 'proximity' &&
+      st.phase !== 'surface' &&
+      st.phase !== 'voyage'
+    )
+      return null;
+    if ((st.phase === 'flight' || st.phase === 'voyage') && live.phase !== 'flight') return null;
     return {
       v: 1,
       phase: st.phase,
@@ -337,6 +365,7 @@ export class FlightRuntime {
       rdv: this.rdv,
       prox: this.prox?.snapshot() ?? null,
       lunar: this.lunar?.snapshot() ?? null,
+      mars: this.mars?.snapshot() ?? null,
     };
   }
 
@@ -361,6 +390,7 @@ export class FlightRuntime {
     this.rdv = snap.rdv;
     this.prox = snap.prox ? ProximitySession.fromSnapshot(snap.prox) : null;
     this.lunar = snap.lunar ? LunarFlight.fromSnapshot(snap.lunar) : null;
+    this.mars = snap.mars ? MarsFlight.fromSnapshot(snap.mars) : null;
     this.set(
       {
         ...IDLE,
@@ -378,6 +408,7 @@ export class FlightRuntime {
     this.live = null;
     this.prox = null;
     this.lunar = null;
+    this.mars = null;
     this.eph = null;
     this.keys.clear();
     this.set({ ...IDLE, zone: this.state.zone });
@@ -387,17 +418,24 @@ export class FlightRuntime {
     if (
       this.state.phase === 'flight' ||
       this.state.phase === 'proximity' ||
-      this.state.phase === 'surface'
+      this.state.phase === 'surface' ||
+      this.state.phase === 'voyage'
     )
       this.set({ ...this.state, paused: !this.state.paused });
   }
 
   setWarp(warp: FlightWarp): void {
     if (this.state.phase === 'surface') {
-      this.set({ ...this.state, warp: Math.min(warp, 1000) as FlightWarp }, true);
+      const cap = this.mars ? 10_000 : 1000;
+      this.set({ ...this.state, warp: Math.min(warp, cap) as FlightWarp }, true);
       return;
     }
-    if (this.state.phase !== 'flight' && this.state.phase !== 'proximity') return;
+    if (
+      this.state.phase !== 'flight' &&
+      this.state.phase !== 'proximity' &&
+      this.state.phase !== 'voyage'
+    )
+      return;
     if (this.state.phase === 'proximity') {
       const max = this.prox?.maxWarp ?? 1;
       this.set({ ...this.state, warp: Math.min(warp, max) as FlightWarp }, true);
@@ -420,7 +458,7 @@ export class FlightRuntime {
   }
 
   setMode(mode: AttitudeMode): void {
-    if (!this.live || this.state.phase !== 'flight') return;
+    if (!this.live || !this.flyable()) return;
     this.disengage(mode === 'manual' ? 'Manual attitude.' : null);
     this.mode = mode;
     if (mode === 'manual') this.manual = { ...this.manual, pitchDeg: this.live.pitchDeg };
@@ -430,7 +468,8 @@ export class FlightRuntime {
   /** Engages a guidance program, or explains why it can't run now. */
   engage(program: ProgramId): { ok: boolean; reason?: string } {
     const s = this.live;
-    if (!s || this.state.phase !== 'flight') return { ok: false, reason: 'No ship in flight.' };
+    if (!s || (this.state.phase !== 'flight' && this.state.phase !== 'voyage'))
+      return { ok: false, reason: 'No ship in flight.' };
     const check = programAvailability(
       program,
       s,
@@ -440,6 +479,7 @@ export class FlightRuntime {
         stationRangeM: this.stationRange(s),
       },
       this.lunarCheck(s),
+      this.marsCheck(s),
     );
     if (!check.ok) {
       this.message = check.reason ?? null;
@@ -447,7 +487,7 @@ export class FlightRuntime {
       return check;
     }
     if (program === 'rendezvous' && !this.eph) this.trackStation(s);
-    if (this.lunar?.refuelling) {
+    if (this.lunar?.refuelling || this.mars?.refuelling) {
       this.message = 'Refuelling in progress: wait for it to finish.';
       this.publish();
       return { ok: false, reason: this.message };
@@ -455,6 +495,8 @@ export class FlightRuntime {
     this.ps = program === 'none' ? IDLE_PROGRAM : { ...IDLE_PROGRAM, program };
     if (isLunarProgram(program)) this.lunar?.startProgram(program);
     else this.lunar?.stopProgram();
+    if (isMarsProgram(program)) this.mars?.startProgram(program, s);
+    else this.mars?.stopProgram();
     if (program === 'rendezvous') this.rdv = RENDEZVOUS_START;
     if (program === 'none') this.disengage('Autopilot off.');
     else this.message = `${PROGRAM_LABELS[program]} engaged.`;
@@ -478,7 +520,7 @@ export class FlightRuntime {
   }
 
   setKey(key: ManualKey, down: boolean): void {
-    if (this.state.phase !== 'flight') return;
+    if (!this.flyable()) return;
     if (down && !this.keys.has(key)) {
       if (key.startsWith('throttle')) this.disengage('Manual throttle: autopilot disengaged.');
       else {
@@ -538,7 +580,7 @@ export class FlightRuntime {
   }
 
   private updateSurface(realDtS: number): void {
-    const lunar = this.lunar;
+    const lunar = this.lunar ?? this.mars;
     if (!lunar || !this.live || this.state.paused) return;
     this.accumulator += realDtS * this.state.warp;
     const dt = 10;
@@ -549,7 +591,9 @@ export class FlightRuntime {
       const note = lunar.surfaceStep(dt);
       this.live = lunar.standing({ ...this.live, tS: this.live.tS + dt });
       if (note) {
-        this.progress = { ...this.progress, lunar: lunar.progress };
+        this.progress = this.mars
+          ? { ...this.progress, mars: this.mars.progress }
+          : { ...this.progress, lunar: lunar.progress as LunarFlight['progress'] };
         this.message = note;
         this.live = {
           ...this.live,
@@ -568,6 +612,7 @@ export class FlightRuntime {
   /** Starts a refuelling operation (tankers in Earth orbit or the lunar depot). */
   refuel(): { ok: boolean; reason?: string } {
     const s = this.live;
+    if (s && this.mars && this.state.phase === 'flight') return this.marsRefuel(s);
     if (!s || !this.lunar || this.state.phase !== 'flight')
       return { ok: false, reason: 'Refuelling is only offered on Moon missions.' };
     if (this.ps.program !== 'none' || s.throttle > 0) {
@@ -583,6 +628,159 @@ export class FlightRuntime {
       : (r.reason ?? null);
     this.publish();
     return r;
+  }
+
+  // ---- Mars ----
+
+  /** Manual flying is possible: Earth-centred flight, or entry and landing at Mars. */
+  private flyable(): boolean {
+    if (this.state.phase === 'flight') return true;
+    return this.state.phase === 'voyage' && !!this.live && !!this.mars?.manualAllowed(this.live);
+  }
+
+  private marsCheck(
+    s: FlightState,
+  ): ((p: MarsProgramId) => { ok: boolean; reason?: string }) | null {
+    const mars = this.mars;
+    return mars ? (p) => mars.availability(p, s) : null;
+  }
+
+  private marsRefuel(s: FlightState): { ok: boolean; reason?: string } {
+    const mars = this.mars!;
+    if (this.ps.program !== 'none' || s.throttle > 0) {
+      this.message = 'Turn the autopilot and engines off before refuelling.';
+      this.publish();
+      return { ok: false, reason: this.message };
+    }
+    const r = mars.startRefuel(s);
+    this.message = r.ok
+      ? 'Tankers on the way: refuelling in orbit (about 6 hours; time warp is available).'
+      : (r.reason ?? null);
+    this.publish();
+    return r;
+  }
+
+  /** Chooses the Mars landing site (until the approach is set). */
+  setMarsSite(id: string): { ok: boolean; reason?: string } {
+    if (!this.mars) return { ok: false, reason: 'Only on Mars missions.' };
+    if (!this.mars.setSite(id))
+      return { ok: false, reason: 'The site is fixed once the approach has been set.' };
+    this.message = `Landing site: ${this.mars.site.name}.`;
+    this.publish();
+    return { ok: true };
+  }
+
+  /** Leaves Earth's sphere of influence: the ship now flies on a Sun-centred conic. */
+  private beginVoyage(): void {
+    const mars = this.mars!;
+    const s = mars.enterVoyage(this.live!);
+    const text = "Left Earth's sphere of influence: cruising to Mars.";
+    this.live = { ...s, events: [...s.events, { tS: s.tS, kind: 'success', text }] };
+    this.ps = { ...IDLE_PROGRAM, program: 'mars-cruise' };
+    this.mode = 'prograde';
+    this.manual = { ...this.manual, throttle: 0 };
+    this.keys.clear();
+    this.message = `${text} Time warp up to 1,000,000× is available.`;
+    this.accumulator = 0;
+    this.progress = { ...this.progress, mars: mars.progress };
+    this.state = { ...this.state, phase: 'voyage', warp: 1 };
+    this.publish();
+  }
+
+  /** Controls the player flies with near Mars (attitude holds relative to Mars). */
+  private marsManualControls(s: FlightState): FlightControls {
+    const gamma = marsFlightPathDeg(s.r, s.v);
+    const pitch =
+      this.mode === 'prograde'
+        ? gamma
+        : this.mode === 'retrograde'
+          ? gamma + 180
+          : this.mode === 'belly'
+            ? gamma + BELLY_AOA_DEG
+            : this.mode === 'vertical' || this.mode === 'radial-out'
+              ? 90
+              : this.mode === 'radial-in'
+                ? -90
+                : this.manual.pitchDeg;
+    return {
+      targetPitchDeg: pitch,
+      bankDeg: this.manual.bankDeg,
+      yawDeg: this.manual.yawDeg,
+      throttle: this.manual.throttle,
+      slewDegS: marsSlewRate(s),
+    };
+  }
+
+  private updateVoyage(realDtS: number): void {
+    const st = this.state;
+    const mars = this.mars;
+    if (!mars || !this.live || !st.context) return;
+    if (this.live.phase !== 'flight') {
+      if (this.live.touchdown?.body === 'mars' && !mars.progress.landing) {
+        const stands = mars.onTouchdown(this.live);
+        this.ps = IDLE_PROGRAM;
+        this.progress = { ...this.progress, mars: mars.progress };
+        if (stands) {
+          this.message = mars.plan.plant
+            ? `Down at ${mars.site.name}! Unload and start the propellant plant (time warp is available).`
+            : `Down at ${mars.site.name}! Run the surface tasks (time warp is available).`;
+          this.accumulator = 0;
+          this.state = { ...this.state, phase: 'surface', warp: 1 };
+          this.publish();
+          return;
+        }
+        this.publish();
+      }
+      this.sinceDown += realDtS;
+      if (this.sinceDown >= DEBRIEF_DELAY_S && !st.record) this.finish();
+      return;
+    }
+    if (st.paused) return;
+    if (mars.manualAllowed(this.live)) this.applyKeys(realDtS);
+    const spec = st.context.spec;
+    const eventsBefore = this.live.events.length;
+    this.accumulator += realDtS * st.warp;
+    let steps = 0;
+    while (steps < MAX_STEPS_PER_FRAME && this.live.phase === 'flight' && this.accumulator > 0) {
+      const manual =
+        this.ps.program === 'none' && mars.manualAllowed(this.live)
+          ? this.marsManualControls(this.live)
+          : null;
+      const res = mars.voyageStep(this.live, spec, this.accumulator, manual);
+      if (res.used <= 0) break;
+      this.accumulator -= res.used;
+      steps++;
+      this.live = res.notes.length
+        ? { ...res.state, events: [...res.state.events, ...res.notes] }
+        : res.state;
+      if (res.message) this.message = res.message;
+      this.maxSpeedMS = Math.max(this.maxSpeedMS, len(this.live.v));
+      // Guidance moves on by itself (cruise → entry); keep the runtime's program in step.
+      const gp = mars.guidance.program;
+      if (this.ps.program !== 'none' && gp !== this.ps.program)
+        this.ps = gp === 'none' ? IDLE_PROGRAM : { ...IDLE_PROGRAM, program: gp };
+      if (res.slowDown) {
+        this.state = { ...this.state, warp: 1 };
+        this.accumulator = 0;
+        break;
+      }
+      const after = this.limit(this.live);
+      if (this.state.warp > after.max) {
+        this.state = { ...this.state, warp: after.max };
+        this.accumulator = Math.min(this.accumulator, FINE_DT_S);
+        if (after.reason) this.message = after.reason;
+        break;
+      }
+    }
+    if (steps >= MAX_STEPS_PER_FRAME) this.accumulator = 0;
+    this.progress = { ...this.progress, mars: mars.progress };
+    this.sincePublish += realDtS;
+    if (
+      this.live.events.length !== eventsBefore ||
+      this.live.phase !== 'flight' ||
+      this.sincePublish >= PUBLISH_INTERVAL_S
+    )
+      this.publish();
   }
 
   // ---- station ----
@@ -745,7 +943,8 @@ export class FlightRuntime {
   /** Ends the flight where it is (only offered while still flying, or standing on the Moon). */
   endFlight(): void {
     if (
-      (this.state.phase === 'flight' && this.live?.phase === 'flight') ||
+      ((this.state.phase === 'flight' || this.state.phase === 'voyage') &&
+        this.live?.phase === 'flight') ||
       this.state.phase === 'surface'
     )
       this.finish();
@@ -763,6 +962,7 @@ export class FlightRuntime {
       };
       this.ps = IDLE_PROGRAM;
       this.lunar?.stopProgram();
+      this.mars?.stopProgram();
       if (message) this.message = message;
     }
   }
@@ -773,6 +973,7 @@ export class FlightRuntime {
     const st = this.state;
     if (st.phase === 'proximity') return this.updateProximity(realDtS);
     if (st.phase === 'surface') return this.updateSurface(realDtS);
+    if (st.phase === 'voyage') return this.updateVoyage(realDtS);
     if (st.phase !== 'flight' || !this.live || !st.context) return;
     if (
       this.live.phase !== 'flight' &&
@@ -805,12 +1006,21 @@ export class FlightRuntime {
     let steps = 0;
     while (steps < MAX_STEPS_PER_FRAME && this.live.phase === 'flight') {
       const lim = this.limit(this.live);
-      const coarse = this.lunar ? coastDt(this.live.r, this.live.tS, this.lunar.env) : COARSE_DT_S;
+      const coarse = this.lunar
+        ? coastDt(this.live.r, this.live.tS, this.lunar.env)
+        : this.mars?.progress.tmi
+          ? this.mars.earthCoastDt(this.live)
+          : COARSE_DT_S;
       const dt = st.warp > MAX_FINE_WARP && lim.max > MAX_FINE_WARP ? coarse : FINE_DT_S;
       if (this.accumulator < dt) break;
       this.step(spec, dt);
       this.accumulator -= dt;
       steps++;
+      // Out of Earth's sphere of influence on the way to Mars: the voyage begins.
+      if (this.mars?.readyForVoyage(this.live)) {
+        this.beginVoyage();
+        return;
+      }
       // Drop to an allowed warp as soon as a limit applies (e.g. approaching a burn).
       const after = this.limit(this.live);
       if (this.state.warp > after.max) {
@@ -881,7 +1091,16 @@ export class FlightRuntime {
     const s = this.live!;
     const zone = this.state.zone;
     let controls: FlightControls;
-    if (isLunarProgram(this.ps.program) && this.lunar) {
+    if (this.ps.program === 'trans-mars' && this.mars) {
+      const out = this.mars.runEarth(s, spec);
+      this.mode = 'manual';
+      if (out.message) this.message = out.message;
+      controls = { ...out.controls, yawDeg: this.manual.yawDeg };
+      if (out.done) {
+        this.ps = IDLE_PROGRAM;
+        this.manual = { ...this.manual, pitchDeg: s.pitchDeg, bankDeg: 0, throttle: 0 };
+      }
+    } else if (isLunarProgram(this.ps.program) && this.lunar) {
       const out = this.lunar.run(s, spec, dt);
       this.mode = 'manual';
       if (out.message) this.message = out.message;
@@ -917,6 +1136,17 @@ export class FlightRuntime {
       };
     }
     let next = stepFlight(s, spec, controls, dt, this.env);
+    if (this.mars?.refuelling) {
+      const r = this.mars.applyRefuel(next, spec);
+      next = r.state;
+      if (r.done) {
+        this.message = r.done;
+        next = {
+          ...next,
+          events: [...next.events, { tS: next.tS, kind: 'success', text: r.done }],
+        };
+      }
+    }
     if (this.lunar?.refuelling) {
       const r = this.lunar.applyRefuel(next, spec);
       next = r.state;
@@ -993,6 +1223,7 @@ export class FlightRuntime {
       notes.push(...this.lunar.track(s, this.ps.program));
       p = { ...p, lunar: this.lunar.progress };
     }
+    if (this.mars) p = { ...p, mars: this.mars.progress };
     this.progress = p;
     if (notes.length) this.live = { ...s, events: [...s.events, ...notes] };
   }
@@ -1000,6 +1231,7 @@ export class FlightRuntime {
   private finish(): void {
     const st = this.state;
     if (!st.context || !this.live || st.record) return;
+    if (this.mars) this.progress = { ...this.progress, mars: this.mars.progress };
     const record = evaluateFlight(
       {
         outcome: st.context.outcome,
@@ -1010,6 +1242,7 @@ export class FlightRuntime {
         recovery: st.context.recovery,
         hardware: st.context.hardware,
         manualLanding: this.manualDescent && !this.assistedDescent,
+        ...(this.mars ? { mars: this.mars.summary() } : {}),
       },
       this.live,
       this.progress,
@@ -1025,7 +1258,17 @@ export class FlightRuntime {
 
   /** Warp limit including the rendezvous guidance's needs. */
   private limit(s: FlightState): { max: FlightWarp; reason: string | null } {
+    if (s.origin && this.mars) {
+      const v = this.mars.voyageLimit(s);
+      return { max: v.max as FlightWarp, reason: v.reason };
+    }
     const base = warpLimit(s, this.ps, this.ps.program === 'none' ? this.manual.throttle : 0);
+    if (this.mars) {
+      const extra = this.mars.earthLimit(s);
+      if (extra && (extra.max < base.max || base.max === 1000))
+        return { max: extra.max as FlightWarp, reason: extra.reason };
+      return base;
+    }
     if (this.lunar) {
       const extra = this.lunar.limit(s, this.ps.program);
       if (extra && extra.max < base.max)
@@ -1057,7 +1300,9 @@ export class FlightRuntime {
     const s = this.live;
     const lim =
       this.state.phase === 'surface'
-        ? { max: 1000 as FlightWarp, reason: 'On the surface: warp up to 1000×.' }
+        ? this.mars
+          ? { max: 10_000 as FlightWarp, reason: 'On Mars: warp up to 10,000×.' }
+          : { max: 1000 as FlightWarp, reason: 'On the surface: warp up to 1000×.' }
         : this.state.phase === 'proximity'
           ? {
               max: (this.prox?.maxWarp ?? 1) as FlightWarp,
@@ -1086,6 +1331,7 @@ export class FlightRuntime {
         rendezvous: this.rdv,
         proximity: this.prox?.view() ?? null,
         lunar: this.lunar?.view(s) ?? null,
+        mars: this.mars?.view(s) ?? null,
       },
       true,
     );
@@ -1107,6 +1353,7 @@ export const PROGRAM_LABELS: Record<ProgramId, string> = {
   reentry: 'Re-entry guidance',
   landing: 'Landing burn',
   ...LUNAR_PROGRAM_LABELS,
+  ...MARS_PROGRAM_LABELS,
 };
 
 /** Whether a program can be engaged now, with a player-readable reason if not. Pure. */
@@ -1124,9 +1371,13 @@ export function programAvailability(
     inLunarOrbit: boolean;
     landing?: boolean;
   } | null = null,
+  mars: ((program: MarsProgramId) => { ok: boolean; reason?: string }) | null = null,
 ): { ok: boolean; reason?: string } {
   if (s.phase !== 'flight') return { ok: false, reason: 'The ship is down.' };
   if (program === 'none') return { ok: true };
+  if (isMarsProgram(program))
+    return mars ? mars(program) : { ok: false, reason: 'Only on Mars missions.' };
+  if (s.origin) return { ok: false, reason: 'Earth programs are unavailable away from Earth.' };
   if (isLunarProgram(program))
     return lunarProgramAvailability(
       program,
