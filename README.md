@@ -1,6 +1,8 @@
-# Rocketworks — Claude Code Game Development Package
+# Rocketworks
 
-A staged project scaffold and instruction package for building a browser-based 3D rocket construction and spaceflight game with Three.js/WebGL.
+Browser-based 3D spaceflight game in TypeScript and Three.js. Build a reusable heavy-lift rocket part by part, plan missions, launch, dock with an orbital station, land on the Moon, and send crews to Mars and back. Spaceflight is simplified into approachable game systems.
+
+The game is built in stages with Claude Code; the project instructions and staged roadmap live in `CLAUDE.md` and `docs/`.
 
 ## Running the game
 

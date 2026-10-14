@@ -1,5 +1,6 @@
 {
   "name": "rocketworks",
+  "description": "Browser-based 3D spaceflight game in TypeScript and Three.js: build a reusable rocket, launch it, and fly to orbit, the Moon and Mars.",
   "private": true,
   "version": "0.1.0",
   "type": "module",
