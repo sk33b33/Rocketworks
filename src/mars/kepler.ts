@@ -54,11 +54,9 @@ export function propagateKepler(s: KeplerState, mu: number, dt: number): KeplerS
   const a1 = (r0 * vr0) / sqmu;
   const a2 = 1 - alpha * r0;
   const n = 5;
-  let C = 0.5;
-  let S = 1 / 6;
   for (let i = 0; i < 80; i++) {
     const z = alpha * chi * chi;
-    [C, S] = stumpff(z);
+    const [C, S] = stumpff(z);
     const chi2 = chi * chi;
     const F = a1 * chi2 * C + a2 * chi2 * chi * S + r0 * chi - sqmu * dt;
     const dF = a1 * chi * (1 - z * S) + a2 * chi2 * C + r0;
@@ -70,7 +68,7 @@ export function propagateKepler(s: KeplerState, mu: number, dt: number): KeplerS
     if (Math.abs(step) < 1e-10 * Math.max(1, Math.abs(chi))) break;
   }
   const z = alpha * chi * chi;
-  [C, S] = stumpff(z);
+  const [C, S] = stumpff(z);
   const chi2 = chi * chi;
   const f = 1 - (chi2 / r0) * C;
   const g = dt - (chi2 * chi * S) / sqmu;

@@ -553,7 +553,7 @@ export class MarsFlight {
     if (s.origin !== 'mars') return { state: s, used: 0, notes: [] };
     const f = marsFrame(s.r);
     const numeric =
-      f.altitudeM < MARS_NUMERIC_ALT_M ||
+      f.altitudeM < MARS_NUMERIC_ALT_M + 10 ||
       s.throttle > 0 ||
       (manual !== null && manual.throttle > 0);
     if (!numeric) return this.approachStep(s, spec, budget);
@@ -575,7 +575,6 @@ export class MarsFlight {
     if (g.mccT !== null) dt = Math.min(dt, Math.max(0, g.mccT - s.tS));
     const notes: FlightEvent[] = [];
     let message: string | undefined;
-    let slowDown = false;
     const T0 = this.programT(s.tS);
     const k0: KeplerState = { r: s.r, v: s.v };
     let k = dt > 0 ? propagateKepler(k0, SUN_MU_M3S2, dt) : k0;
@@ -662,7 +661,6 @@ export class MarsFlight {
       used: dt,
       notes,
       ...(message ? { message } : {}),
-      ...(slowDown ? { slowDown } : {}),
     };
   }
 
@@ -801,7 +799,7 @@ export class MarsFlight {
     if (s.phase !== 'flight') return { max: 1, reason: 'The ship is down.' };
     if (s.origin === 'sun') return { max: 1_000_000, reason: null };
     const f = marsFrame(s.r);
-    if (f.altitudeM < MARS_NUMERIC_ALT_M || s.throttle > 0)
+    if (f.altitudeM < MARS_NUMERIC_ALT_M + 10 || s.throttle > 0)
       return { max: 10, reason: 'Entry and landing: warp limited to 10×.' };
     const toLow = timeToRadius({ r: s.r, v: s.v }, MARS_RADIUS_M + MARS_NUMERIC_ALT_M);
     if (toLow !== null && toLow < 900)
