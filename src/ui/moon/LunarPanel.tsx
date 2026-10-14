@@ -119,7 +119,7 @@ export function LunarPanel({
                 title={avail.ok ? undefined : avail.reason}
                 onClick={() => flightRuntime.refuel()}
               >
-                {avail.kind === 'depot' || s.ref === 'moon'
+                {avail.kind === 'depot' || s.ref === 'moon' || p.refuelLeo
                   ? `Top up at the lunar depot (~${REFUEL.depotDurationS / 3_600} h)`
                   : `Refuel in orbit (~${REFUEL.leoDurationS / 3_600} h)`}
               </button>

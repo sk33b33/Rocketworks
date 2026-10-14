@@ -183,7 +183,13 @@
   - launch runtime replay → debrief (suborbital) and → hand-off with the result (orbital); expend skips the replay;
   - store recording: fleet, milestones, released assignments;
   - v4→v5 save migration and fleet/recovery parsing.
-- Headless Chromium smoke test, Stage 8 (manual script, not committed): STAGE8_SMOKE
+- Headless Chromium smoke test, Stage 8 (manual script, not committed), with no console errors, through the real UI:
+  - The Moon location shows its empty state; Mission Control's Manifest shows the refuelling choices (5 tanker flights, the depot) and both Δv legs met.
+  - The Lunar Landing is committed (platform recovery, 2 crew), launched, and continued to orbit. *Refuel in orbit* filled the ship (7,449 m/s).
+  - *Trans-lunar injection* flew the transfer; the map framed the Earth–Moon system with the path; insertion gave a 198 × 105 km lunar orbit.
+  - At the Moon location: depot top-up, Aurora Highlands chosen, *Lunar landing*: hazard avoidance retargeted 56 m to flat ground; touchdown rated A (assisted).
+  - Surface tasks, *Lift off* to a 115 × 80 km orbit, *Return to Earth*, aerocapture and circularize to 329 × 284 km, deorbit to the launch site: landed on the pad (rated B).
+  - Debrief: mission success, credited, crew safe, lunar landing line, refuelled 2×; every objective done.
 - Headless Chromium smoke test, Stage 7, with no console errors:
   - The Orbital Station location shows its empty state before a mission; the station mission is committed with the reference design, platform recovery and 2 crew.
   - Launch → orbit (318 × 268 km) → *Rendezvous with station*: waited for the window, burned, coasted up and closed on the hold point; *Begin proximity operations* switched to the Orbital Station location.
