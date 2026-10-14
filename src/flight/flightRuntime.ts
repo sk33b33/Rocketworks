@@ -47,6 +47,19 @@ import {
 import { ProximitySession, type ProximityView, type ProxKey } from '../station/proximitySession';
 import type { AssistMode } from '../station/proximity';
 import { EARTH_RADIUS_M } from '../simulation/constants';
+import {
+  isLunarProgram,
+  LunarFlight,
+  type LunarMissionPlan,
+  type LunarView,
+} from '../moon/lunarFlight';
+import {
+  inLunarOrbit,
+  LUNAR_PROGRAM_LABELS,
+  lunarProgramAvailability,
+} from '../moon/lunarTransfer';
+import { coastDt } from '../moon/propagate';
+import type { GravityEnv } from '../moon/moonOrbit';
 
 /*
  * Flight runtime: one orbital flight session from orbit insertion to touchdown. Framework-free
@@ -58,7 +71,7 @@ import { EARTH_RADIUS_M } from '../simulation/constants';
 export type FlightSessionPhase = 'idle' | 'flight' | 'proximity' | 'debrief';
 /** The station's transfer window opens about this far (phase, rad) after orbit insertion. */
 export const STATION_PHASE_LEAD_RAD = 0.05;
-export const FLIGHT_WARP_LEVELS = [1, 2, 5, 10, 50, 100, 500, 1000] as const;
+export const FLIGHT_WARP_LEVELS = [1, 2, 5, 10, 50, 100, 500, 1000, 5000, 10000] as const;
 export type FlightWarp = (typeof FLIGHT_WARP_LEVELS)[number];
 
 /** Fine step (atmosphere, burns) and coarse step (vacuum coasting at high warp). */
@@ -99,6 +112,8 @@ export interface FlightContext {
   readonly hardware: { readonly boosterId: string | null; readonly shipId: string | null };
   /** Station mission details (crew to hand over, supplies to unload). */
   readonly station?: { readonly crew: number; readonly cargo: boolean };
+  /** Moon missions: the goal and the refuelling bought in Mission Control. */
+  readonly lunar?: LunarMissionPlan;
 }
 
 export type ManualKey =
@@ -131,6 +146,8 @@ export interface FlightSnapshot {
   readonly rendezvous: RendezvousState;
   /** Proximity operations near the station (phase 'proximity'). */
   readonly proximity: ProximityView | null;
+  /** Moon missions: the Moon, lunar guidance, refuelling and lunar objectives. */
+  readonly lunar: LunarView | null;
 }
 
 const DEFAULT_ZONE = findZone('platform') ?? LANDING_ZONES[0]!;
@@ -153,6 +170,7 @@ const IDLE: FlightSnapshot = {
   station: null,
   rendezvous: RENDEZVOUS_START,
   proximity: null,
+  lunar: null,
 };
 
 /** Highest warp allowed for a state (pure; exported for tests and the UI). */
@@ -202,6 +220,7 @@ export class FlightRuntime {
   private eph: StationEphemeris | null = null;
   private rdv: RendezvousState = RENDEZVOUS_START;
   private prox: ProximitySession | null = null;
+  private lunar: LunarFlight | null = null;
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -252,6 +271,7 @@ export class FlightRuntime {
     this.eph = null;
     this.rdv = RENDEZVOUS_START;
     this.prox = null;
+    this.lunar = context.lunar ? new LunarFlight(context.lunar) : null;
     if (this.progress.orbit) this.trackStation(this.live);
     this.set({ ...IDLE, phase: 'flight', context, zone: this.state.zone }, true);
   }
@@ -259,6 +279,7 @@ export class FlightRuntime {
   reset(): void {
     this.live = null;
     this.prox = null;
+    this.lunar = null;
     this.eph = null;
     this.keys.clear();
     this.set({ ...IDLE, zone: this.state.zone });
@@ -304,17 +325,30 @@ export class FlightRuntime {
   engage(program: ProgramId): { ok: boolean; reason?: string } {
     const s = this.live;
     if (!s || this.state.phase !== 'flight') return { ok: false, reason: 'No ship in flight.' };
-    const check = programAvailability(program, s, this.progress, {
-      dockingAdapter: !!this.state.context?.spec.hasDockingAdapter,
-      stationRangeM: this.stationRange(s),
-    });
+    const check = programAvailability(
+      program,
+      s,
+      this.progress,
+      {
+        dockingAdapter: !!this.state.context?.spec.hasDockingAdapter,
+        stationRangeM: this.stationRange(s),
+      },
+      this.lunarCheck(s),
+    );
     if (!check.ok) {
       this.message = check.reason ?? null;
       this.publish();
       return check;
     }
     if (program === 'rendezvous' && !this.eph) this.trackStation(s);
+    if (this.lunar?.refuelling) {
+      this.message = 'Refuelling in progress: wait for it to finish.';
+      this.publish();
+      return { ok: false, reason: this.message };
+    }
     this.ps = program === 'none' ? IDLE_PROGRAM : { ...IDLE_PROGRAM, program };
+    if (isLunarProgram(program)) this.lunar?.startProgram(program);
+    else this.lunar?.stopProgram();
     if (program === 'rendezvous') this.rdv = RENDEZVOUS_START;
     if (program === 'none') this.disengage('Autopilot off.');
     else this.message = `${PROGRAM_LABELS[program]} engaged.`;
@@ -350,6 +384,43 @@ export class FlightRuntime {
     }
     if (down) this.keys.add(key);
     else this.keys.delete(key);
+  }
+
+  // ---- Moon ----
+
+  /** Gravity environment (the Moon on lunar missions). */
+  get env(): GravityEnv | null {
+    return this.lunar?.env ?? null;
+  }
+
+  private lunarCheck(s: FlightState) {
+    return this.lunar
+      ? {
+          env: this.lunar.env,
+          goal: this.lunar.plan.goal,
+          inLunarOrbit: inLunarOrbit(s, this.lunar.env),
+        }
+      : null;
+  }
+
+  /** Starts a refuelling operation (tankers in Earth orbit or the lunar depot). */
+  refuel(): { ok: boolean; reason?: string } {
+    const s = this.live;
+    if (!s || !this.lunar || this.state.phase !== 'flight')
+      return { ok: false, reason: 'Refuelling is only offered on Moon missions.' };
+    if (this.ps.program !== 'none' || s.throttle > 0) {
+      this.message = 'Turn the autopilot and engines off before refuelling.';
+      this.publish();
+      return { ok: false, reason: this.message };
+    }
+    const r = this.lunar.startRefuel(s);
+    this.message = r.ok
+      ? this.lunar.refuelling?.kind === 'leo'
+        ? 'Tankers on the way: refuelling in orbit (about 6 hours; time warp is available).'
+        : 'Docking at the lunar depot: topping up (about 3 hours; time warp is available).'
+      : (r.reason ?? null);
+    this.publish();
+    return r;
   }
 
   // ---- station ----
@@ -525,6 +596,7 @@ export class FlightRuntime {
         throttle: s.throttle,
       };
       this.ps = IDLE_PROGRAM;
+      this.lunar?.stopProgram();
       if (message) this.message = message;
     }
   }
@@ -548,7 +620,8 @@ export class FlightRuntime {
     let steps = 0;
     while (steps < MAX_STEPS_PER_FRAME && this.live.phase === 'flight') {
       const lim = this.limit(this.live);
-      const dt = st.warp > MAX_FINE_WARP && lim.max > MAX_FINE_WARP ? COARSE_DT_S : FINE_DT_S;
+      const coarse = this.lunar ? coastDt(this.live.r, this.live.tS, this.lunar.env) : COARSE_DT_S;
+      const dt = st.warp > MAX_FINE_WARP && lim.max > MAX_FINE_WARP ? coarse : FINE_DT_S;
       if (this.accumulator < dt) break;
       this.step(spec, dt);
       this.accumulator -= dt;
@@ -623,7 +696,16 @@ export class FlightRuntime {
     const s = this.live!;
     const zone = this.state.zone;
     let controls: FlightControls;
-    if (this.ps.program === 'rendezvous' && this.eph) {
+    if (isLunarProgram(this.ps.program) && this.lunar) {
+      const out = this.lunar.run(s, spec);
+      this.mode = 'manual';
+      if (out.message) this.message = out.message;
+      controls = { ...out.controls, yawDeg: this.manual.yawDeg, slewDegS: slewRate(s) };
+      if (out.chain === 'none') {
+        this.ps = IDLE_PROGRAM;
+        this.manual = { ...this.manual, pitchDeg: s.pitchDeg, bankDeg: 0, throttle: 0 };
+      } else if (out.chain) this.ps = { ...IDLE_PROGRAM, program: out.chain };
+    } else if (this.ps.program === 'rendezvous' && this.eph) {
       const out = runRendezvous(this.rdv, s, this.eph);
       this.rdv = out.next;
       this.mode = 'manual';
@@ -649,7 +731,18 @@ export class FlightRuntime {
         slewDegS: slewRate(s),
       };
     }
-    const next = stepFlight(s, spec, controls, dt);
+    let next = stepFlight(s, spec, controls, dt, this.env);
+    if (this.lunar?.refuelling) {
+      const r = this.lunar.applyRefuel(next, spec);
+      next = r.state;
+      if (r.done) {
+        this.message = r.done;
+        next = {
+          ...next,
+          events: [...next.events, { tS: next.tS, kind: 'success', text: r.done }],
+        };
+      }
+    }
     this.live = next;
     this.track(s, next);
   }
@@ -683,7 +776,13 @@ export class FlightRuntime {
       if (after > before && after >= 1)
         notes.push({ tS: s.tS, kind: 'success', text: `Orbit ${after} complete.` });
     }
-    if (p.orbit && !p.deorbit && el.periapsisAltM < DEORBIT_PE_M) {
+    if (
+      p.orbit &&
+      !p.deorbit &&
+      el.periapsisAltM < DEORBIT_PE_M &&
+      el.status !== 'escape' &&
+      el.apoapsisAltM < 2_000_000
+    ) {
       p = { ...p, deorbit: true };
       notes.push({
         tS: s.tS,
@@ -705,6 +804,10 @@ export class FlightRuntime {
       });
     }
     void prev;
+    if (this.lunar) {
+      notes.push(...this.lunar.track(s));
+      p = { ...p, lunar: this.lunar.progress };
+    }
     this.progress = p;
     if (notes.length) this.live = { ...s, events: [...s.events, ...notes] };
   }
@@ -738,6 +841,16 @@ export class FlightRuntime {
   /** Warp limit including the rendezvous guidance's needs. */
   private limit(s: FlightState): { max: FlightWarp; reason: string | null } {
     const base = warpLimit(s, this.ps, this.ps.program === 'none' ? this.manual.throttle : 0);
+    if (this.lunar) {
+      const extra = this.lunar.limit(s, this.ps.program);
+      if (extra && extra.max < base.max)
+        return { max: extra.max as FlightWarp, reason: extra.reason };
+      if (!extra && base.max === 1000 && this.lunar.deepSpace(s))
+        return { max: 10000, reason: null };
+      if (base.max === 1000)
+        return { max: 1000, reason: 'Near Earth or the Moon: warp limited to 1000×.' };
+      return base;
+    }
     if (base.max <= MAX_FINE_WARP || this.ps.program !== 'rendezvous' || !this.eph) return base;
     const r = this.rdv;
     const view = rendezvousView(r, s, this.eph);
@@ -783,6 +896,7 @@ export class FlightRuntime {
           this.eph && s ? { eph: this.eph, view: rendezvousView(this.rdv, s, this.eph) } : null,
         rendezvous: this.rdv,
         proximity: this.prox?.view() ?? null,
+        lunar: this.lunar?.view(s) ?? null,
       },
       true,
     );
@@ -803,6 +917,7 @@ export const PROGRAM_LABELS: Record<ProgramId, string> = {
   deorbit: 'Deorbit to target',
   reentry: 'Re-entry guidance',
   landing: 'Landing burn',
+  ...LUNAR_PROGRAM_LABELS,
 };
 
 /** Whether a program can be engaged now, with a player-readable reason if not. Pure. */
@@ -814,9 +929,24 @@ export function programAvailability(
     dockingAdapter: false,
     stationRangeM: null,
   },
+  lunar: {
+    env: GravityEnv;
+    goal: LunarMissionPlan['goal'];
+    inLunarOrbit: boolean;
+  } | null = null,
 ): { ok: boolean; reason?: string } {
   if (s.phase !== 'flight') return { ok: false, reason: 'The ship is down.' };
   if (program === 'none') return { ok: true };
+  if (isLunarProgram(program))
+    return lunarProgramAvailability(
+      program,
+      s,
+      lunar?.env ?? null,
+      lunar?.goal ?? null,
+      lunar?.inLunarOrbit ?? false,
+    );
+  if (s.ref === 'moon')
+    return { ok: false, reason: 'Earth programs are unavailable near the Moon.' };
   const alt = localFrame(s.r).altitudeM;
   const el = orbitalElements(s.r, s.v);
   const noProp = s.propKg <= 0;

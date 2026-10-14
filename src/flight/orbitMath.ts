@@ -70,38 +70,55 @@ export interface OrbitalElements {
 /** Minimum periapsis for a "stable" orbit in this game (gameplay value). */
 export const STABLE_PERIAPSIS_M = 120_000;
 
-export function orbitalElements(r: Vec2, v: Vec2): OrbitalElements {
+/** A central body for orbital elements (Earth by default; the Moon in lunar flight). */
+export interface OrbitBody {
+  readonly mu: number;
+  readonly radiusM: number;
+  /** Periapsis altitude above which an orbit counts as "stable" (gameplay value). */
+  readonly stablePeriapsisM: number;
+}
+
+export const EARTH_BODY: OrbitBody = {
+  mu: EARTH_MU_M3S2,
+  radiusM: EARTH_RADIUS_M,
+  stablePeriapsisM: STABLE_PERIAPSIS_M,
+};
+
+/** Elements of the conic about `body` (r and v relative to the body's centre). */
+export function orbitalElements(r: Vec2, v: Vec2, body: OrbitBody = EARTH_BODY): OrbitalElements {
+  const mu = body.mu;
   const rMag = len(r);
   const vMag = len(v);
-  const f = localFrame(r);
-  const vH = dot(v, f.east);
-  const vV = dot(v, f.up);
-  const energy = (vMag * vMag) / 2 - EARTH_MU_M3S2 / rMag;
+  const up: Vec2 = [r[0] / rMag, r[1] / rMag];
+  const east: Vec2 = [up[1], -up[0]];
+  const vH = dot(v, east);
+  const vV = dot(v, up);
+  const energy = (vMag * vMag) / 2 - mu / rMag;
   const h = cross(r, v); // negative for clockwise motion
   // Eccentricity vector: ((v² - μ/r) r - (r·v) v) / μ
-  const k = vMag * vMag - EARTH_MU_M3S2 / rMag;
+  const k = vMag * vMag - mu / rMag;
   const rv = dot(r, v);
-  const ev: Vec2 = [(k * r[0] - rv * v[0]) / EARTH_MU_M3S2, (k * r[1] - rv * v[1]) / EARTH_MU_M3S2];
+  const ev: Vec2 = [(k * r[0] - rv * v[0]) / mu, (k * r[1] - rv * v[1]) / mu];
   const e = len(ev);
-  const p = (h * h) / EARTH_MU_M3S2;
+  const p = (h * h) / mu;
   const rp = p / (1 + e);
   const escape = energy >= 0;
-  const a = escape ? Infinity : -EARTH_MU_M3S2 / (2 * energy);
+  const a = escape ? Infinity : -mu / (2 * energy);
   const ra = escape ? Infinity : p / (1 - e);
-  const periapsisAltM = rp - EARTH_RADIUS_M;
+  const periapsisAltM = rp - body.radiusM;
   return {
     semiMajorAxisM: a,
     eccentricity: e,
-    apoapsisAltM: ra - EARTH_RADIUS_M,
+    apoapsisAltM: ra - body.radiusM,
     periapsisAltM,
-    periodS: escape ? Infinity : 2 * Math.PI * Math.sqrt((a * a * a) / EARTH_MU_M3S2),
-    periapsisAngle: e > 1e-9 ? Math.atan2(ev[0], ev[1]) : f.groundAngle,
+    periodS: escape ? Infinity : 2 * Math.PI * Math.sqrt((a * a * a) / mu),
+    periapsisAngle: e > 1e-9 ? Math.atan2(ev[0], ev[1]) : Math.atan2(r[0], r[1]),
     specificEnergy: energy,
     flightPathAngleDeg: (Math.atan2(vV, vH) * 180) / Math.PI,
     speedMS: vMag,
     horizontalSpeedMS: vH,
     verticalSpeedMS: vV,
-    status: escape ? 'escape' : periapsisAltM >= STABLE_PERIAPSIS_M ? 'orbit' : 'suborbital',
+    status: escape ? 'escape' : periapsisAltM >= body.stablePeriapsisM ? 'orbit' : 'suborbital',
   };
 }
 
@@ -113,6 +130,7 @@ export function orbitPath(
   el: OrbitalElements,
   fromAngle: number,
   samples = 128,
+  surfaceRadiusM = EARTH_RADIUS_M,
 ): { angle: number; radiusM: number }[] {
   if (el.status === 'escape' || !Number.isFinite(el.semiMajorAxisM)) return [];
   const e = el.eccentricity;
@@ -123,7 +141,7 @@ export function orbitPath(
     // Clockwise motion: true anomaly increases with ground angle measured from periapsis.
     const nu = angle - el.periapsisAngle;
     const radiusM = p / (1 + e * Math.cos(nu));
-    if (i > 0 && radiusM < EARTH_RADIUS_M) break;
+    if (i > 0 && radiusM < surfaceRadiusM) break;
     out.push({ angle, radiusM });
   }
   return out;
@@ -137,7 +155,7 @@ export function timeToApsides(
 ): { toApoS: number; toPeriS: number } {
   if (el.status === 'escape' || el.eccentricity < 1e-6) return { toApoS: 0, toPeriS: 0 };
   const e = el.eccentricity;
-  const nu = wrapAngle(localFrame(r).groundAngle - el.periapsisAngle);
+  const nu = wrapAngle(Math.atan2(r[0], r[1]) - el.periapsisAngle);
   const E = 2 * Math.atan(Math.sqrt((1 - e) / (1 + e)) * Math.tan(nu / 2));
   const M = E - e * Math.sin(E);
   const n = (2 * Math.PI) / el.periodS;
@@ -149,6 +167,6 @@ export function timeToApsides(
 }
 
 /** Speed needed at radius r on an ellipse with the given radii (vis-viva). */
-export function visVivaSpeed(rM: number, raM: number, rpM: number): number {
-  return Math.sqrt(EARTH_MU_M3S2 * (2 / rM - 2 / (raM + rpM)));
+export function visVivaSpeed(rM: number, raM: number, rpM: number, mu = EARTH_MU_M3S2): number {
+  return Math.sqrt(mu * (2 / rM - 2 / (raM + rpM)));
 }

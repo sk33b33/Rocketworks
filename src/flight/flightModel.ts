@@ -7,6 +7,17 @@ import {
 } from '../simulation/constants';
 import type { StageParams } from '../simulation/ascent/flightVehicle';
 import { add, dot, len, localFrame, scale, type Vec2 } from './orbitMath';
+import {
+  bodyFrame,
+  convertPitch,
+  gravityAccel,
+  MOON_SURFACE_SPEED_MS,
+  referenceBody,
+  selenoAngle,
+  surfaceState,
+  type GravityEnv,
+  type ReferenceBody,
+} from '../moon/moonOrbit';
 
 /*
  * Orbital flight and re-entry model for the ship (planar, Earth-centred, no Earth rotation).
@@ -27,7 +38,8 @@ export interface ShipSpec {
   readonly hasDockingAdapter?: boolean;
 }
 
-export type FlightPhase = 'flight' | 'landed' | 'splashdown' | 'crashed' | 'destroyed';
+/** 'tipped': down on the Moon but fallen over (ship lost, crew assumed rescued). */
+export type FlightPhase = 'flight' | 'landed' | 'splashdown' | 'crashed' | 'destroyed' | 'tipped';
 
 export interface FlightEvent {
   readonly tS: number;
@@ -60,6 +72,10 @@ export interface FlightState {
   readonly events: readonly FlightEvent[];
   /** Contact metrics, set when the ship comes down. */
   readonly touchdown?: TouchdownResult;
+  /** Body the attitude (pitch) and telemetry refer to; absent = Earth. */
+  readonly ref?: ReferenceBody;
+  /** Landing thrusters running (final lunar descent). */
+  readonly landingThrusters?: boolean;
 }
 
 /** Model constants (gameplay values). */
@@ -83,6 +99,18 @@ export const FLIGHT = {
   /** Engine governor: thrust never exceeds this acceleration (engines shut down as needed). */
   maxThrustG: 3.5,
   minThrottlePerEngine: 0.4,
+  /**
+   * Below this height above the Moon the main engines hand over to high-mounted landing
+   * thrusters with fine throttle (main engines can't throttle low enough to hover in lunar gravity).
+   */
+  landingThrusterAltM: 3_000,
+  /** Landing-thruster acceleration at full throttle (m/s², about 2.5 lunar g). */
+  landingThrusterAccelMS2: 4,
+  lunarTouchdownMaxVertMS: 3,
+  lunarTouchdownMaxHorizMS: 2,
+  /** Tilt plus terrain slope beyond this tips the ship over. */
+  lunarMaxLeanDeg: 12,
+  lunarHardMaxVertMS: 8,
 } as const;
 
 /** Sutton–Graves stagnation heating (W/m²) with a ~4.5 m nose radius. */
@@ -94,11 +122,18 @@ export function shipMassKg(spec: ShipSpec, propKg: number): number {
   return spec.stage.dryMassKg + propKg;
 }
 
-/** Nose unit vector from pitch in the local frame. */
-export function noseDirection(r: Vec2, pitchDeg: number): Vec2 {
-  const f = localFrame(r);
+/** Nose unit vector from pitch in the local frame (`frameUp` overrides Earth's vertical). */
+export function noseDirection(r: Vec2, pitchDeg: number, frameUp?: Vec2): Vec2 {
+  const up = frameUp ?? localFrame(r).up;
+  const east: Vec2 = [up[1], -up[0]];
   const p = (pitchDeg * Math.PI) / 180;
-  return add(scale(f.east, Math.cos(p)), scale(f.up, Math.sin(p)));
+  return add(scale(east, Math.cos(p)), scale(up, Math.sin(p)));
+}
+
+/** Flight path angle (deg) relative to the ship's reference body. */
+export function relativeFlightPathDeg(s: FlightState, env?: GravityEnv | null): number {
+  const f = bodyFrame(s.ref ?? 'earth', s.r, s.v, s.tS, env);
+  return (Math.atan2(dot(f.v, f.up), dot(f.v, f.east)) * 180) / Math.PI;
 }
 
 /** Flight path angle (deg): direction of the velocity above the local horizon. */
@@ -141,23 +176,45 @@ export interface FlightControls {
 
 export const wrap180 = (a: number) => ((((a + 180) % 360) + 360) % 360) - 180;
 
-/** Advances the ship by one fixed step. Pure. */
+/** Advances the ship by one fixed step. Pure. `env` adds the Moon (lunar missions). */
 export function stepFlight(
-  s: FlightState,
+  s0: FlightState,
   spec: ShipSpec,
   c: FlightControls,
   dt: number,
+  env?: GravityEnv | null,
 ): FlightState {
-  if (s.phase !== 'flight') return s;
+  if (s0.phase !== 'flight') return s0;
   const events: FlightEvent[] = [];
-  const t = s.tS + dt;
-  const f = localFrame(s.r);
+  const t = s0.tS + dt;
+  const f = localFrame(s0.r);
   const alt = f.altitudeM;
-  const speed = len(s.v);
-  const gamma = flightPathAngleDeg(s.r, s.v);
+  const speed = len(s0.v);
+  // Attitude refers to the Moon inside its sphere of influence; switching keeps the nose fixed.
+  const ref: ReferenceBody = referenceBody(s0.r, s0.tS, env);
+  let s = s0;
+  let targetPitchDeg = c.targetPitchDeg;
+  if (ref !== (s0.ref ?? 'earth')) {
+    const from = bodyFrame(s0.ref ?? 'earth', s0.r, s0.v, s0.tS, env);
+    const to = bodyFrame(ref, s0.r, s0.v, s0.tS, env);
+    s = { ...s0, pitchDeg: wrap180(convertPitch(s0.pitchDeg, from.upAngle, to.upAngle)), ref };
+    targetPitchDeg = convertPitch(c.targetPitchDeg, from.upAngle, to.upAngle);
+    events.push({
+      tS: t,
+      kind: 'info',
+      text:
+        ref === 'moon'
+          ? "Entered the Moon's sphere of influence."
+          : "Left the Moon's sphere of influence.",
+    });
+  }
+  const rf = ref === 'earth' ? null : bodyFrame(ref, s.r, s.v, s.tS, env);
+  const gamma = rf
+    ? (Math.atan2(dot(rf.v, rf.up), dot(rf.v, rf.east)) * 180) / Math.PI
+    : flightPathAngleDeg(s.r, s.v);
 
   // Attitude slew (limited by RCS/flap authority).
-  const delta = wrap180(c.targetPitchDeg - s.pitchDeg);
+  const delta = wrap180(targetPitchDeg - s.pitchDeg);
   const maxStep = c.slewDegS * dt;
   let pitchDeg = wrap180(s.pitchDeg + Math.max(-maxStep, Math.min(maxStep, delta)));
   // Without flaps the ship can't hold a high angle of attack in thick air: it weathervanes.
@@ -176,15 +233,22 @@ export function stepFlight(
     spec.stage.thrustSlPerEngineN +
     (spec.stage.thrustVacPerEngineN - spec.stage.thrustSlPerEngineN) * vacFrac;
   const isp = spec.stage.ispSlS + (spec.stage.ispVacS - spec.stage.ispSlS) * vacFrac;
+  const landingThrusters = !!rf && rf.altitudeM < FLIGHT.landingThrusterAltM && s.propKg > 0;
   let throttle = s.propKg > 0 && running > 0 ? Math.max(0, Math.min(1, c.throttle)) : 0;
-  if (throttle > 0) {
-    const full = running * perEngine;
-    const cap = (FLIGHT.maxThrustG * G0_MS2 * mass) / full;
-    throttle = Math.max(FLIGHT.minThrottlePerEngine / running, Math.min(throttle, cap));
+  let thrustN: number;
+  if (landingThrusters) {
+    throttle = s.propKg > 0 ? Math.max(0, Math.min(1, c.throttle)) : 0;
+    thrustN = throttle * FLIGHT.landingThrusterAccelMS2 * mass;
+  } else {
+    if (throttle > 0) {
+      const full = running * perEngine;
+      const cap = (FLIGHT.maxThrustG * G0_MS2 * mass) / full;
+      throttle = Math.max(FLIGHT.minThrottlePerEngine / running, Math.min(throttle, cap));
+    }
+    thrustN = running * perEngine * throttle;
   }
-  const thrustN = running * perEngine * throttle;
   const burned = Math.min(s.propKg, isp > 0 ? (thrustN / (isp * G0_MS2)) * dt : 0);
-  const nose = noseDirection(s.r, pitchDeg);
+  const nose = noseDirection(s.r, pitchDeg, rf?.up);
   const aThrust = scale(nose, thrustN / mass);
 
   // Aerodynamics: drag area blends nose-on and side-on; lift peaks at mid angles.
@@ -211,7 +275,9 @@ export function stepFlight(
   }
 
   const rMag = len(s.r);
-  const aGrav = scale(s.r, -EARTH_MU_M3S2 / (rMag * rMag * rMag));
+  const aGrav = env
+    ? gravityAccel(s.r, s.tS, env)
+    : scale(s.r, -EARTH_MU_M3S2 / (rMag * rMag * rMag));
   const aTotal = add(add(aGrav, aThrust), aAero);
   const v = add(s.v, scale(aTotal, dt));
   const r = add(s.r, scale(v, dt));
@@ -258,6 +324,8 @@ export function stepFlight(
     gLoad,
     peakG: Math.max(s.peakG, gLoad),
     angleOfAttackDeg: aoa,
+    ...(ref === 'moon' ? { ref } : s.ref ? { ref } : {}),
+    landingThrusters: landingThrusters && throttle > 0,
   };
   if (s.propKg > 0 && next.propKg <= 0)
     events.push({ tS: t, kind: 'warn', text: 'Ship propellant depleted.' });
@@ -267,6 +335,8 @@ export function stepFlight(
     next = { ...next, phase: 'destroyed', throttle: 0 };
   } else if (len(r) <= EARTH_RADIUS_M) {
     next = touchdown(next, s, events, t);
+  } else if (rf && env && bodyFrame('moon', r, v, t, env).altitudeM <= 0) {
+    next = lunarTouchdown(next, s, events, t, env);
   }
   return events.length ? { ...next, events: [...s.events, ...events] } : next;
 }
@@ -275,6 +345,11 @@ export interface TouchdownResult {
   readonly vertMS: number;
   readonly horizMS: number;
   readonly tiltDeg: number;
+  /** Set for touchdowns on the Moon. */
+  readonly body?: 'moon';
+  readonly slopeDeg?: number;
+  /** Selenographic angle of the touchdown point (radians). */
+  readonly seleno?: number;
 }
 
 export function touchdownMetrics(r: Vec2, v: Vec2, pitchDeg: number): TouchdownResult {
@@ -312,6 +387,51 @@ function touchdown(
           : `Impact at ${m.vertMS.toFixed(0)} m/s.`,
   });
   return { ...next, r: surface, v: [0, 0], throttle: 0, phase, touchdown: m };
+}
+
+/** Contact with the lunar surface: a landing, a hard landing (damage), a tip-over or a crash. */
+function lunarTouchdown(
+  next: FlightState,
+  prev: FlightState,
+  events: FlightEvent[],
+  t: number,
+  env: GravityEnv,
+): FlightState {
+  const fr = bodyFrame('moon', prev.r, next.v, prev.tS, env);
+  const vertMS = -dot(fr.v, fr.up);
+  // Horizontal speed over the (slowly turning) ground.
+  const horizMS = Math.abs(dot(fr.v, fr.east) - MOON_SURFACE_SPEED_MS);
+  const seleno = selenoAngle(next.r, t, env.moon);
+  const slopeDeg = env.slopeAt?.(seleno) ?? 0;
+  const tiltDeg = Math.abs(wrap180(90 - next.pitchDeg));
+  const lean = tiltDeg + slopeDeg;
+  const m: TouchdownResult = { vertMS, horizMS, tiltDeg, body: 'moon', slopeDeg, seleno };
+  const ground = surfaceState(seleno, t, env.moon);
+  const rest = { r: ground.r, v: ground.v, throttle: 0, touchdown: m, landingThrusters: false };
+  if (vertMS > FLIGHT.lunarHardMaxVertMS || horizMS > 6) {
+    events.push({ tS: t, kind: 'fail', text: `Impact on the Moon at ${vertMS.toFixed(0)} m/s.` });
+    return { ...next, ...rest, phase: 'crashed' };
+  }
+  if (lean > FLIGHT.lunarMaxLeanDeg || horizMS > FLIGHT.lunarTouchdownMaxHorizMS) {
+    events.push({
+      tS: t,
+      kind: 'fail',
+      text: `The ship tipped over (${lean.toFixed(0)}° lean on a ${slopeDeg.toFixed(0)}° slope, ${horizMS.toFixed(1)} m/s sideways).`,
+    });
+    return { ...next, ...rest, phase: 'tipped' };
+  }
+  const hard = vertMS > FLIGHT.lunarTouchdownMaxVertMS;
+  const hull = hard
+    ? Math.max(0.05, next.hull - (vertMS - FLIGHT.lunarTouchdownMaxVertMS) * 0.08)
+    : next.hull;
+  events.push({
+    tS: t,
+    kind: hard ? 'warn' : 'success',
+    text: hard
+      ? `Hard lunar touchdown at ${vertMS.toFixed(1)} m/s: landing legs damaged.`
+      : `Lunar touchdown at ${vertMS.toFixed(1)} m/s.`,
+  });
+  return { ...next, ...rest, hull, phase: 'landed' };
 }
 
 /** Δv left in the ship (ideal rocket equation, vacuum Isp). */

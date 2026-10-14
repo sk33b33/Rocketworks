@@ -9,6 +9,7 @@ import { recordBase } from '../launch/flightRecord';
 import { FLIGHT, type FlightState } from './flightModel';
 import { findZoneAt, isLand, missDistanceM, type LandingZone } from './landingZones';
 import { localFrame } from './orbitMath';
+import type { LunarProgress } from '../moon/lunarFlight';
 
 /*
  * Objectives and outcome evaluation for the orbital part of a flight. Pure: the runtime tracks
@@ -31,6 +32,8 @@ export interface FlightProgress {
   readonly rendezvous?: boolean;
   /** Docking with the station (set when the ship departs it). */
   readonly docking?: DockingSummary | null;
+  /** Moon missions: lunar objectives. */
+  readonly lunar?: LunarProgress;
 }
 
 export interface DockingSummary {
@@ -149,8 +152,11 @@ export function landingSummary(
   const solid = land || at?.kind === 'platform' || at?.kind === 'pad';
   let outcome: LandingSummary['outcome'];
   let recovered = false;
+  const onMoon = s.touchdown?.body === 'moon';
   switch (s.phase) {
     case 'flight':
+    case 'tipped':
+      // Left in space or on the Moon: the crew is assumed rescued; the ship is not recovered.
       outcome = 'stranded';
       break;
     case 'destroyed':
@@ -164,6 +170,10 @@ export function landingSummary(
       outcome = solid ? 'crash' : 'splashdown';
       break;
     case 'landed':
+      if (onMoon) {
+        outcome = 'stranded';
+        break;
+      }
       outcome = solid ? 'landed' : 'splashdown';
       recovered = solid;
       break;
