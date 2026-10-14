@@ -168,9 +168,12 @@ export class StationScene implements GameScene {
       );
       cam.position.copy(focus).addScaledVector(dir, dist);
       cam.up.set(0, 1, 0);
-      cam.lookAt(
-        mode === 'chase' ? this.tmp.copy(focus).lerp(new THREE.Vector3(PORT[1], 0, 0), 0.3) : focus,
-      );
+      if (mode === 'chase') {
+        // Look slightly past the ship toward the port, so both stay framed at any range.
+        const toPort = new THREE.Vector3(PORT[1], PORT[0], -PORT[2]).sub(focus);
+        const ahead = Math.min(toPort.length() * 0.3, dist * 0.35);
+        cam.lookAt(this.tmp.copy(focus).addScaledVector(toPort.normalize(), ahead));
+      } else cam.lookAt(focus);
       cam.fov = 50;
       cam.near = 0.3;
     }

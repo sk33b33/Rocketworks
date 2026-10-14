@@ -490,6 +490,9 @@ button.danger {
   width: min(460px, calc(100vw - 32px));
   font-size: 13px;
 }
+.approach-facts dd {
+  white-space: nowrap;
+}
 .help .facts dd {
   text-align: left;
 }

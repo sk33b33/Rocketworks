@@ -3,6 +3,11 @@ import { closingLimitMS, CORRIDOR_HALF_ANGLE_DEG, DOCK_WINDOW, RCS } from '../..
 import { formatPercent } from '../format';
 import { fmt } from '../flight/useFlight';
 
+/** Compact signed distance: metres up to 1 km, then kilometres. */
+function dist(m: number): string {
+  return Math.abs(m) >= 1_000 ? `${fmt(m / 1000, 2)} km` : `${fmt(m, 1)} m`;
+}
+
 function Check({ ok, label, value }: { ok: boolean; label: string; value: string }) {
   return (
     <li className={ok ? 'done' : 'current'}>
@@ -39,30 +44,29 @@ export function ApproachPanel({ view }: { view: ProximityView }) {
                 : 'FREE FLIGHT'}
         </span>
       </div>
-      <dl className="facts">
+      <dl className="facts approach-facts">
         <dt>Range to port</dt>
-        <dd>{toPort >= 1_000 ? `${fmt(toPort / 1000, 2)} km` : `${fmt(toPort, 1)} m`}</dd>
+        <dd>{dist(toPort)}</dd>
         <dt>Closing speed</dt>
         <dd className={m.inKeepOut && m.closingMS > limit ? 'tone-bad' : undefined}>
-          {fmt(m.closingMS, 2)} m/s{' '}
-          {m.inKeepOut && <span className="muted">(limit {fmt(limit, 2)})</span>}
+          {fmt(m.closingMS, 2)} m/s
+          {m.inKeepOut && <span className="muted"> (max {fmt(limit, 2)})</span>}
         </dd>
-        <dt>Lateral offset · drift</dt>
+        <dt>Lateral offset</dt>
+        <dd>{dist(m.lateralM)}</dd>
+        <dt>Lateral drift</dt>
+        <dd>{fmt(m.lateralSpeedMS, 2)} m/s</dd>
+        <dt>Up · left</dt>
         <dd>
-          {fmt(m.lateralM, 2)} m · {fmt(m.lateralSpeedMS, 2)} m/s
+          {dist(s.p[0])} · {dist(s.p[2])}
         </dd>
-        <dt>Offsets (up · left)</dt>
-        <dd>
-          {fmt(s.p[0], 1)} · {fmt(s.p[2], 1)} m
-        </dd>
-        <dt>Pointing · roll error</dt>
+        <dt>Pointing · roll</dt>
         <dd>
           {fmt(m.angleErrDeg, 1)}° · {fmt(m.rollErrDeg, 1)}°
         </dd>
-        <dt>Corridor</dt>
+        <dt>Corridor (≤ {CORRIDOR_HALF_ANGLE_DEG}°)</dt>
         <dd className={m.inCorridor ? 'tone-ok' : m.inKeepOut ? 'tone-bad' : undefined}>
-          {m.alongM > 0 ? `${fmt(m.corridorDeg, 1)}° off axis` : 'behind the port'} (≤{' '}
-          {CORRIDOR_HALF_ANGLE_DEG}°)
+          {m.alongM > 0 ? `${fmt(m.corridorDeg, 1)}°` : 'behind port'}
         </dd>
         <dt>RCS Δv left</dt>
         <dd className={s.rcsLeftMS < 5 ? 'tone-warn' : undefined}>
@@ -70,7 +74,7 @@ export function ApproachPanel({ view }: { view: ProximityView }) {
         </dd>
         <dt>Hull</dt>
         <dd className={s.hull < 1 ? 'tone-warn' : undefined}>{formatPercent(s.hull)}</dd>
-        <dt>Violations · bounces · collisions</dt>
+        <dt>Violations · bounces · hits</dt>
         <dd>
           {s.violations} · {s.bounces} · {s.collisions}
         </dd>
