@@ -25,7 +25,7 @@ describe('locations', () => {
 
   it('validates ids', () => {
     expect(isLocationId('factory')).toBe(true);
-    expect(isLocationId('mars')).toBe(false);
+    expect(isLocationId('venus')).toBe(false);
     expect(isLocationId(42)).toBe(false);
     expect(() => getLocation('nope' as never)).toThrow();
   });
