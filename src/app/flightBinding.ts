@@ -4,6 +4,7 @@ import type { LaunchContext } from '../launch/launchRuntime';
 import type { BoosterRecoverySummary } from '../launch/flightRecord';
 import type { AscentState } from '../simulation/ascent/ascentModel';
 import type { FlightController } from '../scenes/flight/flightController';
+import type { StationController } from '../scenes/station/stationController';
 import { useGameStore } from './gameStore';
 import { launchRuntime } from './launchBinding';
 
@@ -18,6 +19,7 @@ export function flightContextFromLaunch(
   ctx: LaunchContext,
   ascent: AscentState,
   recovery: BoosterRecoverySummary | null = null,
+  station?: { crew: number; cargo: boolean },
 ): FlightContext {
   const { r, v } = ascentToInertial(ascent);
   return {
@@ -30,6 +32,7 @@ export function flightContextFromLaunch(
     start: { r, v, propKg: ascent.shipPropKg, tS: ascent.tS },
     recovery,
     hardware: ctx.hardware ?? { boosterId: null, shipId: null },
+    ...(station ? { station } : {}),
     ascent: {
       maxAltitudeM: ascent.maxAltitudeM,
       maxSpeedMS: ascent.maxSpeedMS,
@@ -49,9 +52,39 @@ export function continueToOrbit(): boolean {
   const snap = launchRuntime.getSnapshot();
   if (!flightRuntime.active) {
     if (snap.phase !== 'handoff' || !snap.context || !snap.ascent) return false;
-    flightRuntime.start(flightContextFromLaunch(snap.context, snap.ascent, snap.recoveryResult));
+    const mission = useGameStore.getState().mission;
+    flightRuntime.start(
+      flightContextFromLaunch(snap.context, snap.ascent, snap.recoveryResult, {
+        crew: snap.context.crewNames.length,
+        cargo: mission.payloadId === 'station-supplies',
+      }),
+    );
   }
   return useGameStore.getState().goTo('flight');
+}
+
+export function createStationController(): StationController {
+  return {
+    runtime: {
+      get current() {
+        return flightRuntime.current;
+      },
+      get proximity() {
+        return flightRuntime.proximity;
+      },
+      update: (dt) => flightRuntime.update(dt),
+    },
+    getCameraMode: () => useGameStore.getState().stationCamera,
+    subscribeCameraReset: (listener) =>
+      useGameStore.subscribe((s, prev) => {
+        if (
+          s.cameraRequest &&
+          s.cameraRequest !== prev.cameraRequest &&
+          s.currentLocation === 'station'
+        )
+          listener();
+      }),
+  };
 }
 
 export function createFlightController(): FlightController {

@@ -4,6 +4,7 @@ import type { LandingZone } from '../../flight/landingZones';
 import { localFrame, orbitalElements, orbitPath } from '../../flight/orbitMath';
 import type { ResourceCache } from '../../render/ResourceCache';
 import { EARTH_RADIUS_M } from '../../simulation/constants';
+import { STATION_RADIUS_M } from '../../station/stationOrbit';
 
 /*
  * Map-view overlay in Earth-centred coordinates (child of the planet group): the predicted
@@ -20,6 +21,8 @@ export class OrbitOverlay {
   private readonly apo: THREE.Mesh;
   private readonly peri: THREE.Mesh;
   private readonly shipMarker: THREE.Mesh;
+  private readonly stationMarker: THREE.Mesh;
+  private readonly stationRing: THREE.Line;
 
   constructor(cache: ResourceCache) {
     const geo = new THREE.BufferGeometry();
@@ -46,13 +49,52 @@ export class OrbitOverlay {
     this.apo = new THREE.Mesh(dot, mat('flight:apo', 0xc7a6ff));
     this.peri = new THREE.Mesh(dot, mat('flight:peri', 0xff6b6b));
     this.shipMarker = new THREE.Mesh(dot, mat('flight:shipMarker', 0xff4fd8));
-    for (const m of [this.apo, this.peri, this.shipMarker]) m.renderOrder = 3;
-    this.group.add(this.line, this.apo, this.peri, this.shipMarker);
+    this.stationMarker = new THREE.Mesh(dot, mat('flight:stationMarker', 0xffffff));
+    for (const m of [this.apo, this.peri, this.shipMarker, this.stationMarker]) m.renderOrder = 3;
+    const ringPts = Array.from({ length: 257 }, (_, i) => {
+      const a = (i / 256) * Math.PI * 2;
+      return new THREE.Vector3(Math.sin(a) * STATION_RADIUS_M, Math.cos(a) * STATION_RADIUS_M, 0);
+    });
+    this.stationRing = new THREE.Line(
+      cache.geometry('flight:stationRing', () => new THREE.BufferGeometry().setFromPoints(ringPts)),
+      cache.material(
+        'flight:stationRingMat',
+        () =>
+          new THREE.LineBasicMaterial({
+            color: 0xffffff,
+            transparent: true,
+            opacity: 0.25,
+            depthTest: false,
+            fog: false,
+          }),
+      ),
+    );
+    this.stationRing.renderOrder = 1;
+    this.stationRing.frustumCulled = false;
+    this.group.add(
+      this.line,
+      this.apo,
+      this.peri,
+      this.shipMarker,
+      this.stationMarker,
+      this.stationRing,
+    );
     this.group.visible = false;
   }
 
   /** `mapScale` = camera distance in map view, or null to hide the overlay. */
-  update(s: FlightState, zone: LandingZone, mapScale: number | null): void {
+  update(
+    s: FlightState,
+    zone: LandingZone,
+    mapScale: number | null,
+    station: { readonly r: readonly [number, number] } | null = null,
+  ): void {
+    this.stationMarker.visible = !!station;
+    this.stationRing.visible = !!station;
+    if (station && mapScale !== null) {
+      this.stationMarker.position.set(station.r[0], station.r[1], 0);
+      this.stationMarker.scale.setScalar(mapScale * 0.009);
+    }
     void zone;
     this.group.visible = mapScale !== null;
     if (mapScale === null) return;

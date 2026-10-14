@@ -8,7 +8,8 @@ import {
 import { LANDING_ZONES, missDistanceM, type LandingZone } from '../../flight/landingZones';
 import { EARTH_RADIUS_M } from '../../simulation/constants';
 import { localFrame } from '../../flight/orbitMath';
-import { fmt } from './useFlight';
+import { fmt, formatDuration } from './useFlight';
+import { RENDEZVOUS_LABELS } from '../../station/rendezvous';
 
 const MODES: { id: AttitudeMode; label: string }[] = [
   { id: 'prograde', label: 'Prograde' },
@@ -19,7 +20,7 @@ const MODES: { id: AttitudeMode; label: string }[] = [
   { id: 'manual', label: 'Manual' },
 ];
 
-const PROGRAMS: ProgramId[] = ['circularize', 'deorbit', 'reentry', 'landing'];
+const PROGRAMS: ProgramId[] = ['circularize', 'rendezvous', 'deorbit', 'reentry', 'landing'];
 
 /** Landing zone, guidance programs and attitude holds. Unavailable programs say why. */
 export function AutopilotPanel({ snap }: { snap: FlightSnapshot }) {
@@ -65,7 +66,10 @@ export function AutopilotPanel({ snap }: { snap: FlightSnapshot }) {
       <div className="eyebrow section-gap">Programs</div>
       <div className="program-list">
         {PROGRAMS.map((id) => {
-          const check = programAvailability(id, s, snap.progress);
+          const check = programAvailability(id, s, snap.progress, {
+            dockingAdapter: !!snap.context?.spec.hasDockingAdapter,
+            stationRangeM: snap.station?.view.rangeM ?? null,
+          });
           const on = active === id;
           return (
             <div key={id} className="program-row">
@@ -114,6 +118,13 @@ function programStatus(snap: FlightSnapshot): string {
   switch (p.program) {
     case 'circularize':
       return p.burning ? 'Burning prograde…' : 'Coasting to apoapsis…';
+    case 'rendezvous': {
+      const label = RENDEZVOUS_LABELS[snap.rendezvous.phase];
+      const eta = snap.station?.view.toBurnS;
+      return eta != null && snap.rendezvous.phase === 'phasing'
+        ? `${label} (in ${formatDuration(eta)})`
+        : label;
+    }
     case 'deorbit':
       return p.burning
         ? 'Deorbit burn…'

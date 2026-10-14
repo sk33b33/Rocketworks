@@ -118,5 +118,6 @@ export function createFlightActions(set: SetState, get: GetState): FlightActions
     setRandomFailures: (enabled) => set({ ui: { ...get().ui, randomFailures: enabled } }),
     setPadCamera: (padCamera) => set({ padCamera }),
     setFlightCamera: (flightCamera) => set({ flightCamera }),
+    setStationCamera: (stationCamera) => set({ stationCamera }),
   };
 }

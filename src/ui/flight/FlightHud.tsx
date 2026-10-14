@@ -10,6 +10,7 @@ import { FlightHelp } from './FlightHelp';
 import { ObjectivesPanel } from './ObjectivesPanel';
 import { OrbitPanel } from './OrbitPanel';
 import { VehiclePanel } from './VehiclePanel';
+import { StationPanel } from './StationPanel';
 import { useFlightKeys, useFlightSnapshot } from './useFlight';
 
 /** Flight / Orbit overlay: empty state, orbit and ship telemetry, autopilot, controls, debrief. */
@@ -70,6 +71,11 @@ export function FlightHud() {
         <section data-panel="autopilot">
           <AutopilotPanel snap={snap} />
         </section>
+        {snap.station && snap.phase === 'flight' && (
+          <section data-panel="station">
+            <StationPanel snap={snap} />
+          </section>
+        )}
         <section data-panel="ship">
           <VehiclePanel snap={snap} />
         </section>
@@ -80,6 +86,17 @@ export function FlightHud() {
         </div>
       )}
       {snap.phase === 'debrief' && snap.record && <FlightDebrief record={snap.record} />}
+      {snap.phase === 'proximity' && (
+        <div className="panel debrief" role="dialog" aria-label="At the station">
+          <h2 className="debrief-title">The ship is at the station</h2>
+          <p>Proximity operations are in progress at the Orbital Station location.</p>
+          <div className="actions">
+            <button type="button" className="primary" autoFocus onClick={() => goTo('station')}>
+              Go to the Orbital Station
+            </button>
+          </div>
+        </div>
+      )}
       {help && <FlightHelp onClose={() => setHelp(false)} />}
       <FlightControlsBar snap={snap} onHelp={() => setHelp(true)} />
     </div>

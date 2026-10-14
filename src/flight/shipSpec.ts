@@ -39,6 +39,7 @@ export function shipSpecFor(bp: RocketBlueprint, stage: StageParams): ShipSpec {
       bp.parts.filter((p) => p.partId === 'flap-aft').length >= 2,
     lengthM: Math.max(10, lengthM),
     radiusM: HULL_RADIUS_M,
+    hasDockingAdapter: bp.parts.some((p) => p.partId === 'docking-adapter'),
   };
 }
 

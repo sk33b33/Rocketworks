@@ -38,6 +38,22 @@ export function FlightDebrief({ record }: { record: FlightRecord }) {
       <h2 className="debrief-title">{record.missionName}</h2>
       <p>{record.summary}</p>
       {record.recovery && <RecoveryResultLine r={record.recovery} />}
+      {record.docking && (
+        <p className={record.docking.grade ? 'tone-ok' : 'tone-warn'}>
+          {record.docking.grade ? (
+            <>
+              ✓ Docked with the station, rating{' '}
+              <strong className={`grade-${record.docking.grade}`}>{record.docking.grade}</strong>
+              {record.docking.manual ? ' (flown manually)' : ' (assisted)'}
+              {record.docking.tasksDone ? '; all station tasks done.' : '; tasks incomplete.'}
+            </>
+          ) : (
+            '! No docking.'
+          )}
+          {record.docking.bounces + record.docking.collisions + record.docking.violations > 0 &&
+            ` Bounces ${record.docking.bounces}, collisions ${record.docking.collisions}, corridor violations ${record.docking.violations}.`}
+        </p>
+      )}
       {record.crewSafe !== null && (
         <p className={record.crewSafe ? 'tone-ok' : 'tone-bad'}>
           {record.crewSafe ? '✓ Crew safe.' : '✕ Crew lost.'}

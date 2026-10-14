@@ -10,6 +10,7 @@ import {
 } from '../../flight/orbitMath';
 import type { FlightSnapshot } from '../../flight/flightRuntime';
 import { EARTH_RADIUS_M } from '../../simulation/constants';
+import { STATION_RADIUS_M, stationAngle } from '../../station/stationOrbit';
 import { fmt, formatDuration } from './useFlight';
 
 const STATUS = {
@@ -60,6 +61,11 @@ function OrbitInset({ snap, el }: { snap: FlightSnapshot; el: OrbitalElements })
           className={`inset-path inset-${el.status}`}
         />
       )}
+      {snap.station &&
+        (() => {
+          const [x, y] = pt(stationAngle(snap.station.eph, s.tS), STATION_RADIUS_M);
+          return <rect x={x - 3} y={y - 3} width="6" height="6" className="inset-station" />;
+        })()}
       <circle cx={sx} cy={sy} r="3.5" className="inset-ship" />
     </svg>
   );

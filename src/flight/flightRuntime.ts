@@ -26,6 +26,27 @@ import {
 } from './flightOutcome';
 import { findZone, LANDING_ZONES, type LandingZone } from './landingZones';
 import { len, localFrame, orbitalElements, wrapAngle, type Vec2 } from './orbitMath';
+import {
+  CLOSE_RANGE_M,
+  HANDOVER_RANGE_M,
+  HANDOVER_SPEED_MS,
+  RENDEZVOUS_START,
+  rendezvousView,
+  runRendezvous,
+  transferPhase,
+  type RendezvousState,
+  type RendezvousView,
+} from '../station/rendezvous';
+import {
+  fromStationFrame,
+  STATION_RADIUS_M,
+  stationState,
+  toStationFrame,
+  type StationEphemeris,
+} from '../station/stationOrbit';
+import { ProximitySession, type ProximityView, type ProxKey } from '../station/proximitySession';
+import type { AssistMode } from '../station/proximity';
+import { EARTH_RADIUS_M } from '../simulation/constants';
 
 /*
  * Flight runtime: one orbital flight session from orbit insertion to touchdown. Framework-free
@@ -34,7 +55,9 @@ import { len, localFrame, orbitalElements, wrapAngle, type Vec2 } from './orbitM
  * and the UI subscribes to throttled snapshots.
  */
 
-export type FlightSessionPhase = 'idle' | 'flight' | 'debrief';
+export type FlightSessionPhase = 'idle' | 'flight' | 'proximity' | 'debrief';
+/** The station's transfer window opens about this far (phase, rad) after orbit insertion. */
+export const STATION_PHASE_LEAD_RAD = 0.05;
 export const FLIGHT_WARP_LEVELS = [1, 2, 5, 10, 50, 100, 500, 1000] as const;
 export type FlightWarp = (typeof FLIGHT_WARP_LEVELS)[number];
 
@@ -74,6 +97,8 @@ export interface FlightContext {
   /** Booster recovery result from the launch (carried into the flight record). */
   readonly recovery: BoosterRecoverySummary | null;
   readonly hardware: { readonly boosterId: string | null; readonly shipId: string | null };
+  /** Station mission details (crew to hand over, supplies to unload). */
+  readonly station?: { readonly crew: number; readonly cargo: boolean };
 }
 
 export type ManualKey =
@@ -101,6 +126,11 @@ export interface FlightSnapshot {
   readonly record: FlightRecord | null;
   /** Most recent guidance / system message. */
   readonly message: string | null;
+  /** The station (once tracked) and the rendezvous guidance. */
+  readonly station: { readonly eph: StationEphemeris; readonly view: RendezvousView } | null;
+  readonly rendezvous: RendezvousState;
+  /** Proximity operations near the station (phase 'proximity'). */
+  readonly proximity: ProximityView | null;
 }
 
 const DEFAULT_ZONE = findZone('platform') ?? LANDING_ZONES[0]!;
@@ -120,6 +150,9 @@ const IDLE: FlightSnapshot = {
   warpLimitReason: null,
   record: null,
   message: null,
+  station: null,
+  rendezvous: RENDEZVOUS_START,
+  proximity: null,
 };
 
 /** Highest warp allowed for a state (pure; exported for tests and the UI). */
@@ -166,6 +199,9 @@ export class FlightRuntime {
   /** Final descent (below MANUAL_LANDING_ALT_M) flown by the player / by the landing program. */
   private manualDescent = false;
   private assistedDescent = false;
+  private eph: StationEphemeris | null = null;
+  private rdv: RendezvousState = RENDEZVOUS_START;
+  private prox: ProximitySession | null = null;
   private readonly listeners = new Set<() => void>();
 
   constructor(
@@ -213,21 +249,33 @@ export class FlightRuntime {
     this.lastAngle = localFrame(r).groundAngle;
     this.manualDescent = false;
     this.assistedDescent = false;
+    this.eph = null;
+    this.rdv = RENDEZVOUS_START;
+    this.prox = null;
+    if (this.progress.orbit) this.trackStation(this.live);
     this.set({ ...IDLE, phase: 'flight', context, zone: this.state.zone }, true);
   }
 
   reset(): void {
     this.live = null;
+    this.prox = null;
+    this.eph = null;
     this.keys.clear();
     this.set({ ...IDLE, zone: this.state.zone });
   }
 
   togglePause(): void {
-    if (this.state.phase === 'flight') this.set({ ...this.state, paused: !this.state.paused });
+    if (this.state.phase === 'flight' || this.state.phase === 'proximity')
+      this.set({ ...this.state, paused: !this.state.paused });
   }
 
   setWarp(warp: FlightWarp): void {
-    if (this.state.phase !== 'flight') return;
+    if (this.state.phase !== 'flight' && this.state.phase !== 'proximity') return;
+    if (this.state.phase === 'proximity') {
+      const max = this.prox?.maxWarp ?? 1;
+      this.set({ ...this.state, warp: Math.min(warp, max) as FlightWarp }, true);
+      return;
+    }
     const w = Math.min(warp, this.state.maxWarp) as FlightWarp;
     if (warp > this.state.maxWarp && this.state.warpLimitReason)
       this.message = this.state.warpLimitReason;
@@ -256,13 +304,18 @@ export class FlightRuntime {
   engage(program: ProgramId): { ok: boolean; reason?: string } {
     const s = this.live;
     if (!s || this.state.phase !== 'flight') return { ok: false, reason: 'No ship in flight.' };
-    const check = programAvailability(program, s, this.progress);
+    const check = programAvailability(program, s, this.progress, {
+      dockingAdapter: !!this.state.context?.spec.hasDockingAdapter,
+      stationRangeM: this.stationRange(s),
+    });
     if (!check.ok) {
       this.message = check.reason ?? null;
       this.publish();
       return check;
     }
+    if (program === 'rendezvous' && !this.eph) this.trackStation(s);
     this.ps = program === 'none' ? IDLE_PROGRAM : { ...IDLE_PROGRAM, program };
+    if (program === 'rendezvous') this.rdv = RENDEZVOUS_START;
     if (program === 'none') this.disengage('Autopilot off.');
     else this.message = `${PROGRAM_LABELS[program]} engaged.`;
     this.publish();
@@ -299,6 +352,163 @@ export class FlightRuntime {
     else this.keys.delete(key);
   }
 
+  // ---- station ----
+
+  /** Fixes the station's position so its transfer window opens shortly (a launch window). */
+  private trackStation(s: FlightState): void {
+    if (this.eph) return;
+    const f = localFrame(s.r);
+    this.eph = {
+      angle0: wrapAngle(
+        f.groundAngle + transferPhase(EARTH_RADIUS_M + f.altitudeM) + STATION_PHASE_LEAD_RAD,
+      ),
+      t0: s.tS,
+    };
+  }
+
+  private stationRange(s: FlightState): number | null {
+    if (!this.eph) return null;
+    const rel = toStationFrame(stationState(this.eph, s.tS), s.r, s.v);
+    return Math.hypot(rel.p[0], rel.p[1]);
+  }
+
+  /** Whether proximity operations can start now, with a reason if not. */
+  proximityAvailability(): { ok: boolean; reason?: string } {
+    const s = this.live;
+    const ctx = this.state.context;
+    if (!s || !ctx || this.state.phase !== 'flight' || s.phase !== 'flight')
+      return { ok: false, reason: 'No ship in flight.' };
+    if (!this.eph)
+      return { ok: false, reason: 'Reach orbit first: the station is tracked from orbit.' };
+    if (!ctx.spec.hasDockingAdapter)
+      return { ok: false, reason: 'The ship has no docking adapter on its nose.' };
+    const rel = toStationFrame(stationState(this.eph, s.tS), s.r, s.v);
+    const range = Math.hypot(rel.p[0], rel.p[1]);
+    const speed = Math.hypot(rel.v[0], rel.v[1]);
+    if (range > HANDOVER_RANGE_M)
+      return {
+        ok: false,
+        reason: `Too far from the station (${(range / 1000).toFixed(1)} km; within ${HANDOVER_RANGE_M / 1000} km).`,
+      };
+    if (speed > HANDOVER_SPEED_MS * 2)
+      return { ok: false, reason: `Relative speed too high (${speed.toFixed(1)} m/s).` };
+    return { ok: true };
+  }
+
+  /** Hands the ship over to proximity operations near the station. */
+  beginProximity(): { ok: boolean; reason?: string } {
+    const check = this.proximityAvailability();
+    if (!check.ok || !this.live || !this.eph) return check;
+    const s = this.live;
+    const rel = toStationFrame(stationState(this.eph, s.tS), s.r, s.v);
+    const st = this.state.context?.station;
+    this.prox = new ProximitySession(rel, s.tS, s.hull, st?.crew ?? 0, st?.cargo ?? false);
+    this.ps = IDLE_PROGRAM;
+    this.rdv = RENDEZVOUS_START;
+    this.manual = { ...this.manual, throttle: 0 };
+    this.keys.clear();
+    this.progress = { ...this.progress, rendezvous: true };
+    this.message = 'Proximity operations: approach the forward port along the corridor.';
+    this.state = { ...this.state, phase: 'proximity', warp: 1 };
+    this.publish();
+    return { ok: true };
+  }
+
+  get proximity(): ProximityView | null {
+    return this.prox?.view() ?? null;
+  }
+
+  setProxKey(key: ProxKey, down: boolean): void {
+    this.prox?.setKey(key, down);
+  }
+
+  setProxAssist(mode: AssistMode): void {
+    this.prox?.setAssist(mode);
+    this.publish();
+  }
+
+  setProxHold(on: boolean): void {
+    this.prox?.setHold(on);
+    this.publish();
+  }
+
+  setProxAlign(on: boolean): void {
+    this.prox?.setAlign(on);
+    this.publish();
+  }
+
+  undock(): void {
+    if (this.prox?.undock()) this.message = 'Undocked. Back out beyond 300 m, then depart.';
+    this.publish();
+  }
+
+  /** Leaves proximity operations and resumes orbital flight (after undocking, beyond 300 m). */
+  depart(): { ok: boolean; reason?: string } {
+    const prox = this.prox;
+    const s = this.live;
+    if (!prox || !s || !this.eph || this.state.phase !== 'proximity')
+      return { ok: false, reason: 'Not near the station.' };
+    const view = prox.view();
+    if (!view.canDepart)
+      return {
+        ok: false,
+        reason:
+          view.state.phase === 'docked'
+            ? 'Undock first.'
+            : 'Back out beyond 300 m from the station first.',
+      };
+    this.resumeFromProximity(prox);
+    return { ok: true };
+  }
+
+  private resumeFromProximity(prox: ProximitySession): void {
+    const s = this.live!;
+    const ps = prox.state;
+    const view = prox.view();
+    const { r, v } = fromStationFrame(stationState(this.eph!, ps.tS), { p: ps.p, v: ps.v });
+    const docking = ps.docking
+      ? {
+          grade: ps.docking.grade,
+          manual: ps.docking.manual,
+          bounces: ps.bounces,
+          collisions: ps.collisions,
+          violations: ps.violations,
+          tasksDone: view.tasksDone,
+        }
+      : ps.bounces + ps.collisions > 0
+        ? {
+            grade: null,
+            manual: false,
+            bounces: ps.bounces,
+            collisions: ps.collisions,
+            violations: ps.violations,
+            tasksDone: false,
+          }
+        : (this.progress.docking ?? null);
+    const events = ps.events.map((e) => ({ ...e }));
+    this.live = {
+      ...s,
+      tS: ps.tS,
+      r,
+      v,
+      hull: ps.hull,
+      throttle: 0,
+      pitchDeg: orbitalElements(r, v).flightPathAngleDeg,
+      events: [...s.events, ...events],
+      ...(ps.phase === 'destroyed' ? { phase: 'destroyed' as const } : {}),
+    };
+    this.lastAngle = localFrame(r).groundAngle;
+    this.progress = { ...this.progress, docking };
+    this.prox = null;
+    this.mode = 'prograde';
+    this.manual = { ...this.manual, pitchDeg: this.live.pitchDeg, throttle: 0 };
+    this.message = docking?.tasksDone
+      ? 'Departed the station. Deorbit to a landing zone to bring the crew home.'
+      : 'Left the station.';
+    this.state = { ...this.state, phase: 'flight', warp: 1 };
+    this.publish();
+  }
+
   /** Ends the flight where it is (only offered while still flying). */
   endFlight(): void {
     if (this.state.phase === 'flight' && this.live?.phase === 'flight') this.finish();
@@ -323,6 +533,7 @@ export class FlightRuntime {
 
   update(realDtS: number): void {
     const st = this.state;
+    if (st.phase === 'proximity') return this.updateProximity(realDtS);
     if (st.phase !== 'flight' || !this.live || !st.context) return;
     if (this.live.phase !== 'flight') {
       this.sinceDown += realDtS;
@@ -336,22 +547,14 @@ export class FlightRuntime {
     this.accumulator += realDtS * st.warp;
     let steps = 0;
     while (steps < MAX_STEPS_PER_FRAME && this.live.phase === 'flight') {
-      const lim = warpLimit(
-        this.live,
-        this.ps,
-        this.ps.program === 'none' ? this.manual.throttle : 0,
-      );
+      const lim = this.limit(this.live);
       const dt = st.warp > MAX_FINE_WARP && lim.max > MAX_FINE_WARP ? COARSE_DT_S : FINE_DT_S;
       if (this.accumulator < dt) break;
       this.step(spec, dt);
       this.accumulator -= dt;
       steps++;
       // Drop to an allowed warp as soon as a limit applies (e.g. approaching a burn).
-      const after = warpLimit(
-        this.live,
-        this.ps,
-        this.ps.program === 'none' ? this.manual.throttle : 0,
-      );
+      const after = this.limit(this.live);
       if (this.state.warp > after.max) {
         this.state = { ...this.state, warp: after.max };
         this.accumulator = Math.min(this.accumulator, FINE_DT_S);
@@ -368,6 +571,39 @@ export class FlightRuntime {
     ) {
       this.publish();
     }
+  }
+
+  private updateProximity(realDtS: number): void {
+    const prox = this.prox;
+    if (!prox || this.state.paused) return;
+    const warp = Math.min(this.state.warp, prox.maxWarp) as FlightWarp;
+    if (warp !== this.state.warp) this.state = { ...this.state, warp };
+    const eventsBefore = prox.state.events.length;
+    this.accumulator += realDtS * warp;
+    // Docked time advances in coarse steps (nothing moves); free flight uses fine steps.
+    const dt = prox.state.phase === 'docked' ? COARSE_DT_S : FINE_DT_S;
+    let steps = 0;
+    while (this.accumulator >= dt && steps < MAX_STEPS_PER_FRAME) {
+      const wasDocked = prox.state.phase === 'docked';
+      prox.step(dt);
+      this.accumulator -= dt;
+      steps++;
+      const phase: string = prox.state.phase;
+      if (phase === 'destroyed') break;
+      // Docking stops time warp so the player sees it happen.
+      if (!wasDocked && phase === 'docked') {
+        this.message = 'Docked! Run the station tasks (time warp is available while docked).';
+        break;
+      }
+    }
+    if (steps >= MAX_STEPS_PER_FRAME) this.accumulator = 0;
+    if (prox.state.phase === 'destroyed') {
+      this.resumeFromProximity(prox);
+      return;
+    }
+    this.sincePublish += realDtS;
+    if (prox.state.events.length !== eventsBefore || this.sincePublish >= PUBLISH_INTERVAL_S)
+      this.publish();
   }
 
   private applyKeys(realDtS: number): void {
@@ -387,7 +623,14 @@ export class FlightRuntime {
     const s = this.live!;
     const zone = this.state.zone;
     let controls: FlightControls;
-    if (this.ps.program !== 'none') {
+    if (this.ps.program === 'rendezvous' && this.eph) {
+      const out = runRendezvous(this.rdv, s, this.eph);
+      this.rdv = out.next;
+      this.mode = 'manual';
+      if (out.message) this.message = out.message;
+      if (out.next.phase === 'hold') this.progress = { ...this.progress, rendezvous: true };
+      controls = { ...out.controls, yawDeg: this.manual.yawDeg, slewDegS: slewRate(s) };
+    } else if (this.ps.program !== 'none') {
       const out = runProgram(this.ps, s, spec, zone);
       this.ps = out.next;
       this.mode = out.mode;
@@ -427,6 +670,7 @@ export class FlightRuntime {
     const notes: FlightEvent[] = [];
     if (!p.orbit && el.status === 'orbit') {
       p = { ...p, orbit: true, travelSinceOrbit: 0 };
+      this.trackStation(s);
       notes.push({
         tS: s.tS,
         kind: 'success',
@@ -491,12 +735,37 @@ export class FlightRuntime {
     this.onRecord(record);
   }
 
+  /** Warp limit including the rendezvous guidance's needs. */
+  private limit(s: FlightState): { max: FlightWarp; reason: string | null } {
+    const base = warpLimit(s, this.ps, this.ps.program === 'none' ? this.manual.throttle : 0);
+    if (base.max <= MAX_FINE_WARP || this.ps.program !== 'rendezvous' || !this.eph) return base;
+    const r = this.rdv;
+    const view = rendezvousView(r, s, this.eph);
+    if (
+      r.burning ||
+      r.phase === 'transfer' ||
+      r.phase === 'targeting' ||
+      view.rangeM < CLOSE_RANGE_M
+    )
+      return { max: MAX_FINE_WARP, reason: 'Rendezvous manoeuvres: warp limited to 10×.' };
+    if (r.phase === 'phasing' && view.toBurnS !== null && view.toBurnS < 300)
+      return { max: MAX_FINE_WARP, reason: 'Transfer burn coming up: warp limited to 10×.' };
+    return base;
+  }
+
   private publish(): void {
     this.sincePublish = 0;
     const s = this.live;
-    const lim = s
-      ? warpLimit(s, this.ps, this.ps.program === 'none' ? this.manual.throttle : 0)
-      : { max: 1000 as FlightWarp, reason: null };
+    const lim =
+      this.state.phase === 'proximity'
+        ? {
+            max: (this.prox?.maxWarp ?? 1) as FlightWarp,
+            reason:
+              this.prox?.state.phase === 'docked' ? null : 'Near the station: warp limited to 10×.',
+          }
+        : s
+          ? this.limit(s)
+          : { max: 1000 as FlightWarp, reason: null };
     this.set(
       {
         ...this.state,
@@ -509,6 +778,10 @@ export class FlightRuntime {
         warpLimitReason: lim.reason,
         warp: Math.min(this.state.warp, lim.max) as FlightWarp,
         message: this.message,
+        station:
+          this.eph && s ? { eph: this.eph, view: rendezvousView(this.rdv, s, this.eph) } : null,
+        rendezvous: this.rdv,
+        proximity: this.prox?.view() ?? null,
       },
       true,
     );
@@ -525,6 +798,7 @@ export class FlightRuntime {
 export const PROGRAM_LABELS: Record<ProgramId, string> = {
   none: 'Autopilot off',
   circularize: 'Circularize',
+  rendezvous: 'Rendezvous with station',
   deorbit: 'Deorbit to target',
   reentry: 'Re-entry guidance',
   landing: 'Landing burn',
@@ -535,6 +809,10 @@ export function programAvailability(
   program: ProgramId,
   s: FlightState,
   p: FlightProgress,
+  station: { dockingAdapter: boolean; stationRangeM: number | null } = {
+    dockingAdapter: false,
+    stationRangeM: null,
+  },
 ): { ok: boolean; reason?: string } {
   if (s.phase !== 'flight') return { ok: false, reason: 'The ship is down.' };
   if (program === 'none') return { ok: true };
@@ -548,6 +826,16 @@ export function programAvailability(
         return { ok: false, reason: 'Too low to circularize: climb above 100 km first.' };
       if (el.status === 'orbit' && el.eccentricity < 0.003)
         return { ok: false, reason: 'The orbit is already circular.' };
+      return { ok: true };
+    case 'rendezvous':
+      if (!station.dockingAdapter)
+        return { ok: false, reason: 'Needs a docking adapter on the nose (station missions).' };
+      if (noProp) return { ok: false, reason: 'No propellant left for rendezvous burns.' };
+      if (!p.orbit) return { ok: false, reason: 'Reach a stable orbit first.' };
+      if (station.stationRangeM !== null && station.stationRangeM < HANDOVER_RANGE_M)
+        return { ok: false, reason: 'Already at the station: begin proximity operations.' };
+      if (el.apoapsisAltM > STATION_RADIUS_M - EARTH_RADIUS_M + 50_000)
+        return { ok: false, reason: 'The orbit is above the station: lower it first.' };
       return { ok: true };
     case 'deorbit':
       if (noProp) return { ok: false, reason: 'No propellant left for a deorbit burn.' };

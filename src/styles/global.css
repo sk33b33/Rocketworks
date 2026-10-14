@@ -1477,3 +1477,60 @@ fieldset.stacked label {
 .manual-pad .progress-fill {
   transition: none;
 }
+
+/* ---------- Orbital Station (Stage 7) ---------- */
+.rcs-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+.rcs-btn {
+  touch-action: none;
+  user-select: none;
+  font-size: 12px;
+  padding: 8px 4px;
+}
+.task-list {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+.docking-reticle {
+  position: absolute;
+  left: 50%;
+  top: 46%;
+  width: 240px;
+  height: 240px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.ret-window {
+  fill: none;
+  stroke: var(--ok);
+  stroke-dasharray: 3 3;
+}
+.ret-cross {
+  stroke: rgba(255, 255, 255, 0.7);
+  stroke-width: 1.5;
+}
+.ret-target line,
+.ret-target circle {
+  stroke: var(--warn);
+  stroke-width: 2;
+  fill: none;
+}
+.ret-target.good line,
+.ret-target.good circle {
+  stroke: var(--ok);
+}
+.ret-attitude {
+  fill: #ff4fd8;
+}
+.inset-station {
+  fill: #fff;
+  stroke: #000;
+  stroke-width: 0.6;
+}

@@ -4,7 +4,7 @@ import type {
   LandingSummary,
   OutcomeInput,
 } from '../launch/flightRecord';
-import { rateLanding } from '../recovery/rating';
+import { rateLanding, type Grade } from '../recovery/rating';
 import { recordBase } from '../launch/flightRecord';
 import { FLIGHT, type FlightState } from './flightModel';
 import { findZoneAt, isLand, missDistanceM, type LandingZone } from './landingZones';
@@ -15,7 +15,8 @@ import { localFrame } from './orbitMath';
  * progress flags and calls `evaluateFlight` once the ship is down (or the flight is ended).
  */
 
-export type ObjectiveId = 'orbit' | 'lap' | 'deorbit' | 'reentry' | 'landing';
+export type ObjectiveId =
+  'orbit' | 'lap' | 'rendezvous' | 'dock' | 'tasks' | 'deorbit' | 'reentry' | 'landing';
 
 export interface FlightProgress {
   /** Stable orbit reached (periapsis ≥ the stable threshold). */
@@ -26,6 +27,19 @@ export interface FlightProgress {
   readonly deorbit: boolean;
   /** Came through peak heating and slowed below the re-entry threshold intact. */
   readonly reentry: boolean;
+  /** Reached the hold point near the station (or started proximity operations). */
+  readonly rendezvous?: boolean;
+  /** Docking with the station (set when the ship departs it). */
+  readonly docking?: DockingSummary | null;
+}
+
+export interface DockingSummary {
+  readonly grade: Grade | null;
+  readonly manual: boolean;
+  readonly bounces: number;
+  readonly collisions: number;
+  readonly violations: number;
+  readonly tasksDone: boolean;
 }
 
 export const NO_PROGRESS: FlightProgress = {
@@ -40,6 +54,9 @@ export const LAP_RAD = 2 * Math.PI;
 export const OBJECTIVE_LABELS: Record<ObjectiveId, string> = {
   orbit: 'Reach a stable orbit (periapsis ≥ 120 km)',
   lap: 'Complete one full orbit',
+  rendezvous: 'Rendezvous: reach the hold point near the station',
+  dock: 'Dock with the station',
+  tasks: 'Complete the docked tasks, undock and depart',
   deorbit: 'Deorbit burn (periapsis into the atmosphere)',
   reentry: 'Survive re-entry',
   landing: 'Land or splash down safely',
@@ -55,6 +72,12 @@ export function objectiveDone(id: ObjectiveId, p: FlightProgress, s: FlightState
       return p.orbit;
     case 'lap':
       return completedOrbits(p) >= 1;
+    case 'rendezvous':
+      return !!p.rendezvous;
+    case 'dock':
+      return !!p.docking?.grade;
+    case 'tasks':
+      return !!p.docking?.tasksDone;
     case 'deorbit':
       return p.deorbit;
     case 'reentry':
@@ -96,8 +119,22 @@ export function shipRatingLimits(zone: LandingZone) {
   };
 }
 
-/** Missions this stage can complete from the flight model. */
-export const CREDITABLE_IN_FLIGHT = new Set(['orbital-flight']);
+/** Missions completed in the orbital flight (plus a safe return). */
+export const CREDITABLE_IN_FLIGHT = new Set(['orbital-flight', 'station-docking']);
+
+/** The objective checklist for a mission's orbital flight. */
+export function objectivesFor(missionId: string): ObjectiveId[] {
+  return missionId === 'station-docking'
+    ? ['orbit', 'rendezvous', 'dock', 'tasks', 'deorbit', 'reentry', 'landing']
+    : ['orbit', 'lap', 'deorbit', 'reentry', 'landing'];
+}
+
+/** Mission-specific goals met in orbit (the safe return is checked separately). */
+export function orbitalGoalsMet(missionId: string, p: FlightProgress): boolean {
+  if (missionId === 'station-docking')
+    return p.orbit && !!p.docking?.grade && !!p.docking.tasksDone;
+  return p.orbit && completedOrbits(p) >= 1;
+}
 
 /** Classifies how the flight ended. `ended` = the player ended the flight while still flying. */
 export function landingSummary(
@@ -185,7 +222,7 @@ export function evaluateFlight(
   const landing = landingSummary(s, p, ctx.zone, ctx.manualLanding ?? false);
   const safe = landing.outcome === 'landed' || landing.outcome === 'splashdown';
   const creditable = CREDITABLE_IN_FLIGHT.has(ctx.outcome.missionId);
-  const objectivesMet = p.orbit && completedOrbits(p) >= 1 && safe;
+  const objectivesMet = orbitalGoalsMet(ctx.outcome.missionId, p) && safe;
   const credited = creditable && objectivesMet;
   const result: FlightRecord['result'] =
     landing.outcome === 'stranded'
@@ -197,7 +234,10 @@ export function evaluateFlight(
           : 'partial';
   let summary = summarize(landing, ctx.zone);
   if (safe && creditable && !objectivesMet)
-    summary += ' Mission objectives incomplete: fly at least one full orbit.';
+    summary +=
+      ctx.outcome.missionId === 'station-docking'
+        ? ' Mission objectives incomplete: dock with the station and finish the docked tasks.'
+        : ' Mission objectives incomplete: fly at least one full orbit.';
   if (safe && !creditable) summary += ' The rest of this mission arrives in a later stage.';
   // A stranded crew is assumed rescued (gameplay simplification); breakup or a crash is fatal.
   const crewSafe = ctx.outcome.crewed
@@ -218,6 +258,7 @@ export function evaluateFlight(
       ...s.events.map((e) => `T+${Math.round(e.tS)}s ${e.text}`),
     ].slice(-60),
     landing,
+    ...(p.docking ? { docking: p.docking } : {}),
     ...(ctx.recovery ? { recovery: ctx.recovery } : {}),
     hardware: ctx.hardware ?? { boosterId: null, shipId: null },
   };

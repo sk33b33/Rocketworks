@@ -20,7 +20,7 @@ import { len, localFrame, orbitalElements, visVivaSpeed, wrapAngle, type Vec2 } 
 export type AttitudeMode =
   'manual' | 'prograde' | 'retrograde' | 'radial-out' | 'radial-in' | 'belly' | 'vertical';
 
-export type ProgramId = 'none' | 'circularize' | 'deorbit' | 'reentry' | 'landing';
+export type ProgramId = 'none' | 'circularize' | 'rendezvous' | 'deorbit' | 'reentry' | 'landing';
 
 export const BELLY_AOA_DEG = 65;
 export const DEORBIT_PERIAPSIS_M = 30_000;

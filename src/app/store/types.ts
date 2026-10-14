@@ -7,6 +7,7 @@ import type { FleetVehicle } from '../../fleet/fleet';
 import type { RecoveryTarget } from '../../recovery/recoveryPlan';
 import type { PadCameraMode } from '../../scenes/launch-pad/launchPadController';
 import type { FlightCameraMode } from '../../scenes/flight/flightController';
+import type { StationCameraMode } from '../../scenes/station/stationController';
 import type { FixAction } from '../../rocket/readiness/readiness';
 import type { HullFinish, RocketBlueprint, SocketRef, VehicleRole } from '../../rocket/model/types';
 import type { LocationId } from '../locations';
@@ -52,6 +53,8 @@ export interface GameData {
   padCamera: PadCameraMode;
   /** Flight camera mode (not persisted). */
   flightCamera: FlightCameraMode;
+  /** Orbital Station camera mode (not persisted). */
+  stationCamera: StationCameraMode;
   /** Flight history (persisted, newest last). */
   flights: readonly FlightRecord[];
   /** Recovered boosters and ships (persisted). */
@@ -130,6 +133,7 @@ export interface FlightActions {
   setRandomFailures(enabled: boolean): void;
   setPadCamera(mode: PadCameraMode): void;
   setFlightCamera(mode: FlightCameraMode): void;
+  setStationCamera(mode: StationCameraMode): void;
 }
 
 export type GameStore = GameData &

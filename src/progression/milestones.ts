@@ -114,6 +114,13 @@ export const MILESTONES: readonly Milestone[] = [
     isAchieved: (ctx) => anyFlight(ctx, (f) => f.landing?.shipRecovered === true),
   },
   {
+    id: 'first-docking',
+    title: 'Docked with the station',
+    description: 'Dock a ship at the orbital station.',
+    rewardRp: 1,
+    isAchieved: (ctx) => anyFlight(ctx, (f) => !!f.docking?.grade),
+  },
+  {
     id: 'manual-ace',
     title: 'Hands on the stick',
     description: 'Fly a booster or ship landing yourself and earn an A rating or better.',

@@ -108,6 +108,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   missionTab: 'briefing',
   padCamera: 'pad',
   flightCamera: 'chase',
+  stationCamera: 'chase',
   history: { past: [], future: [] },
   ...initialData(),
 

@@ -24,6 +24,15 @@ export interface FlightRecord {
   readonly events: readonly string[];
   /** Orbital flight and return details (Stage 5+); absent for pad-only flights. */
   readonly landing?: LandingSummary;
+  /** Station docking (Stage 7+). */
+  readonly docking?: {
+    readonly grade: Grade | null;
+    readonly manual: boolean;
+    readonly bounces: number;
+    readonly collisions: number;
+    readonly violations: number;
+    readonly tasksDone: boolean;
+  };
   /** Booster recovery (Stage 6+). */
   readonly recovery?: BoosterRecoverySummary;
   /** Fleet vehicles that flew (null = new build). */

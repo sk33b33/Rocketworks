@@ -37,7 +37,7 @@ export const LOCATIONS: readonly LocationDefinition[] = [
     id: 'station',
     name: 'Orbital Station',
     implementedInStage: 7,
-    lockedReason: 'Unlocks in a later stage (Orbital Station). Requires reaching orbit.',
+    lockedReason: 'Unlocks in a later stage (Orbital Station).',
   },
   {
     id: 'moon',
@@ -48,7 +48,7 @@ export const LOCATIONS: readonly LocationDefinition[] = [
 ];
 
 /** Highest roadmap stage implemented by this build. Bump as stages are accepted. */
-export const CURRENT_STAGE = 6;
+export const CURRENT_STAGE = 7;
 
 export const DEFAULT_LOCATION: LocationId = 'factory';
 

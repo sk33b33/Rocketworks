@@ -386,6 +386,14 @@ describe('migration v4 → v5 and the fleet', () => {
       events: [],
       recovery,
       hardware: { boosterId: 'fv-1', shipId: null },
+      docking: {
+        grade: 'A',
+        manual: true,
+        bounces: 1,
+        collisions: 0,
+        violations: 0,
+        tasksDone: true,
+      },
     };
     const data = {
       ...sampleData(),
@@ -399,6 +407,7 @@ describe('migration v4 → v5 and the fleet', () => {
     expect(result.warnings.join(' ')).toMatch(/2 damaged fleet record/);
     expect(result.data.flights[0]?.recovery).toEqual(recovery);
     expect(result.data.flights[0]?.hardware).toEqual({ boosterId: 'fv-1', shipId: null });
+    expect(result.data.flights[0]?.docking).toEqual(flight.docking);
     expect(result.data.mission).toMatchObject({ recovery: 'platform', boosterFleetId: 'fv-1' });
   });
 });

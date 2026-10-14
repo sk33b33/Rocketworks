@@ -10,6 +10,8 @@ import type { FlightCameraMode, FlightController } from './flightController';
 import { OrbitOverlay } from './OrbitOverlay';
 import { Planet } from './Planet';
 import { ShipView } from './ShipView';
+import { StationModel } from '../station/StationModel';
+import { stationState, type StationState } from '../../station/stationOrbit';
 
 /** Fixed sun direction in the inertial frame (the day side faces the launch site's morning). */
 const SUN_DIR = new THREE.Vector3(0.55, 0.6, 0.58).normalize();
@@ -25,6 +27,8 @@ export class FlightScene implements GameScene {
 
   private readonly cache = new ResourceCache();
   private planet: Planet | null = null;
+  private stationModel: StationModel | null = null;
+  private readonly stationBasis = new THREE.Matrix4();
   private ship: ShipView | null = null;
   private overlay: OrbitOverlay | null = null;
   private readonly sun = new THREE.DirectionalLight(0xfff3e0, 3.2);
@@ -65,7 +69,15 @@ export class FlightScene implements GameScene {
     this.overlay = new OrbitOverlay(this.cache);
     this.sun.position.copy(SUN_DIR).multiplyScalar(1_000);
     this.scene.add(this.sun, this.sun.target, this.ambient);
-    this.scene.add(this.planet.group, this.planet.stars, this.ship.root, this.ship.effects);
+    this.stationModel = new StationModel(this.cache);
+    this.stationModel.root.visible = false;
+    this.scene.add(
+      this.planet.group,
+      this.planet.stars,
+      this.ship.root,
+      this.ship.effects,
+      this.stationModel.root,
+    );
     this.planet.group.add(this.overlay.group);
   }
 
@@ -103,7 +115,9 @@ export class FlightScene implements GameScene {
     const camAlt = this.camera.position.distanceTo(this.centre) - EARTH_RADIUS_M;
     const mapDist = mode === 'map' ? this.camera.position.distanceTo(this.centre) : null;
     planet.update(this.centre, f.groundAngle, f.altitudeM, camAlt, SUN_DIR, snap.zone, mapDist);
-    this.overlay!.update(s, snap.zone, mapDist);
+    const st = snap.station ? stationState(snap.station.eph, s.tS) : null;
+    this.overlay!.update(s, snap.zone, mapDist, st);
+    this.placeStation(st, s, mode === 'map');
     this.updateSky(camAlt);
   }
 
@@ -167,6 +181,25 @@ export class FlightScene implements GameScene {
     );
     (this.scene.background as THREE.Color).set(0x000000);
     this.planet!.stars.visible = true;
+  }
+
+  /** The station model near the ship (floating origin), in its own local frame. */
+  private placeStation(st: StationState | null, s: FlightState, map: boolean): void {
+    const model = this.stationModel;
+    if (!model) return;
+    const dx = st ? st.r[0] - s.r[0] : 0;
+    const dy = st ? st.r[1] - s.r[1] : 0;
+    model.root.visible = !!st && !map && Math.hypot(dx, dy) < 60_000;
+    if (!st || !model.root.visible) return;
+    model.update(this.time);
+    model.root.position.set(dx, dy, 0);
+    // Model X = along-track (east), Y = up, Z = scene +Z (right-handed).
+    this.stationBasis.makeBasis(
+      new THREE.Vector3(st.east[0], st.east[1], 0),
+      new THREE.Vector3(st.up[0], st.up[1], 0),
+      new THREE.Vector3(0, 0, 1),
+    );
+    model.root.quaternion.setFromRotationMatrix(this.stationBasis);
   }
 
   private updateCamera(mode: FlightCameraMode, s: FlightState): void {

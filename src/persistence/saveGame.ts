@@ -229,6 +229,18 @@ function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
     ) {
       const landing = parseLanding(r.landing);
       const recovery = parseRecovery(r.recovery);
+      const dock = isRecord(r.docking) ? r.docking : null;
+      const docking =
+        dock && isCount(dock.bounces) && isCount(dock.collisions) && isCount(dock.violations)
+          ? {
+              grade: parseGrade(dock.grade),
+              manual: dock.manual === true,
+              bounces: dock.bounces,
+              collisions: dock.collisions,
+              violations: dock.violations,
+              tasksDone: dock.tasksDone === true,
+            }
+          : null;
       const hw = isRecord(r.hardware) ? r.hardware : null;
       out.push({
         id: r.id,
@@ -248,6 +260,7 @@ function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
         events: r.events.filter(isString).slice(0, 60),
         ...(landing ? { landing } : {}),
         ...(recovery ? { recovery } : {}),
+        ...(docking ? { docking } : {}),
         ...(hw
           ? {
               hardware: {

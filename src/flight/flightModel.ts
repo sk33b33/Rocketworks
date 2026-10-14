@@ -23,6 +23,8 @@ export interface ShipSpec {
   readonly hasFlaps: boolean;
   readonly lengthM: number;
   readonly radiusM: number;
+  /** A docking adapter on the nose (needed to dock with the station). */
+  readonly hasDockingAdapter?: boolean;
 }
 
 export type FlightPhase = 'flight' | 'landed' | 'splashdown' | 'crashed' | 'destroyed';

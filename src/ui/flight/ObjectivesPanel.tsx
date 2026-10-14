@@ -3,13 +3,12 @@ import {
   CREDITABLE_IN_FLIGHT,
   completedOrbits,
   objectiveDone,
+  objectivesFor,
   OBJECTIVE_LABELS,
   type ObjectiveId,
 } from '../../flight/flightOutcome';
 import type { FlightSnapshot } from '../../flight/flightRuntime';
 import { fmt } from './useFlight';
-
-const ORDER: ObjectiveId[] = ['orbit', 'lap', 'deorbit', 'reentry', 'landing'];
 
 /** Objective checklist plus the next suggested action. */
 export function ObjectivesPanel({ snap }: { snap: FlightSnapshot }) {
@@ -17,6 +16,7 @@ export function ObjectivesPanel({ snap }: { snap: FlightSnapshot }) {
   const ctx = snap.context;
   if (!s || !ctx) return null;
   const p = snap.progress;
+  const ORDER: ObjectiveId[] = objectivesFor(ctx.outcome.missionId);
   const next = ORDER.find((id) => !objectiveDone(id, p, s));
   const lapPct = p.orbit ? Math.min(1, p.travelSinceOrbit / (2 * Math.PI)) : 0;
   return (
@@ -62,6 +62,12 @@ function nextAction(next: ObjectiveId | undefined): string {
       return 'Next: raise periapsis with the Circularize program (or burn prograde near apoapsis).';
     case 'lap':
       return 'Next: coast around the Earth. Use time warp (up to 1000× above 110 km).';
+    case 'rendezvous':
+      return 'Next: engage "Rendezvous with station". It waits for the transfer window (warp is fine), then closes to a hold point 2 km ahead of the station.';
+    case 'dock':
+      return 'Next: begin proximity operations and dock at the forward port (assist available).';
+    case 'tasks':
+      return 'Next: finish the docked tasks, undock, back out beyond 300 m and depart.';
     case 'deorbit':
       return 'Next: pick a landing zone and engage "Deorbit to target".';
     case 'reentry':
