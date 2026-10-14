@@ -741,13 +741,14 @@ export class FlightRuntime {
     if (base.max <= MAX_FINE_WARP || this.ps.program !== 'rendezvous' || !this.eph) return base;
     const r = this.rdv;
     const view = rendezvousView(r, s, this.eph);
-    if (
-      r.burning ||
-      r.phase === 'transfer' ||
-      r.phase === 'targeting' ||
-      view.rangeM < CLOSE_RANGE_M
-    )
+    if (r.burning || r.phase === 'transfer' || r.phase === 'targeting')
       return { max: MAX_FINE_WARP, reason: 'Rendezvous manoeuvres: warp limited to 10×.' };
+    // The coast needs no control, but the hand-over to targeting shouldn't overshoot.
+    if (view.rangeM < CLOSE_RANGE_M)
+      return {
+        max: Math.min(base.max, 100) as FlightWarp,
+        reason: 'Closing on the station: warp limited to 100×.',
+      };
     if (r.phase === 'phasing' && view.toBurnS !== null && view.toBurnS < 300)
       return { max: MAX_FINE_WARP, reason: 'Transfer burn coming up: warp limited to 10×.' };
     return base;
