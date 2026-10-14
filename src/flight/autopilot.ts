@@ -1,7 +1,9 @@
 import { airDensity, EARTH_RADIUS_M, G0_MS2 } from '../simulation/constants';
+import type { GravityEnv } from '../moon/moonOrbit';
 import {
   FLIGHT,
   flightPathAngleDeg,
+  relativeFlightPathDeg,
   stepFlight,
   wrap180,
   type FlightControls,
@@ -29,6 +31,8 @@ export type ProgramId =
   | 'landing'
   | 'translunar'
   | 'lunar-orbit'
+  | 'lunar-descent'
+  | 'lunar-ascent'
   | 'trans-earth'
   | 'aerocapture';
 
@@ -39,8 +43,13 @@ export const CIRCULAR_TARGET_PE_M = 140_000;
 export const SLEW_VACUUM = 8;
 export const SLEW_AERO = 20;
 
-export function attitudeTarget(mode: AttitudeMode, s: FlightState, manualPitch: number): number {
-  const gamma = flightPathAngleDeg(s.r, s.v);
+export function attitudeTarget(
+  mode: AttitudeMode,
+  s: FlightState,
+  manualPitch: number,
+  env?: GravityEnv | null,
+): number {
+  const gamma = s.ref === 'moon' ? relativeFlightPathDeg(s, env) : flightPathAngleDeg(s.r, s.v);
   switch (mode) {
     case 'prograde':
       return gamma;

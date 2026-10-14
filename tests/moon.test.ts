@@ -34,6 +34,9 @@ import { simulateAscent } from '../src/simulation/ascent/ascentModel';
 import { deriveFlightVehicle } from '../src/simulation/ascent/flightVehicle';
 import { SIM_DT_S } from '../src/simulation/constants';
 import { NO_LUNAR_PROGRESS, type LunarMissionPlan } from '../src/moon/lunarFlight';
+import { findLunarSite, SiteTerrain } from '../src/moon/lunarSites';
+import { surfaceProgress, surfaceTasks } from '../src/moon/lunarLanding';
+import { gradeAtLeast } from '../src/recovery/rating';
 import {
   checkLegs,
   defaultRefuel,
@@ -179,7 +182,7 @@ describe('Moon model', () => {
 
 describe('lunar touchdown', () => {
   const descend = (vert: number, horiz: number, slopeDeg: number, pitchDeg = 90) => {
-    const e: GravityEnv = { ...env, slopeAt: () => slopeDeg };
+    const e: GravityEnv = { ...env, terrain: { heightAt: () => 0, slopeAt: () => slopeDeg } };
     const p = surfaceState(0.2, 0, e.moon, 1);
     const m = moonState(e.moon, 0);
     const up = [(p.r[0] - m.r[0]) / (MOON_RADIUS_M + 1), (p.r[1] - m.r[1]) / (MOON_RADIUS_M + 1)];
@@ -353,5 +356,141 @@ describe('Moon mission rules', () => {
     expect(
       orbitalGoalsMet('lunar-landing', { ...NO_PROGRESS, lunar: { ...base, earthReturn: true } }),
     ).toBe(false);
+  });
+});
+
+describe('lunar landing', () => {
+  const NOW = '2026-01-01T00:00:00.000Z';
+  const plan: LunarMissionPlan = {
+    goal: 'capture',
+    landing: true,
+    refuel: { leo: true, depot: true },
+  };
+
+  /** Flies from launch to a full-tank lunar orbit at the depot. */
+  function toLunarOrbit(site: string) {
+    const bp = createCompleteStarterDesign(NOW);
+    const vehicle = deriveFlightVehicle(bp, 300);
+    const lc: LaunchContext = {
+      outcome: {
+        id: 'f1',
+        at: NOW,
+        missionId: 'lunar-landing',
+        missionName: 'Landing',
+        designId: bp.id,
+        designName: bp.name,
+        crewed: true,
+      },
+      blueprint: bp,
+      designRevision: bp.revision,
+      crewed: true,
+      crewNames: ['A', 'B'],
+      config: {
+        vehicle,
+        target: { kind: 'orbit', altitudeM: 150_000 },
+        failures: [],
+        boosterReserveKg: vehicle.booster.propellantKg * RESERVE_FRACTION.platform,
+      },
+    };
+    const ctx = flightContextFromLaunch(
+      lc,
+      simulateAscent(lc.config, SIM_DT_S),
+      null,
+      undefined,
+      plan,
+    );
+    const records: FlightRecord[] = [];
+    const rt = new FlightRuntime(
+      (r) => records.push(r),
+      () => NOW,
+    );
+    rt.start(ctx);
+    const frames = (n: number, until: () => boolean) => {
+      for (let i = 0; i < n && !until(); i++) {
+        if (rt.current.warp < rt.current.maxWarp) rt.setWarp(rt.current.maxWarp);
+        rt.update(0.1);
+      }
+    };
+    frames(50_000, () => rt.current.program.program === 'none' && rt.current.progress.orbit);
+    rt.refuel();
+    frames(50_000, () => !!rt.current.progress.lunar?.refuelLeo);
+    rt.engage('translunar');
+    frames(400_000, () => rt.current.program.program === 'none');
+    expect(rt.current.progress.lunar?.lunarOrbit).toBe(true);
+    expect(rt.refuel().ok).toBe(true);
+    frames(50_000, () => !!rt.current.progress.lunar?.refuelDepot);
+    expect(rt.setLunarSite(site).ok).toBe(true);
+    return { rt, records, frames };
+  }
+
+  it('lands with the assist, works on the surface, lifts off and comes home for credit', () => {
+    const { rt, records, frames } = toLunarOrbit('aurora-highlands');
+    expect(rt.engage('lunar-descent').ok).toBe(true);
+    frames(400_000, () => rt.current.phase !== 'flight');
+    expect(rt.current.phase).toBe('surface');
+    expect(rt.setLunarSite('sea-of-calm').ok).toBe(false);
+    const landing = rt.current.progress.lunar!.landing!;
+    expect(landing).toMatchObject({ outcome: 'landed', manual: false });
+    expect(gradeAtLeast(landing.grade, 'B')).toBe(true);
+    frames(100_000, () => !!rt.current.progress.lunar?.surfaceDone);
+    expect(rt.liftOff().ok).toBe(true);
+    frames(100_000, () => rt.current.program.program === 'none');
+    expect(rt.current.progress.lunar?.ascent).toBe(true);
+    expect(rt.engage('trans-earth').ok).toBe(true);
+    frames(400_000, () => rt.current.program.program === 'none');
+    rt.setZone('rtls');
+    expect(rt.engage('deorbit').ok).toBe(true);
+    frames(200_000, () => rt.current.phase === 'debrief');
+    expect(records[0]).toMatchObject({ result: 'success', credited: true, crewSafe: true });
+    expect(records[0]?.lunar?.landing?.siteId).toBe('aurora-highlands');
+  }, 120_000);
+
+  it('credits a manual landing when the player flies the last 500 m', () => {
+    const { rt, frames } = toLunarOrbit('sea-of-calm');
+    rt.engage('lunar-descent');
+    frames(400_000, () => (rt.current.lunar?.geometry?.radarM ?? Infinity) < 700);
+    rt.setMode('retrograde');
+    for (let i = 0; i < 20_000 && rt.current.phase === 'flight'; i++) {
+      const geo = rt.current.lunar!.geometry!;
+      const speed = Math.hypot(geo.vx, geo.vh);
+      const final = geo.radarM < 15 && speed < 3;
+      if (final) rt.setMode('vertical');
+      const vt = Math.max(1, Math.min(60, Math.sqrt(1.8 * Math.max(0, geo.radarM - 2))));
+      const a = final
+        ? geo.gEff + (-1.2 - geo.vh) * 1.5
+        : geo.gEff * (-geo.vh / Math.max(0.5, speed)) + (speed - vt) * 0.8;
+      rt.setThrottle(Math.max(0, Math.min(1, a / 4)));
+      rt.update(0.05);
+    }
+    expect(rt.current.phase).toBe('surface');
+    expect(rt.current.progress.lunar?.landing).toMatchObject({ outcome: 'landed', manual: true });
+  }, 120_000);
+});
+
+describe('lunar sites', () => {
+  it('builds deterministic terrain whose hazards match the site rating', () => {
+    const calm = new SiteTerrain(findLunarSite('sea-of-calm')!);
+    const rim = new SiteTerrain(findLunarSite('kestrel-rim')!);
+    expect(calm.heightAt(123)).toBe(new SiteTerrain(findLunarSite('sea-of-calm')!).heightAt(123));
+    const steep = (t: SiteTerrain) => {
+      let n = 0;
+      for (let x = -500; x <= 500; x += 4) if (t.slopeAt(x) > 10) n++;
+      return n / 251;
+    };
+    expect(calm.slopeAt(0)).toBeLessThan(5);
+    expect(steep(calm)).toBeLessThan(steep(rim));
+    const best = rim.safestNear(0, 400);
+    expect(best.slopeDeg).toBeLessThan(rim.slopeAt(0));
+  });
+
+  it('gates the surface tasks on safing and finishes them all', () => {
+    const tasks = surfaceTasks(findLunarSite('sea-of-calm')!, true);
+    expect(tasks.map((t) => t.id)).toEqual(['safing', 'survey', 'samples', 'experiments']);
+    expect(
+      surfaceProgress(tasks, 1_800)
+        .slice(1)
+        .every((p) => p === 0),
+    ).toBe(true);
+    expect(surfaceProgress(tasks, 1_800 + 3 * 3_600).every((p) => p === 1)).toBe(true);
   });
 });

@@ -46,8 +46,11 @@ export function moonState(e: MoonEphemeris, tS: number): MoonState {
 
 export interface GravityEnv {
   readonly moon: MoonEphemeris;
-  /** Terrain slope (deg) at a selenographic angle, for touchdowns. */
-  readonly slopeAt?: (selenoAngle: number) => number;
+  /** Terrain around the chosen landing site (selenographic angle → height above the mean radius, slope). */
+  readonly terrain?: {
+    readonly heightAt: (selenoAngle: number) => number;
+    readonly slopeAt: (selenoAngle: number) => number;
+  };
 }
 
 /** Gravitational acceleration at `r` (Earth-centred frame). */

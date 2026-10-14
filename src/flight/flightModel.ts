@@ -11,6 +11,7 @@ import {
   bodyFrame,
   convertPitch,
   gravityAccel,
+  MOON_N,
   MOON_SURFACE_SPEED_MS,
   referenceBody,
   selenoAngle,
@@ -130,10 +131,14 @@ export function noseDirection(r: Vec2, pitchDeg: number, frameUp?: Vec2): Vec2 {
   return add(scale(east, Math.cos(p)), scale(up, Math.sin(p)));
 }
 
-/** Flight path angle (deg) relative to the ship's reference body. */
+/**
+ * Flight path angle (deg) relative to the ship's reference body. Near the Moon it uses the
+ * velocity over the (slowly turning) lunar surface, which is what matters for landing.
+ */
 export function relativeFlightPathDeg(s: FlightState, env?: GravityEnv | null): number {
   const f = bodyFrame(s.ref ?? 'earth', s.r, s.v, s.tS, env);
-  return (Math.atan2(dot(f.v, f.up), dot(f.v, f.east)) * 180) / Math.PI;
+  const spin = f.body === 'moon' ? MOON_N * Math.hypot(f.r[0], f.r[1]) : 0;
+  return (Math.atan2(dot(f.v, f.up), dot(f.v, f.east) - spin) * 180) / Math.PI;
 }
 
 /** Flight path angle (deg): direction of the velocity above the local horizon. */
@@ -335,7 +340,12 @@ export function stepFlight(
     next = { ...next, phase: 'destroyed', throttle: 0 };
   } else if (len(r) <= EARTH_RADIUS_M) {
     next = touchdown(next, s, events, t);
-  } else if (rf && env && bodyFrame('moon', r, v, t, env).altitudeM <= 0) {
+  } else if (
+    rf &&
+    env &&
+    bodyFrame('moon', r, v, t, env).altitudeM <=
+      (env.terrain?.heightAt(selenoAngle(r, t, env.moon)) ?? 0)
+  ) {
     next = lunarTouchdown(next, s, events, t, env);
   }
   return events.length ? { ...next, events: [...s.events, ...events] } : next;
@@ -402,11 +412,11 @@ function lunarTouchdown(
   // Horizontal speed over the (slowly turning) ground.
   const horizMS = Math.abs(dot(fr.v, fr.east) - MOON_SURFACE_SPEED_MS);
   const seleno = selenoAngle(next.r, t, env.moon);
-  const slopeDeg = env.slopeAt?.(seleno) ?? 0;
+  const slopeDeg = env.terrain?.slopeAt(seleno) ?? 0;
   const tiltDeg = Math.abs(wrap180(90 - next.pitchDeg));
   const lean = tiltDeg + slopeDeg;
   const m: TouchdownResult = { vertMS, horizMS, tiltDeg, body: 'moon', slopeDeg, seleno };
-  const ground = surfaceState(seleno, t, env.moon);
+  const ground = surfaceState(seleno, t, env.moon, env.terrain?.heightAt(seleno) ?? 0);
   const rest = { r: ground.r, v: ground.v, throttle: 0, touchdown: m, landingThrusters: false };
   if (vertMS > FLIGHT.lunarHardMaxVertMS || horizMS > 6) {
     events.push({ tS: t, kind: 'fail', text: `Impact on the Moon at ${vertMS.toFixed(0)} m/s.` });

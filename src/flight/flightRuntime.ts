@@ -68,7 +68,7 @@ import type { GravityEnv } from '../moon/moonOrbit';
  * and the UI subscribes to throttled snapshots.
  */
 
-export type FlightSessionPhase = 'idle' | 'flight' | 'proximity' | 'debrief';
+export type FlightSessionPhase = 'idle' | 'flight' | 'proximity' | 'surface' | 'debrief';
 /** The station's transfer window opens about this far (phase, rad) after orbit insertion. */
 export const STATION_PHASE_LEAD_RAD = 0.05;
 export const FLIGHT_WARP_LEVELS = [1, 2, 5, 10, 50, 100, 500, 1000, 5000, 10000] as const;
@@ -286,11 +286,19 @@ export class FlightRuntime {
   }
 
   togglePause(): void {
-    if (this.state.phase === 'flight' || this.state.phase === 'proximity')
+    if (
+      this.state.phase === 'flight' ||
+      this.state.phase === 'proximity' ||
+      this.state.phase === 'surface'
+    )
       this.set({ ...this.state, paused: !this.state.paused });
   }
 
   setWarp(warp: FlightWarp): void {
+    if (this.state.phase === 'surface') {
+      this.set({ ...this.state, warp: Math.min(warp, 1000) as FlightWarp }, true);
+      return;
+    }
     if (this.state.phase !== 'flight' && this.state.phase !== 'proximity') return;
     if (this.state.phase === 'proximity') {
       const max = this.prox?.maxWarp ?? 1;
@@ -399,8 +407,64 @@ export class FlightRuntime {
           env: this.lunar.env,
           goal: this.lunar.plan.goal,
           inLunarOrbit: inLunarOrbit(s, this.lunar.env),
+          landing: this.lunar.plan.landing,
         }
       : null;
+  }
+
+  /** Chooses the lunar landing site (until the descent starts). */
+  setLunarSite(id: string): { ok: boolean; reason?: string } {
+    if (!this.lunar?.plan.landing)
+      return { ok: false, reason: 'Only on the Lunar Landing mission.' };
+    if (!this.lunar.setSite(id))
+      return { ok: false, reason: 'The site is fixed once the descent has started.' };
+    this.message = `Landing site: ${this.lunar.site.name}.`;
+    this.publish();
+    return { ok: true };
+  }
+
+  /** Lifts off from the Moon (surface operations end) under the ascent program. */
+  liftOff(): { ok: boolean; reason?: string } {
+    if (this.state.phase !== 'surface' || !this.lunar || !this.live)
+      return { ok: false, reason: 'Not on the Moon.' };
+    const next = this.lunar.liftOff(this.live);
+    if (!next) return { ok: false, reason: 'Not on the Moon.' };
+    this.live = next;
+    this.ps = { ...IDLE_PROGRAM, program: 'lunar-ascent' };
+    this.mode = 'manual';
+    this.manual = { ...this.manual, pitchDeg: 90, throttle: 0 };
+    this.message = 'Liftoff from the Moon: climbing to lunar orbit.';
+    this.state = { ...this.state, phase: 'flight', warp: 1 };
+    this.publish();
+    return { ok: true };
+  }
+
+  private updateSurface(realDtS: number): void {
+    const lunar = this.lunar;
+    if (!lunar || !this.live || this.state.paused) return;
+    this.accumulator += realDtS * this.state.warp;
+    const dt = 10;
+    let steps = 0;
+    while (this.accumulator >= dt && steps < MAX_STEPS_PER_FRAME) {
+      this.accumulator -= dt;
+      steps++;
+      const note = lunar.surfaceStep(dt);
+      this.live = lunar.standing({ ...this.live, tS: this.live.tS + dt });
+      if (note) {
+        this.progress = { ...this.progress, lunar: lunar.progress };
+        this.message = note;
+        this.live = {
+          ...this.live,
+          events: [...this.live.events, { tS: this.live.tS, kind: 'success', text: note }],
+        };
+        this.state = { ...this.state, warp: 1 };
+        this.accumulator = 0;
+        break;
+      }
+    }
+    if (steps >= MAX_STEPS_PER_FRAME) this.accumulator = 0;
+    this.sincePublish += realDtS;
+    if (this.sincePublish >= PUBLISH_INTERVAL_S) this.publish();
   }
 
   /** Starts a refuelling operation (tankers in Earth orbit or the lunar depot). */
@@ -580,9 +644,13 @@ export class FlightRuntime {
     this.publish();
   }
 
-  /** Ends the flight where it is (only offered while still flying). */
+  /** Ends the flight where it is (only offered while still flying, or standing on the Moon). */
   endFlight(): void {
-    if (this.state.phase === 'flight' && this.live?.phase === 'flight') this.finish();
+    if (
+      (this.state.phase === 'flight' && this.live?.phase === 'flight') ||
+      this.state.phase === 'surface'
+    )
+      this.finish();
   }
 
   private disengage(message: string | null): void {
@@ -606,7 +674,26 @@ export class FlightRuntime {
   update(realDtS: number): void {
     const st = this.state;
     if (st.phase === 'proximity') return this.updateProximity(realDtS);
+    if (st.phase === 'surface') return this.updateSurface(realDtS);
     if (st.phase !== 'flight' || !this.live || !st.context) return;
+    if (
+      this.live.phase !== 'flight' &&
+      this.lunar &&
+      this.live.touchdown?.body === 'moon' &&
+      !this.lunar.progress.landing
+    ) {
+      const stands = this.lunar.onTouchdown(this.live);
+      this.progress = { ...this.progress, lunar: this.lunar.progress };
+      this.ps = IDLE_PROGRAM;
+      if (stands) {
+        this.message = `Down at ${this.lunar.site.name}! Run the surface tasks (time warp is available), then lift off.`;
+        this.accumulator = 0;
+        this.state = { ...this.state, phase: 'surface', warp: 1 };
+        this.publish();
+        return;
+      }
+      this.publish();
+    }
     if (this.live.phase !== 'flight') {
       this.sinceDown += realDtS;
       if (this.sinceDown >= DEBRIEF_DELAY_S && !st.record) this.finish();
@@ -697,7 +784,7 @@ export class FlightRuntime {
     const zone = this.state.zone;
     let controls: FlightControls;
     if (isLunarProgram(this.ps.program) && this.lunar) {
-      const out = this.lunar.run(s, spec);
+      const out = this.lunar.run(s, spec, dt);
       this.mode = 'manual';
       if (out.message) this.message = out.message;
       controls = { ...out.controls, yawDeg: this.manual.yawDeg, slewDegS: slewRate(s) };
@@ -724,7 +811,7 @@ export class FlightRuntime {
       }
     } else {
       controls = {
-        targetPitchDeg: attitudeTarget(this.mode, s, this.manual.pitchDeg),
+        targetPitchDeg: attitudeTarget(this.mode, s, this.manual.pitchDeg, this.env),
         bankDeg: this.manual.bankDeg,
         yawDeg: this.manual.yawDeg,
         throttle: this.manual.throttle,
@@ -805,7 +892,7 @@ export class FlightRuntime {
     }
     void prev;
     if (this.lunar) {
-      notes.push(...this.lunar.track(s));
+      notes.push(...this.lunar.track(s, this.ps.program));
       p = { ...p, lunar: this.lunar.progress };
     }
     this.progress = p;
@@ -871,15 +958,19 @@ export class FlightRuntime {
     this.sincePublish = 0;
     const s = this.live;
     const lim =
-      this.state.phase === 'proximity'
-        ? {
-            max: (this.prox?.maxWarp ?? 1) as FlightWarp,
-            reason:
-              this.prox?.state.phase === 'docked' ? null : 'Near the station: warp limited to 10×.',
-          }
-        : s
-          ? this.limit(s)
-          : { max: 1000 as FlightWarp, reason: null };
+      this.state.phase === 'surface'
+        ? { max: 1000 as FlightWarp, reason: 'On the surface: warp up to 1000×.' }
+        : this.state.phase === 'proximity'
+          ? {
+              max: (this.prox?.maxWarp ?? 1) as FlightWarp,
+              reason:
+                this.prox?.state.phase === 'docked'
+                  ? null
+                  : 'Near the station: warp limited to 10×.',
+            }
+          : s
+            ? this.limit(s)
+            : { max: 1000 as FlightWarp, reason: null };
     this.set(
       {
         ...this.state,
@@ -933,6 +1024,7 @@ export function programAvailability(
     env: GravityEnv;
     goal: LunarMissionPlan['goal'];
     inLunarOrbit: boolean;
+    landing?: boolean;
   } | null = null,
 ): { ok: boolean; reason?: string } {
   if (s.phase !== 'flight') return { ok: false, reason: 'The ship is down.' };
@@ -944,6 +1036,7 @@ export function programAvailability(
       lunar?.env ?? null,
       lunar?.goal ?? null,
       lunar?.inLunarOrbit ?? false,
+      lunar?.landing ?? false,
     );
   if (s.ref === 'moon')
     return { ok: false, reason: 'Earth programs are unavailable near the Moon.' };

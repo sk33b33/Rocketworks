@@ -56,7 +56,8 @@ const MCC_BEFORE_ARRIVAL_S = 15 * 3_600;
 /** Corrections smaller than this are skipped (m/s). */
 const MCC_MIN_DV = 0.4;
 
-export type LunarProgramId = 'translunar' | 'lunar-orbit' | 'trans-earth' | 'aerocapture';
+export type LunarProgramId =
+  'translunar' | 'lunar-orbit' | 'lunar-descent' | 'lunar-ascent' | 'trans-earth' | 'aerocapture';
 export type LunarGoal = 'capture' | 'flyby';
 
 export type TransferPhase = 'plan' | 'wait' | 'burn' | 'coast' | 'mcc-burn' | 'done';
@@ -111,6 +112,8 @@ export const LUNAR_IDLE: LunarGuidance = {
 export const LUNAR_PROGRAM_LABELS: Record<LunarProgramId, string> = {
   translunar: 'Trans-lunar injection',
   'lunar-orbit': 'Lunar orbit insertion',
+  'lunar-descent': 'Lunar landing',
+  'lunar-ascent': 'Lunar ascent / abort to orbit',
   'trans-earth': 'Return to Earth',
   aerocapture: 'Aerocapture',
 };
@@ -854,6 +857,7 @@ export function lunarProgramAvailability(
   env: GravityEnv | null,
   goal: LunarGoal | null,
   inLunarOrbit: boolean,
+  landingMission = false,
 ): { ok: boolean; reason?: string } {
   if (!env || !goal) return { ok: false, reason: 'Only on Moon missions.' };
   if (s.phase !== 'flight') return { ok: false, reason: 'The ship is down.' };
@@ -873,6 +877,17 @@ export function lunarProgramAvailability(
       if (noProp) return { ok: false, reason: 'No propellant for the insertion burn.' };
       return { ok: true };
     }
+    case 'lunar-descent':
+      if (!landingMission) return { ok: false, reason: 'Only on the Lunar Landing mission.' };
+      if (!inLunarOrbit) return { ok: false, reason: 'Needs a low lunar orbit to descend from.' };
+      if (noProp) return { ok: false, reason: 'No propellant for the descent.' };
+      return { ok: true };
+    case 'lunar-ascent':
+      if (!landingMission) return { ok: false, reason: 'Only on the Lunar Landing mission.' };
+      if (s.ref !== 'moon' || inLunarOrbit)
+        return { ok: false, reason: 'Lift off from the surface, or abort a descent.' };
+      if (noProp) return { ok: false, reason: 'No propellant to climb back to orbit.' };
+      return { ok: true };
     case 'trans-earth':
       if (s.ref !== 'moon' || !inLunarOrbit)
         return { ok: false, reason: 'Needs a lunar orbit to depart from.' };
