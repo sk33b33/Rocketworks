@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { autoMotion } from '../../render/motion';
 import type { FlightState } from '../../flight/flightModel';
 import { localFrame } from '../../flight/orbitMath';
 import { shipOnlyBlueprint } from '../../flight/shipSpec';
@@ -163,7 +164,11 @@ export class ShipView {
       this.plasma.quaternion.copy(this.renderer.root.quaternion);
       this.plasma.scale.set(5.5 + glow * 3, this.lengthM * (0.5 + glow * 0.12), 5.5 + glow * 3);
       this.plasmaMat.opacity = 0.15 + glow * 0.45;
-      this.plasmaMat.color.setHSL(0.06 + 0.03 * (1 - glow), 1, 0.55 + 0.1 * Math.sin(time * 40));
+      this.plasmaMat.color.setHSL(
+        0.06 + 0.03 * (1 - glow),
+        1,
+        0.55 + autoMotion(0.1 * Math.sin(time * 40)),
+      );
     }
     this.fireball.update(dt);
   }

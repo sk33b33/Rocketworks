@@ -1,6 +1,6 @@
 /** Save-format migrations. Each entry upgrades version N to N+1; never edit a shipped migration. */
 
-export const CURRENT_SAVE_VERSION = 6;
+export const CURRENT_SAVE_VERSION = 7;
 
 type Data = Record<string, unknown>;
 type Migration = (data: Data) => Data;
@@ -60,6 +60,11 @@ const MIGRATIONS: Record<number, Migration> = {
     mission: isRecord(data.mission)
       ? { ...data.mission, refuel: { leo: false, depot: false } }
       : data.mission,
+  }),
+  // v7 (Stage 9): interface settings. Existing players have seen the game: skip the overview.
+  6: (data) => ({
+    ...data,
+    ui: isRecord(data.ui) ? { ...data.ui, uiScale: 1, overviewSeen: true } : data.ui,
   }),
 };
 

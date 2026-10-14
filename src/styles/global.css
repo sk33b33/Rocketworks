@@ -1596,3 +1596,107 @@ fieldset.stacked label {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+
+/* ---------- settings, interface size, reduced motion, touch ---------- */
+.settings {
+  margin-left: auto;
+  position: relative;
+}
+.settings-toggle {
+  min-height: 40px;
+  white-space: nowrap;
+}
+.settings-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px);
+  width: 300px;
+  z-index: 40;
+  display: grid;
+  gap: 6px;
+}
+.scale-picker {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 8px;
+  margin: 4px 0;
+}
+.scale-picker label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+}
+/* Interface size: scale the overlays, never the 3D canvas. */
+.topbar,
+.hud-col,
+.camera-toolbar,
+.notice,
+.flight-message,
+.panel.debrief,
+.empty-pad {
+  zoom: var(--ui-scale, 1);
+}
+.reduce-motion *,
+.reduce-motion *::before,
+.reduce-motion *::after {
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+@media (pointer: coarse) {
+  .toolbar button,
+  .warp button,
+  .mode-grid button,
+  .program-row button,
+  .loc,
+  .settings-toggle {
+    min-height: 44px;
+  }
+}
+
+/* ---------- onboarding: next step and program overview ---------- */
+.next-step {
+  margin-left: auto;
+  min-height: 40px;
+  max-width: 420px;
+  text-align: left;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border-color: var(--accent);
+}
+.next-step.here {
+  border-color: var(--line-strong);
+}
+.next-step + .settings {
+  margin-left: 0;
+}
+.overview-backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(5, 8, 12, 0.6);
+}
+.overview {
+  max-width: 620px;
+  margin: 16px;
+  zoom: var(--ui-scale, 1);
+}
+.overview-steps {
+  display: grid;
+  gap: 6px;
+  padding-left: 20px;
+  font-size: 14px;
+}
+@media (max-width: 860px) {
+  .next-step {
+    display: none;
+  }
+}

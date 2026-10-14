@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { autoMotion } from '../../render/motion';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { GameScene, SceneContext } from '../../game/GameScene';
 import type { LaunchSnapshot } from '../../launch/launchRuntime';
@@ -444,8 +445,12 @@ export class LaunchPadScene implements GameScene {
     } else if (mode === 'cinematic') {
       const shot = Math.floor(this.time / 9) % 3;
       if (!flying) {
-        const a = this.time * 0.05;
-        cam.position.set(Math.sin(a) * 340, 70 + Math.sin(this.time * 0.1) * 20, Math.cos(a) * 340);
+        const a = 0.4 + autoMotion(this.time * 0.05);
+        cam.position.set(
+          Math.sin(a) * 340,
+          70 + autoMotion(Math.sin(this.time * 0.1) * 20),
+          Math.cos(a) * 340,
+        );
       } else if (shot === 0) {
         cam.position.set(260, 8, 420);
       } else if (shot === 1) {

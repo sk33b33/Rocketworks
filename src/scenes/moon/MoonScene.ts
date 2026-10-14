@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { autoMotion } from '../../render/motion';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { FlightState } from '../../flight/flightModel';
 import type { GameScene, SceneContext } from '../../game/GameScene';
@@ -212,7 +213,7 @@ export class MoonScene implements GameScene {
       this.up.set(f.up[0], f.up[1], 0);
       dust.position.copy(this.up).multiplyScalar(-geo.radarM + 0.3);
       dust.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), this.up);
-      dust.scale.setScalar(1 + (45 - geo.radarM) / 30 + Math.sin(this.time * 9) * 0.05);
+      dust.scale.setScalar(1 + (45 - geo.radarM) / 30 + autoMotion(Math.sin(this.time * 9) * 0.05));
     }
     this.stars!.position.copy(this.camera.position);
     this.stars!.scale.setScalar(this.camera.far * 0.9);
@@ -235,7 +236,7 @@ export class MoonScene implements GameScene {
       const dist = MOON_RADIUS_M * 4.2 * this.zoom;
       const out = this.tmp.copy(this.centre).multiplyScalar(-1).normalize();
       const dir = out
-        .applyAxisAngle(new THREE.Vector3(0, 0, 1), this.yaw * 0.5 + this.time * 0.01)
+        .applyAxisAngle(new THREE.Vector3(0, 0, 1), this.yaw * 0.5 + autoMotion(this.time * 0.01))
         .multiplyScalar(Math.cos(this.pitch))
         .add(new THREE.Vector3(0, 0, Math.sin(this.pitch)))
         .normalize();
@@ -301,8 +302,8 @@ export class MoonScene implements GameScene {
   private idleView(): void {
     const moon = this.moon!;
     this.centre.set(0, 0, 0);
-    moon.update(this.centre, this.time * 0.01, false, 30_000);
-    const a = this.time * 0.03;
+    moon.update(this.centre, autoMotion(this.time * 0.01), false, 30_000);
+    const a = 0.6 + autoMotion(this.time * 0.03);
     const cam = this.camera;
     cam.position.set(
       Math.sin(a) * MOON_RADIUS_M * 3.6,

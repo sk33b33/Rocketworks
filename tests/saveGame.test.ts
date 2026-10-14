@@ -43,7 +43,14 @@ function sampleData(): Omit<SaveData, 'saveVersion'> {
       shipFleetId: null,
       refuel: { leo: false, depot: false },
     },
-    ui: { guideCollapsed: true, assemblyMode: 'structure', randomFailures: false },
+    ui: {
+      guideCollapsed: true,
+      assemblyMode: 'structure',
+      randomFailures: false,
+      reduceMotion: true,
+      uiScale: 1.1,
+      overviewSeen: true,
+    },
     flights: [],
     fleet: [],
   };
@@ -144,7 +151,8 @@ describe('save/load v2', () => {
     });
     const b = result.data.blueprints[1]!;
     expect([b.finish, b.role, b.certification]).toEqual(['brushed', 'crew', null]);
-    expect(result.data.ui).toEqual(DEFAULT_UI);
+    // Garbage UI values fall back to defaults; a damaged save keeps the overview skipped.
+    expect(result.data.ui).toEqual({ ...DEFAULT_UI, overviewSeen: true });
   });
 
   it('survives storage that throws', () => {
@@ -195,6 +203,9 @@ describe('migration v1 → v2', () => {
       guideCollapsed: true,
       assemblyMode: 'catalog',
       randomFailures: true,
+      reduceMotion: false,
+      uiScale: 1,
+      overviewSeen: true,
     });
     expect(result.data.flights).toEqual([]);
   });
@@ -206,9 +217,9 @@ describe('migration v1 → v2', () => {
   });
 
   it('passes current-version data through and rejects invalid versions', () => {
-    expect(migrateSave({ saveVersion: 6, x: 1 })).toEqual({
+    expect(migrateSave({ saveVersion: 7, x: 1 })).toEqual({
       ok: true,
-      data: { saveVersion: 6, x: 1 },
+      data: { saveVersion: 7, x: 1 },
     });
     expect(migrateSave({ saveVersion: 0 }).ok).toBe(false);
     expect(migrateSave({ saveVersion: 1.5 }).ok).toBe(false);

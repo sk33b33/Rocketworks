@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { motionReduced } from '../../render/motion';
 import type { ResourceCache } from '../../render/ResourceCache';
 import { PORT } from '../../station/proximity';
 
@@ -201,7 +202,8 @@ export class StationModel {
   /** Blinks the strobes (period 0 = steady). */
   update(time: number): void {
     for (const l of this.lights) {
-      l.mesh.visible = l.period === 0 || (time + l.phase) % l.period < 0.15;
+      // Reduced motion: strobes stay lit instead of flashing.
+      l.mesh.visible = l.period === 0 || motionReduced() || (time + l.phase) % l.period < 0.15;
     }
   }
 }

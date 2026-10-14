@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { autoMotion } from '../../render/motion';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { GameScene, SceneContext } from '../../game/GameScene';
 import { shipOnlyBlueprint } from '../../flight/shipSpec';
@@ -158,7 +159,7 @@ export class StationScene implements GameScene {
       cam.fov = 40;
       cam.near = 0.05;
     } else {
-      const auto = mode === 'orbit' ? this.time * 0.05 : 0;
+      const auto = mode === 'orbit' ? autoMotion(this.time * 0.05) : 0;
       const focus = mode === 'orbit' ? new THREE.Vector3(0, 0, 0) : shipPos;
       const dist = (mode === 'orbit' ? 160 : 70) * this.zoom;
       const dir = new THREE.Vector3(

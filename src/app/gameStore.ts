@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { DEFAULT_UI, getBrowserStorage, loadGame, writeSave } from '../persistence/saveGame';
+import { setReducedMotion } from '../render/motion';
 import { INITIAL_PROGRESSION } from '../progression/research';
 import { createStarterBlueprint } from '../rocket/catalog/blueprints';
 import { navigate } from './gameState';
@@ -132,6 +133,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   dismissNotice: () => set({ notice: null }),
   setGuideCollapsed: (guideCollapsed) => set({ ui: { ...get().ui, guideCollapsed } }),
   setAssemblyMode: (assemblyMode) => set({ ui: { ...get().ui, assemblyMode } }),
+  setReduceMotion: (reduceMotion) => set({ ui: { ...get().ui, reduceMotion } }),
+  setUiScale: (uiScale) => set({ ui: { ...get().ui, uiScale } }),
+  setOverviewSeen: (overviewSeen) => set({ ui: { ...get().ui, overviewSeen } }),
   setVehicleTab: (vehicleTab) => set({ vehicleTab }),
   requestCamera: (kind, instanceId) =>
     set({ cameraRequest: { seq: ++cameraSeq, kind, ...(instanceId ? { instanceId } : {}) } }),
@@ -187,6 +191,18 @@ useGameStore.subscribe((s, prev) => {
       ? { state: 'saved', at }
       : { state: 'error', message: `Autosave failed: ${result.reason}` },
   });
+});
+
+// Apply interface settings (motion and size) to the document and the 3D scenes.
+function applyUiSettings(ui: GameStore['ui']): void {
+  setReducedMotion(ui.reduceMotion);
+  if (typeof document === 'undefined') return;
+  document.documentElement.classList.toggle('reduce-motion', ui.reduceMotion);
+  document.documentElement.style.setProperty('--ui-scale', String(ui.uiScale));
+}
+applyUiSettings(useGameStore.getState().ui);
+useGameStore.subscribe((s, prev) => {
+  if (s.ui !== prev.ui) applyUiSettings(s.ui);
 });
 
 // ---- Selectors (memoized, stable references) ----

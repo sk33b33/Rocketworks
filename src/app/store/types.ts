@@ -126,6 +126,9 @@ export interface UiActions {
   dismissNotice(): void;
   setGuideCollapsed(collapsed: boolean): void;
   setAssemblyMode(mode: AssemblyMode): void;
+  setReduceMotion(on: boolean): void;
+  setUiScale(scale: number): void;
+  setOverviewSeen(seen: boolean): void;
   setVehicleTab(tab: VehicleTab): void;
   requestCamera(kind: CameraRequest['kind'], instanceId?: string): void;
   runFixAction(action: FixAction): void;

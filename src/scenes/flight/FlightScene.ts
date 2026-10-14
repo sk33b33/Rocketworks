@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { autoMotion } from '../../render/motion';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { FlightState } from '../../flight/flightModel';
 import { localFrame } from '../../flight/orbitMath';
@@ -196,7 +197,7 @@ export class FlightScene implements GameScene {
   // ---------- camera ----------
 
   private idleView(): void {
-    const a = this.time * 0.02;
+    const a = 0.5 + autoMotion(this.time * 0.02);
     this.centre.set(0, 0, 0);
     this.planet!.group.position.set(0, 0, 0);
     this.overlay!.group.visible = false;
@@ -273,7 +274,7 @@ export class FlightScene implements GameScene {
       cam.far = dist + extent;
     } else {
       // Chase: behind along the flight path and above; Orbit: a slow cinematic circle.
-      const yaw = mode === 'orbit' ? this.yaw + this.time * 0.06 : this.yaw;
+      const yaw = mode === 'orbit' ? this.yaw + autoMotion(this.time * 0.06) : this.yaw;
       const pitch = this.pitch;
       const side = new THREE.Vector3(0, 0, 1);
       const back = this.fwd

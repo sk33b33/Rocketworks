@@ -31,6 +31,23 @@ export interface UiPrefs {
   readonly assemblyMode: AssemblyMode;
   /** Risk-driven random failures during flight (on by default). */
   readonly randomFailures: boolean;
+  /** No automatic camera motion, strobes or flicker (defaults to the system preference). */
+  readonly reduceMotion: boolean;
+  /** Interface size multiplier (0.9–1.25). */
+  readonly uiScale: number;
+  /** The first-run program overview has been seen. */
+  readonly overviewSeen: boolean;
+}
+
+export const UI_SCALES = [0.9, 1, 1.1, 1.25] as const;
+
+/** The system's reduced-motion preference (false outside a browser). */
+export function prefersReducedMotion(): boolean {
+  try {
+    return globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+  } catch {
+    return false;
+  }
 }
 
 /** Versioned save data. Independent of Three.js and React. */
@@ -55,6 +72,9 @@ export const DEFAULT_UI: UiPrefs = {
   guideCollapsed: false,
   assemblyMode: 'catalog',
   randomFailures: true,
+  reduceMotion: prefersReducedMotion(),
+  uiScale: 1,
+  overviewSeen: false,
 };
 
 /** Most recent flights kept in the save. */
@@ -508,6 +528,12 @@ export function parseSave(json: string): LoadResult {
         guideCollapsed: ui.guideCollapsed === true,
         assemblyMode: ui.assemblyMode === 'structure' ? 'structure' : 'catalog',
         randomFailures: ui.randomFailures !== false,
+        reduceMotion:
+          typeof ui.reduceMotion === 'boolean' ? ui.reduceMotion : prefersReducedMotion(),
+        uiScale: UI_SCALES.includes(ui.uiScale as (typeof UI_SCALES)[number])
+          ? (ui.uiScale as number)
+          : 1,
+        overviewSeen: ui.overviewSeen !== false,
       },
     },
   };

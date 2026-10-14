@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { autoMotion } from '../../render/motion';
 import { ENGINE_BELL_LENGTH_M } from '../../rocket/model/geometry';
 import type { ResourceCache } from '../../render/ResourceCache';
 import { mulberry32 } from '../../shared/random';
@@ -69,7 +70,8 @@ export function updatePlume(
   const faint = 1 / Math.sqrt(expand);
   (p.core.material as THREE.MeshBasicMaterial).opacity = 0.7 * faint;
   (p.outer.material as THREE.MeshBasicMaterial).opacity = 0.3 * faint * faint;
-  const flicker = 1 + Math.sin(time * 37 + seed * 3.1) * 0.06 + Math.sin(time * 61 + seed) * 0.04;
+  const flicker =
+    1 + autoMotion(Math.sin(time * 37 + seed * 3.1) * 0.06 + Math.sin(time * 61 + seed) * 0.04);
   const len = (8 + 26 * throttle) * flicker;
   p.core.scale.set(0.7 * expand, len * 0.45, 0.7 * expand);
   p.outer.scale.set(1.3 * expand, len * (1 + expand * 0.25), 1.3 * expand);

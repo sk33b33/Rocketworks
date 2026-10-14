@@ -6,6 +6,9 @@ import { FlightHud } from '../ui/flight/FlightHud';
 import { StationHud } from '../ui/station/StationHud';
 import { MoonHud } from '../ui/moon/MoonHud';
 import { LocationSelector } from '../ui/LocationSelector';
+import { SettingsMenu } from '../ui/SettingsMenu';
+import { NextStepChip } from '../ui/NextStepChip';
+import { ProgramOverview } from '../ui/ProgramOverview';
 import { NoticeBar } from '../ui/NoticeBar';
 import { Viewport } from '../ui/Viewport';
 import { useGameStore } from './gameStore';
@@ -17,6 +20,8 @@ export function App() {
       <header className="topbar">
         <span className="brand">ROCKETWORKS</span>
         <LocationSelector />
+        <NextStepChip />
+        <SettingsMenu />
       </header>
       <main className="stage">
         <ErrorBoundary>
@@ -29,6 +34,7 @@ export function App() {
           {location === 'moon' && <MoonHud />}
         </ErrorBoundary>
         <NoticeBar />
+        <ProgramOverview />
       </main>
     </div>
   );
