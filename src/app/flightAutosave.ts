@@ -1,9 +1,8 @@
-import { flightContextFromLaunch, flightRuntime } from './flightBinding';
+import { flightRuntime, handoffContext } from './flightBinding';
 import { launchRuntime, setFlightBusyCheck } from './launchBinding';
 import { useGameStore } from './gameStore';
 import { makeNotice, now } from './store/commit';
 import { FlightRuntime, type RuntimeSnapshot } from '../flight/flightRuntime';
-import { findMission } from '../missions/missionCatalog';
 import { getBrowserStorage, type KeyValueStorage } from '../persistence/saveGame';
 import {
   clearFlightSave,
@@ -28,6 +27,7 @@ const busyPhases = new Set(['flight', 'proximity', 'surface']);
 /** Where a resumed flight belongs. */
 export function locationFor(snap: RuntimeSnapshot): LocationId {
   if (snap.phase === 'proximity') return 'station';
+  if (snap.phase === 'voyage' || snap.context.mars) return snap.live.origin ? 'mars' : 'flight';
   if (snap.phase === 'surface' || snap.live.ref === 'moon') return 'moon';
   return 'flight';
 }
@@ -49,18 +49,7 @@ export function currentFlightRecord(): FlightSaveRecord | null {
   const launch = launchRuntime.getSnapshot();
   if (launch.context && launch.phase === 'handoff' && launch.ascent && !flightRuntime.active) {
     // Orbit reached but not yet taken over: save it as a flight that hasn't started.
-    const mission = useGameStore.getState().mission;
-    const rules = findMission(launch.context.outcome.missionId)?.lunar;
-    const ctx2 = flightContextFromLaunch(
-      launch.context,
-      launch.ascent,
-      launch.recoveryResult,
-      {
-        crew: launch.context.crewNames.length,
-        cargo: mission.payloadId === 'station-supplies' || mission.payloadId === 'surface-science',
-      },
-      rules ? { goal: rules.goal, landing: rules.landing, refuel: mission.refuel } : undefined,
-    );
+    const ctx2 = handoffContext(launch.context, launch.ascent, launch.recoveryResult);
     const temp = new FlightRuntime(() => undefined);
     temp.start(ctx2);
     const s2 = temp.snapshot();

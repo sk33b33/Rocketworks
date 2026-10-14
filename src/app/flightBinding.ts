@@ -9,6 +9,7 @@ import type { MoonController } from '../scenes/moon/moonController';
 import { useGameStore } from './gameStore';
 import { launchRuntime } from './launchBinding';
 import { findMission } from '../missions/missionCatalog';
+import { programDay } from '../progression/research';
 
 /** The single orbital-flight runtime; its outcome closes the launch session and is recorded. */
 export const flightRuntime = new FlightRuntime((record) => {
@@ -48,6 +49,38 @@ export function flightContextFromLaunch(
   };
 }
 
+/**
+ * Flight context for a launch that reached orbit, with the mission plan from Mission Control
+ * (station crew and cargo, Moon refuelling, the Mars launch day and cargo).
+ */
+export function handoffContext(
+  launch: LaunchContext,
+  ascent: AscentState,
+  recovery: BoosterRecoverySummary | null,
+): FlightContext {
+  const state = useGameStore.getState();
+  const mission = state.mission;
+  const def = findMission(launch.outcome.missionId);
+  const rules = def?.lunar;
+  return flightContextFromLaunch(
+    launch,
+    ascent,
+    recovery,
+    {
+      crew: launch.crewNames.length,
+      cargo: mission.payloadId === 'station-supplies' || mission.payloadId === 'surface-science',
+    },
+    rules ? { goal: rules.goal, landing: rules.landing, refuel: mission.refuel } : undefined,
+    def?.mars
+      ? {
+          launchDay: programDay(state.progression),
+          refuelLeo: mission.refuel.leo,
+          plant: mission.payloadId === def.mars.plantPayloadId,
+        }
+      : undefined,
+  );
+}
+
 /** True when a launch is waiting to hand its ship to the flight runtime. */
 export function handoffPending(): boolean {
   return launchRuntime.getSnapshot().phase === 'handoff' && !flightRuntime.active;
@@ -58,21 +91,7 @@ export function continueToOrbit(): boolean {
   const snap = launchRuntime.getSnapshot();
   if (!flightRuntime.active) {
     if (snap.phase !== 'handoff' || !snap.context || !snap.ascent) return false;
-    const mission = useGameStore.getState().mission;
-    const rules = findMission(snap.context.outcome.missionId)?.lunar;
-    flightRuntime.start(
-      flightContextFromLaunch(
-        snap.context,
-        snap.ascent,
-        snap.recoveryResult,
-        {
-          crew: snap.context.crewNames.length,
-          cargo:
-            mission.payloadId === 'station-supplies' || mission.payloadId === 'surface-science',
-        },
-        rules ? { goal: rules.goal, landing: rules.landing, refuel: mission.refuel } : undefined,
-      ),
-    );
+    flightRuntime.start(handoffContext(snap.context, snap.ascent, snap.recoveryResult));
   }
   return useGameStore.getState().goTo('flight');
 }

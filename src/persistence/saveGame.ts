@@ -9,6 +9,7 @@ import {
 import { MAX_BLUEPRINTS } from '../rocket/library/blueprintLibrary';
 import { MILESTONES } from '../progression/milestones';
 import { INITIAL_PROGRESSION, TECH_TREE, type ProgressionState } from '../progression/research';
+import type { MarsBase } from '../mars/marsRules';
 import { findCrew } from '../missions/crew';
 import { findMission, findPayload, MISSIONS } from '../missions/missionCatalog';
 import type { MissionSetup } from '../missions/missionSetup';
@@ -18,6 +19,7 @@ import type {
   LandingSummary,
   LunarLandingOutcome,
   LunarSummary,
+  MarsSummary,
 } from '../launch/flightRecord';
 import type { FleetVehicle } from '../fleet/fleet';
 import type { Grade } from '../recovery/rating';
@@ -181,7 +183,15 @@ function parseProgression(raw: unknown, warnings: string[]): ProgressionState {
     raw.completedMissions,
     MISSIONS.map((m) => m.id),
   );
-  return { milestones, tech, completedMissions };
+  const calendarDay =
+    isNum(raw.calendarDay) && raw.calendarDay >= 0 ? Math.floor(raw.calendarDay) : 0;
+  return {
+    milestones,
+    tech,
+    completedMissions,
+    calendarDay,
+    marsBase: parseMarsBase(raw.marsBase),
+  };
 }
 
 const FLIGHT_RESULTS: readonly FlightRecord['result'][] = [
@@ -269,6 +279,7 @@ function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
           : null;
       const hw = isRecord(r.hardware) ? r.hardware : null;
       const lunar = parseLunar(r.lunar);
+      const mars = parseMars(r.mars);
       out.push({
         id: r.id,
         at: r.at,
@@ -289,6 +300,7 @@ function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
         ...(recovery ? { recovery } : {}),
         ...(docking ? { docking } : {}),
         ...(lunar ? { lunar } : {}),
+        ...(mars ? { mars } : {}),
         ...(hw
           ? {
               hardware: {
@@ -356,25 +368,56 @@ function parseMissionSetup(
 
 const LUNAR_OUTCOMES: readonly LunarLandingOutcome[] = ['landed', 'tipped', 'crashed'];
 
-/** Moon-mission summary on a flight record (Stage 8+); malformed parts are dropped. */
-function parseLunar(raw: unknown): LunarSummary | null {
-  if (!isRecord(raw)) return null;
-  const l = isRecord(raw.landing) ? raw.landing : null;
-  const landing =
-    l &&
+/** Landing summary shared by Moon and Mars records. */
+function parseSurfaceLanding(raw: unknown): LunarSummary['landing'] {
+  const l = isRecord(raw) ? raw : null;
+  return l &&
     isString(l.siteId) &&
     isString(l.siteName) &&
     LUNAR_OUTCOMES.includes(l.outcome as LunarLandingOutcome) &&
     isNum(l.missM)
-      ? {
-          siteId: l.siteId,
-          siteName: l.siteName,
-          outcome: l.outcome as LunarLandingOutcome,
-          grade: parseGrade(l.grade),
-          manual: l.manual === true,
-          missM: l.missM,
-        }
-      : null;
+    ? {
+        siteId: l.siteId,
+        siteName: l.siteName,
+        outcome: l.outcome as LunarLandingOutcome,
+        grade: parseGrade(l.grade),
+        manual: l.manual === true,
+        missM: l.missM,
+      }
+    : null;
+}
+
+/** Mars-mission summary on a flight record (Stage 10+); malformed parts are dropped. */
+function parseMars(raw: unknown): MarsSummary | null {
+  if (!isRecord(raw) || !isNum(raw.launchDay)) return null;
+  const numOrNull = (v: unknown) => (isNum(v) ? v : null);
+  return {
+    launchDay: raw.launchDay,
+    departed: raw.departed === true,
+    cruiseDays: numOrNull(raw.cruiseDays),
+    corrections: isCount(raw.corrections) ? raw.corrections : 0,
+    correctionDvMS: isNum(raw.correctionDvMS) ? raw.correctionDvMS : 0,
+    entrySpeedMS: numOrNull(raw.entrySpeedMS),
+    landing: parseSurfaceLanding(raw.landing),
+    surfaceDone: raw.surfaceDone === true,
+    plantRunning: raw.plantRunning === true,
+    ice: numOrNull(raw.ice),
+    landedDay: numOrNull(raw.landedDay),
+  };
+}
+
+/** The Mars base in progression (Stage 10+). */
+function parseMarsBase(raw: unknown): MarsBase | null {
+  if (!isRecord(raw)) return null;
+  return isString(raw.siteId) && isString(raw.siteName) && isNum(raw.sinceDay) && isNum(raw.ice)
+    ? { siteId: raw.siteId, siteName: raw.siteName, sinceDay: raw.sinceDay, ice: raw.ice }
+    : null;
+}
+
+/** Moon-mission summary on a flight record (Stage 8+); malformed parts are dropped. */
+function parseLunar(raw: unknown): LunarSummary | null {
+  if (!isRecord(raw)) return null;
+  const landing = parseSurfaceLanding(raw.landing);
   return {
     closestAltM: isNum(raw.closestAltM) ? raw.closestAltM : null,
     flyby: raw.flyby === true,

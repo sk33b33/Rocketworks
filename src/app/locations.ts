@@ -1,7 +1,7 @@
 /** Location registry: pure data + pure availability logic (no Three.js, no DOM). */
 
 export type LocationId =
-  'factory' | 'mission-control' | 'launch-pad' | 'flight' | 'station' | 'moon';
+  'factory' | 'mission-control' | 'launch-pad' | 'flight' | 'station' | 'moon' | 'mars';
 
 export interface LocationDefinition {
   readonly id: LocationId;
@@ -45,10 +45,16 @@ export const LOCATIONS: readonly LocationDefinition[] = [
     implementedInStage: 8,
     lockedReason: 'Unlocks in a later stage (Moon). Requires an orbital-capable vehicle.',
   },
+  {
+    id: 'mars',
+    name: 'Mars',
+    implementedInStage: 10,
+    lockedReason: 'Unlocks in a later stage (Mars).',
+  },
 ];
 
 /** Highest roadmap stage implemented by this build. Bump as stages are accepted. */
-export const CURRENT_STAGE = 8;
+export const CURRENT_STAGE = 10;
 
 export const DEFAULT_LOCATION: LocationId = 'factory';
 

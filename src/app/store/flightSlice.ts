@@ -1,5 +1,10 @@
 import { MAX_FLIGHT_RECORDS } from '../../persistence/saveGame';
-import { completeMission, researchAvailable, budgetCredits } from '../../progression/research';
+import {
+  budgetCredits,
+  completeMission,
+  programDay,
+  researchAvailable,
+} from '../../progression/research';
 import { findMission } from '../../missions/missionCatalog';
 import { recordLoss, recordRecovery, type FleetVehicle } from '../../fleet/fleet';
 import type { FlightRecord } from '../../launch/flightRecord';
@@ -84,6 +89,23 @@ export function createFlightActions(set: SetState, get: GetState): FlightActions
           if (unlocked) reward += ` "${unlocked}" complete.`;
         }
         if (r.ok) progression = r.progression;
+      }
+      if (record.result !== 'scrubbed') {
+        // Time passes for the whole program: at least a day per flight, or the flight's length.
+        const days = Math.max(1, Math.ceil((record.durationS ?? 0) / 86_400));
+        progression = { ...progression, calendarDay: programDay(progression) + days };
+      }
+      const m = record.mars;
+      if (m?.plantRunning && m.landing && m.landedDay !== null) {
+        progression = {
+          ...progression,
+          marsBase: {
+            siteId: m.landing.siteId,
+            siteName: m.landing.siteName,
+            sinceDay: m.landedDay,
+            ice: m.ice ?? 1,
+          },
+        };
       }
       const bp = s.blueprints.find((b) => b.id === record.designId);
       const fleetOutcome =

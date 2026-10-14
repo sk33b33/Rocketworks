@@ -179,6 +179,21 @@ export const MILESTONES: readonly Milestone[] = [
           gradeAtLeast(f.lunar.landing.grade, 'A'),
       ),
   },
+  {
+    id: 'red-planet',
+    title: 'Red planet',
+    description: 'Land a ship on Mars.',
+    rewardRp: 3,
+    rewardCredits: 100_000,
+    isAchieved: (ctx) => anyFlight(ctx, (f) => f.mars?.landing?.outcome === 'landed'),
+  },
+  {
+    id: 'fuel-on-mars',
+    title: 'Fuel on Mars',
+    description: 'Start a propellant plant on Mars for the crews that will follow.',
+    rewardRp: 1,
+    isAchieved: (ctx) => anyFlight(ctx, (f) => f.mars?.plantRunning === true),
+  },
 ];
 
 /** Milestones achieved by the context that are not yet recorded. */

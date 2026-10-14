@@ -6,13 +6,21 @@
 import { PARTS } from '../rocket/catalog/parts';
 import { findMission, MISSIONS } from '../missions/missionCatalog';
 import { MILESTONES } from './milestones';
+import type { MarsBase } from '../mars/marsRules';
 
 export interface ProgressionState {
   readonly milestones: readonly string[];
   readonly tech: readonly string[];
   /** Missions flown successfully (first completion pays the reward). */
   readonly completedMissions: readonly string[];
+  /** Program calendar (days since day 0): flights and waiting for launch windows advance it. */
+  readonly calendarDay?: number;
+  /** The propellant plant left on Mars by a cargo landing. */
+  readonly marsBase?: MarsBase | null;
 }
+
+/** The program's current day. */
+export const programDay = (p: ProgressionState): number => p.calendarDay ?? 0;
 
 export interface TechNode {
   readonly id: string;
@@ -93,6 +101,13 @@ export const TECH_TREE: readonly TechNode[] = [
     description: 'Regular depot resupply: the lunar depot top-up costs 40% less.',
     costRp: 3,
     requires: ['heavy-tankers'],
+  },
+  {
+    id: 'ice-mining',
+    name: 'Ice Mining Rigs',
+    description: 'Better drills for the Mars propellant plant: it makes 50% more propellant.',
+    costRp: 4,
+    requires: [],
   },
 ];
 

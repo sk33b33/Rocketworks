@@ -2,7 +2,17 @@ import type { RecoveryTarget } from '../recovery/recoveryPlan';
 import { defaultRefuel, type RefuelChoice } from '../moon/lunarRules';
 import { CREW_ROSTER, findCrew } from './crew';
 import { initialConditionsSeed, nextWindowSeed } from './conditions';
-import { findMission, missionAvailability, MISSIONS } from './missionCatalog';
+import {
+  findMission,
+  missionAvailability,
+  MISSIONS,
+  type MissionDefinition,
+} from './missionCatalog';
+
+/** Refuelling a mission starts with: the legs it can't fly without (Mars: tankers in orbit). */
+export function missionRefuelDefault(m: MissionDefinition): RefuelChoice {
+  return m.mars ? { leo: true, depot: false } : defaultRefuel(m.lunar);
+}
 
 /** What the player has planned in Mission Control. Pure data; persisted with the save. */
 export interface MissionCommit {
@@ -44,7 +54,7 @@ export function createDefaultSetup(designId: string | null): MissionSetup {
     recovery: null,
     boosterFleetId: null,
     shipFleetId: null,
-    refuel: defaultRefuel(first.lunar),
+    refuel: missionRefuelDefault(first),
   };
 }
 
@@ -65,11 +75,15 @@ export function selectMission(
       ...setup,
       missionId,
       crewIds: setup.crewIds.slice(0, mission.requirements.maxCrew),
-      payloadId: mission.payloadIds.includes(setup.payloadId) ? setup.payloadId : 'none',
+      payloadId: mission.mars
+        ? mission.mars.plantPayloadId
+        : mission.payloadIds.includes(setup.payloadId)
+          ? setup.payloadId
+          : 'none',
       conditionsSeed: initialConditionsSeed(missionId),
       waits: 0,
       commit: null,
-      refuel: defaultRefuel(mission.lunar),
+      refuel: missionRefuelDefault(mission),
     },
   };
 }

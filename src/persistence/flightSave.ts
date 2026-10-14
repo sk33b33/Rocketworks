@@ -59,7 +59,12 @@ const isVec = (v: unknown) => Array.isArray(v) && v.length === 2 && v.every(isNu
 export function checkRuntimeSnapshot(raw: unknown): string | null {
   if (!isRecord(raw)) return 'snapshot is not an object';
   if (raw.v !== 1) return 'unknown snapshot format';
-  if (raw.phase !== 'flight' && raw.phase !== 'proximity' && raw.phase !== 'surface')
+  if (
+    raw.phase !== 'flight' &&
+    raw.phase !== 'proximity' &&
+    raw.phase !== 'surface' &&
+    raw.phase !== 'voyage'
+  )
     return 'unknown flight phase';
   const ctx = raw.context;
   if (
@@ -77,8 +82,14 @@ export function checkRuntimeSnapshot(raw: unknown): string | null {
     return 'ship state is damaged';
   if (!isRecord(raw.progress) || !isRecord(raw.ps)) return 'mission progress is damaged';
   if (raw.phase === 'proximity' && !isRecord(raw.prox)) return 'station state is missing';
-  if (raw.phase === 'surface' && !(isRecord(raw.lunar) && isRecord(raw.lunar.surface)))
-    return 'lunar surface state is missing';
+  if (live.origin !== undefined && live.origin !== 'sun' && live.origin !== 'mars')
+    return 'ship state is damaged';
+  if ((raw.phase === 'voyage' || live.origin) && !isRecord(raw.mars))
+    return 'Mars mission state is missing';
+  const surface =
+    (isRecord(raw.lunar) && isRecord(raw.lunar.surface)) ||
+    (isRecord(raw.mars) && isRecord(raw.mars.surface));
+  if (raw.phase === 'surface' && !surface) return 'surface state is missing';
   return null;
 }
 

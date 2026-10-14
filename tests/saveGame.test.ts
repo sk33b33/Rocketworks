@@ -67,7 +67,11 @@ describe('save/load v2', () => {
     expect(loaded.warnings).toEqual([]);
     expect(loaded.data.blueprints).toEqual(data.blueprints);
     expect(loaded.data.activeBlueprintId).toBe('bp-b');
-    expect(loaded.data.progression).toEqual(data.progression);
+    expect(loaded.data.progression).toEqual({
+      calendarDay: 0,
+      marsBase: null,
+      ...data.progression,
+    });
     expect(loaded.data.mission).toEqual(data.mission);
     expect(loaded.data.ui).toEqual(data.ui);
   });
@@ -148,6 +152,8 @@ describe('save/load v2', () => {
       milestones: ['full-stack'],
       tech: [], // vacuum needs block 2
       completedMissions: ['test-flight'],
+      calendarDay: 0,
+      marsBase: null,
     });
     const b = result.data.blueprints[1]!;
     expect([b.finish, b.role, b.certification]).toEqual(['brushed', 'crew', null]);
@@ -197,7 +203,13 @@ describe('migration v1 → v2', () => {
     ]);
     expect(bp.parts).toHaveLength(createCompleteStarterDesign(NOW).parts.length);
     expect(result.data.activeBlueprintId).toBe(bp.id);
-    expect(result.data.progression).toEqual({ milestones: [], tech: [], completedMissions: [] });
+    expect(result.data.progression).toEqual({
+      milestones: [],
+      tech: [],
+      completedMissions: [],
+      calendarDay: 0,
+      marsBase: null,
+    });
     expect(result.data.mission).toBeNull();
     expect(result.data.ui).toEqual({
       guideCollapsed: true,
@@ -217,9 +229,9 @@ describe('migration v1 → v2', () => {
   });
 
   it('passes current-version data through and rejects invalid versions', () => {
-    expect(migrateSave({ saveVersion: 7, x: 1 })).toEqual({
+    expect(migrateSave({ saveVersion: 8, x: 1 })).toEqual({
       ok: true,
-      data: { saveVersion: 7, x: 1 },
+      data: { saveVersion: 8, x: 1 },
     });
     expect(migrateSave({ saveVersion: 0 }).ok).toBe(false);
     expect(migrateSave({ saveVersion: 1.5 }).ok).toBe(false);

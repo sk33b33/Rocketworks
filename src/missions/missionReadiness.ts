@@ -8,6 +8,8 @@ import {
   type LegCheck,
   type LogisticsTech,
 } from '../moon/lunarRules';
+import { checkMarsLegs, type MarsLegCheck } from '../mars/marsRules';
+import { windowStatus, type WindowStatus } from '../mars/marsTransfer';
 import type { ReadinessReport } from '../rocket/readiness/readiness';
 import type { RocketBlueprint } from '../rocket/model/types';
 import { generateConditions, type LaunchConditions } from './conditions';
@@ -70,6 +72,7 @@ export type MissionTab = 'briefing' | 'manifest' | 'readiness' | 'conditions';
 export type MissionFixAction =
   | { readonly kind: 'go-factory'; readonly tab: 'readiness' | 'designs' }
   | { readonly kind: 'wait-window' }
+  | { readonly kind: 'wait-mars-window'; readonly toDay: number }
   | { readonly kind: 'open-tab'; readonly tab: MissionTab };
 
 export interface MissionIssue {
@@ -94,6 +97,8 @@ export interface MissionReport {
   readonly requiredDeltaVMs: number;
   /** Moon missions: Δv per leg after reaching orbit (null otherwise). */
   readonly lunarLegs: LegCheck[] | null;
+  /** Mars missions: the launch window today and the Δv legs (null otherwise). */
+  readonly mars: { readonly window: WindowStatus; readonly legs: MarsLegCheck[] | null } | null;
   readonly carriedMassKg: number;
   readonly lifeSupport: { requiredCrewDays: number; capacityCrewDays: number };
   readonly conditions: LaunchConditions;
@@ -131,6 +136,8 @@ export interface MissionContext {
   readonly rapidReuse?: boolean;
   /** Researched refuelling logistics (Moon missions). */
   readonly logistics?: LogisticsTech;
+  /** Program calendar day (Mars launch windows). */
+  readonly calendarDay?: number;
 }
 
 /** Crew-days of life support per part. Game values. */
@@ -368,7 +375,9 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
   const deltaV = bp ? estimateDeltaV(bp, carriedMassKg, RESERVE_FRACTION[recovery]) : null;
   const shipCapacityKg = deltaV ? deltaV.ship.initialMassKg - deltaV.ship.finalMassKg : 0;
   const refuelCredits =
-    mission.lunar && bp ? refuelCost(ctx.setup.refuel, shipCapacityKg, ctx.logistics) : 0;
+    (mission.lunar || mission.mars) && bp
+      ? refuelCost(ctx.setup.refuel, shipCapacityKg, ctx.logistics)
+      : 0;
   const cost: MissionCost = {
     newBuildCredits: boosterNew + shipNew,
     refuelCredits,
@@ -451,6 +460,51 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
         actionLabel: 'Open manifest',
       });
     }
+  }
+
+  // Mars missions: the launch window, then Δv for the injection and the landing.
+  let mars: MissionReport['mars'] = null;
+  if (mission.mars) {
+    const day = ctx.calendarDay ?? 0;
+    const window = windowStatus(day);
+    if (!window.open) {
+      const wait = Math.ceil(window.opensDay - day);
+      add({
+        id: 'mars-window',
+        area: 'guidance',
+        severity: 'critical',
+        title: `Outside the Mars launch window (opens in ${fmt(wait)} days)`,
+        detail: `Earth and Mars line up for a transfer about every 26 months. The next window opens on day ${fmt(Math.ceil(window.opensDay))} and closes on day ${fmt(Math.floor(window.closesDay))}; today is day ${fmt(day)}.`,
+        fix: 'Wait for the window. Time passes for the whole program.',
+        action: { kind: 'wait-mars-window', toDay: Math.ceil(window.opensDay) },
+        actionLabel: `Wait ${fmt(wait)} days`,
+      });
+    }
+    let legs: MarsLegCheck[] | null = null;
+    if (deltaV) {
+      legs = checkMarsLegs(
+        window.today?.tmiDvMS ?? window.bestDvMS,
+        ctx.setup.refuel.leo,
+        deltaV.ship.deltaVMs,
+        Math.max(0, deltaV.totalMs - ORBIT_DELTA_V_MS),
+      );
+      for (const c of legs) {
+        if (c.ok) continue;
+        add({
+          id: `mars-dv-${c.id}`,
+          area: 'propulsion',
+          severity: 'critical',
+          title: `Not enough Δv: ${c.label.toLowerCase()}`,
+          detail: `About ${fmt(c.availableMS)} m/s available for this leg; ${fmt(c.requiredDvMS)} m/s needed.${ctx.setup.refuel.leo ? '' : ' Orbital refuelling fills the tanks before the injection.'}`,
+          fix: ctx.setup.refuel.leo
+            ? 'Lighten the ship, add ship tanks or use better vacuum engines.'
+            : 'Add orbital refuelling in the Manifest.',
+          action: { kind: 'open-tab', tab: 'manifest' },
+          actionLabel: 'Open manifest',
+        });
+      }
+    }
+    mars = { window, legs };
   }
 
   // ---- Crew ----
@@ -654,6 +708,7 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
     deltaV,
     requiredDeltaVMs: mission.requiredDeltaVMs,
     lunarLegs,
+    mars,
     carriedMassKg,
     lifeSupport: { requiredCrewDays, capacityCrewDays: capacity },
     conditions,

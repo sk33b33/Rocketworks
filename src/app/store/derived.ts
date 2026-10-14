@@ -1,5 +1,6 @@
 import {
   budgetCredits,
+  programDay,
   researchAvailable,
   researchEarned,
   unlockedPartIds,
@@ -96,6 +97,7 @@ export function missionReport(
           heavyTankers: p.tech.includes('heavy-tankers'),
           lunarLogistics: p.tech.includes('lunar-logistics'),
         },
+        calendarDay: programDay(p),
       }),
     };
   }

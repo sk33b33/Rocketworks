@@ -110,6 +110,8 @@ export interface MissionActions {
   setMissionPayload(payloadId: string): void;
   toggleCrew(crewId: string): void;
   waitForWindow(): void;
+  /** Advances the program calendar to a Mars launch window. */
+  waitForMarsWindow(toDay: number): void;
   commitMission(): void;
   standDown(): void;
   setMissionTab(tab: MissionTab): void;

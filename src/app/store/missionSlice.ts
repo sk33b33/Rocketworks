@@ -1,3 +1,4 @@
+import { programDay } from '../../progression/research';
 import { findCrew } from '../../missions/crew';
 import { findMission, findPayload } from '../../missions/missionCatalog';
 import { commitMission } from '../../missions/missionReadiness';
@@ -60,6 +61,19 @@ export function createMissionActions(set: SetState, get: GetState): MissionActio
         next,
         `Stood down for the next window (T-${c.windowOpensInHours} h). Weather: ${CONDITION_TEXT[c.overall]}.`,
       );
+    },
+    waitForMarsWindow: (toDay) => {
+      const s = get();
+      const day = programDay(s.progression);
+      if (toDay <= day) return;
+      set({
+        progression: { ...s.progression, calendarDay: toDay },
+        mission: { ...s.mission, commit: null },
+        notice: makeNotice(
+          'success',
+          `Waited ${toDay - day} days: the Mars launch window is open (day ${toDay}).`,
+        ),
+      });
     },
     commitMission: () => {
       const s = get();
@@ -139,6 +153,9 @@ export function createMissionActions(set: SetState, get: GetState): MissionActio
           break;
         case 'wait-window':
           s.waitForWindow();
+          break;
+        case 'wait-mars-window':
+          s.waitForMarsWindow(action.toDay);
           break;
         case 'open-tab':
           s.setMissionTab(action.tab);

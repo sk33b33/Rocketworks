@@ -1,11 +1,13 @@
 import { FLYBY_RULES, LANDING_RULES, type LunarMissionRules } from '../moon/lunarRules';
+import { PLANT_CARGO_KG } from '../mars/marsRules';
 
 /*
  * Mission and payload catalog. Destinations are fictionalized; Δv requirements, durations and
  * rewards are game values chosen for progression, not mission-design data.
  */
 
-export type Destination = 'suborbital' | 'leo' | 'station' | 'lunar-orbit' | 'lunar-surface';
+export type Destination =
+  'suborbital' | 'leo' | 'station' | 'lunar-orbit' | 'lunar-surface' | 'mars-surface';
 
 export type MissionUnlock =
   | { readonly kind: 'start' }
@@ -45,6 +47,8 @@ export interface MissionDefinition {
   readonly unlock: MissionUnlock;
   /** Moon missions: the goal and the Δv legs flown after reaching orbit. */
   readonly lunar?: LunarMissionRules;
+  /** Mars missions: flown in launch windows; the cargo that sets up the propellant plant. */
+  readonly mars?: { readonly plantPayloadId: string };
 }
 
 export interface PayloadDefinition {
@@ -98,6 +102,14 @@ export const PAYLOADS: readonly PayloadDefinition[] = [
     name: 'Surface science package',
     description: 'Seismometer, heat-flow probe and a sample return kit, unloaded on the Moon.',
     massKg: 6_000,
+    requiresBay: true,
+  },
+  {
+    id: 'mars-plant',
+    name: 'Propellant plant',
+    description:
+      'Solar arrays, an ice drill and a fuel-making plant, lowered to the Martian surface from the cargo bay.',
+    massKg: PLANT_CARGO_KG,
     requiresBay: true,
   },
 ];
@@ -272,6 +284,38 @@ export const MISSIONS: readonly MissionDefinition[] = [
     rewardCredits: 100_000,
     unlock: { kind: 'after', missionIds: ['lunar-transfer'] },
     lunar: LANDING_RULES,
+  },
+  {
+    id: 'mars-cargo',
+    name: 'Mars Cargo Lander',
+    destination: 'mars-surface',
+    destinationLabel: 'Mars surface',
+    summary: 'Send an uncrewed ship to Mars with a propellant plant for future crews.',
+    briefing:
+      'Launch inside an Earth–Mars window (they open about every 26 months), fill the tanks in low Earth orbit and inject toward Mars. Cruise navigation corrects the course on the way. At Mars the ship enters the thin atmosphere belly-first, flips and lands on its engines at the site you choose, then lowers the propellant plant to the ground. The ship stays on Mars as its tanker.',
+    objectives: [
+      'Refuel in Earth orbit and inject toward Mars inside the window',
+      'Cruise to Mars',
+      'Enter the atmosphere and land at the selected site',
+      'Unload and start the propellant plant',
+    ],
+    abortCriteria: ['Injection outside the launch window', 'Heat shield below entry limits'],
+    durationDays: 280,
+    requiredDeltaVMs: 9_750,
+    requirements: {
+      minCrew: 0,
+      maxCrew: 0,
+      dockingAdapter: false,
+      rcs: 'critical',
+      antenna: 'critical',
+      reentry: true,
+    },
+    payloadIds: ['mars-plant'],
+    baseRisk: 0.65,
+    rewardRp: 8,
+    rewardCredits: 120_000,
+    unlock: { kind: 'after', missionIds: ['lunar-landing'] },
+    mars: { plantPayloadId: 'mars-plant' },
   },
 ];
 
