@@ -217,7 +217,7 @@
   - `tests/flightSave.test.ts`: Infinity-safe encoding; damaged and foreign saves are rejected without throwing; flight and ascent records round-trip; exact resume of a rendezvous, docked proximity operations, a lunar transfer and a lunar surface stay;
   - `tests/nextStep.test.ts`: the next-step hint for each point in the program;
   - v6 → v7 save migration.
-- `npm run e2e`: E2E_RESULT
+- `npm run e2e`: 7 Playwright tests pass in headless Chromium (about 8 min with software WebGL), including the new Mars cruise resume test (`e2e/mars.e2e.ts`): a seeded cruise resumes paused at the Mars location with the same clock, and the chosen site and a later time survive another reload.
 - Headless Chromium smoke test, Stage 10 (manual script, not committed), with no console errors:
   - Commit the Mars Cargo Lander with a cargo-bay design after waiting for the window, then launch, continue to orbit, refuel and run *Trans-Mars injection*.
   - The cruise and map views work; the approach correction is flown.
@@ -276,7 +276,7 @@
     - The hand-off dialog carries the simulated catch result. *End flight* in orbit gives a debrief with the booster line, and B-2 joins the fleet.
 
 ## Known limitations
-- Headless software rendering is slow, so timings in the smoke and e2e tests differ from real browsers. The e2e suite takes about 6 minutes, so it's a pre-review check rather than a per-save one.
+- Headless software rendering is slow, so timings in the smoke and e2e tests differ from real browsers. The e2e suite takes about 8 minutes, so it's a pre-review check rather than a per-save one.
 - The e2e suite doesn't fly a launch to orbit through the UI (minutes under software WebGL). The resume test seeds a real snapshot made by the game's own runtime instead; the Stage 4–8 manual smoke tests covered the full flows.
 - Performance numbers come from headless software rendering. There's no measurement on a real GPU or a phone yet.
 - Manual landings take practice: there is no landing-burn predictor beyond the HUD's height, speeds and target distance.
