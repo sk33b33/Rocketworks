@@ -133,7 +133,13 @@
   - launch runtime replay → debrief (suborbital) and → hand-off with the result (orbital); expend skips the replay;
   - store recording: fleet, milestones, released assignments;
   - v4→v5 save migration and fleet/recovery parsing.
-- Headless Chromium smoke test, Stage 7 (manual script, not committed): in progress; results will be recorded here.
+- Headless Chromium smoke test, Stage 7 (manual script, not committed), with no console errors:
+  - The Orbital Station location shows its empty state before a mission; the station mission is committed with the reference design, platform recovery and 2 crew.
+  - Launch → orbit (318 × 268 km) → *Rendezvous with station*: waited for the window, burned, coasted up and closed on the hold point; *Begin proximity operations* switched to the Orbital Station location.
+  - Docking camera and reticle; W thrusts forward; the assist (G) flew the corridor and docked at 0.06 m/s, 0.13 m off, rated A, with 0 violations, bounces or collisions and about 20 m/s of RCS left.
+  - Warped through the docked tasks, undocked, aborted (B) to a safe distance, departed, and the objectives showed rendezvous, dock and tasks done.
+  - Deorbit to the launch site: landed on the pad (rated B). The debrief showed mission success, the docking line, the booster platform result and the credit.
+  - Fixes from this run: 100× warp while coasting up to the station, the chase camera keeping the ship framed at long range, a compact approach panel, docked-state panel values, visible unlock hints, and readable key badges on active buttons (re-checked in the browser).
 - Headless Chromium smoke test, Stage 6, with no console errors:
   - **Flight 1** (test flight, tower catch, assisted):
     - Replay: separation → flip → boostback → coast → glide → landing burn.

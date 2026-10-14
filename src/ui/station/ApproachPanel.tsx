@@ -49,7 +49,7 @@ export function ApproachPanel({ view }: { view: ProximityView }) {
         <dd>{dist(toPort)}</dd>
         <dt>Closing speed</dt>
         <dd className={!docked && m.inKeepOut && m.closingMS > limit ? 'tone-bad' : undefined}>
-          {fmt(m.closingMS, 2)} m/s
+          {fmt(Math.abs(m.closingMS) < 0.005 ? 0 : m.closingMS, 2)} m/s
           {m.inKeepOut && !docked && <span className="muted"> (max {fmt(limit, 2)})</span>}
         </dd>
         <dt>Lateral offset</dt>
