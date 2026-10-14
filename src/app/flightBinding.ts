@@ -5,6 +5,7 @@ import type { BoosterRecoverySummary } from '../launch/flightRecord';
 import type { AscentState } from '../simulation/ascent/ascentModel';
 import type { FlightController } from '../scenes/flight/flightController';
 import type { StationController } from '../scenes/station/stationController';
+import type { MoonController } from '../scenes/moon/moonController';
 import { useGameStore } from './gameStore';
 import { launchRuntime } from './launchBinding';
 import { findMission } from '../missions/missionCatalog';
@@ -92,6 +93,22 @@ export function createStationController(): StationController {
           s.cameraRequest &&
           s.cameraRequest !== prev.cameraRequest &&
           s.currentLocation === 'station'
+        )
+          listener();
+      }),
+  };
+}
+
+export function createMoonController(): MoonController {
+  return {
+    runtime: flightRuntime,
+    getCameraMode: () => useGameStore.getState().moonCamera,
+    subscribeCameraReset: (listener) =>
+      useGameStore.subscribe((s, prev) => {
+        if (
+          s.cameraRequest &&
+          s.cameraRequest !== prev.cameraRequest &&
+          s.currentLocation === 'moon'
         )
           listener();
       }),

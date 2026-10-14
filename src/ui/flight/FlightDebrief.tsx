@@ -54,6 +54,19 @@ export function FlightDebrief({ record }: { record: FlightRecord }) {
             ` Bounces ${record.docking.bounces}, collisions ${record.docking.collisions}, corridor violations ${record.docking.violations}.`}
         </p>
       )}
+      {record.lunar && (
+        <p className={record.lunar.flyby || record.lunar.landing ? 'tone-ok' : 'tone-warn'}>
+          {record.lunar.landing
+            ? record.lunar.landing.outcome === 'landed'
+              ? `✓ Landed on the Moon at ${record.lunar.landing.siteName}, rating ${record.lunar.landing.grade ?? '—'}${record.lunar.landing.manual ? ' (flown manually)' : ' (assisted)'}, ${Math.round(record.lunar.landing.missM)} m from the target${record.lunar.surfaceDone ? '; surface tasks done' : '; surface tasks incomplete'}${record.lunar.ascent ? '; back in lunar orbit.' : '.'}`
+              : `✕ Lunar landing at ${record.lunar.landing.siteName} failed: the ship ${record.lunar.landing.outcome === 'tipped' ? 'tipped over' : 'crashed'}.`
+            : record.lunar.flyby
+              ? `✓ Lunar flyby: closest approach ${Math.round((record.lunar.closestAltM ?? 0) / 1000).toLocaleString('en-US')} km.`
+              : '! The ship did not reach the Moon.'}
+          {record.lunar.refuels > 0 && ` Refuelled ${record.lunar.refuels}×.`}
+          {record.lunar.earthReturn ? ' Returned to Earth orbit.' : ''}
+        </p>
+      )}
       {record.crewSafe !== null && (
         <p className={record.crewSafe ? 'tone-ok' : 'tone-bad'}>
           {record.crewSafe ? '✓ Crew safe.' : '✕ Crew lost.'}

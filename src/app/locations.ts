@@ -48,7 +48,7 @@ export const LOCATIONS: readonly LocationDefinition[] = [
 ];
 
 /** Highest roadmap stage implemented by this build. Bump as stages are accepted. */
-export const CURRENT_STAGE = 7;
+export const CURRENT_STAGE = 8;
 
 export const DEFAULT_LOCATION: LocationId = 'factory';
 

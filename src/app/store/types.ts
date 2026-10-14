@@ -8,6 +8,7 @@ import type { RecoveryTarget } from '../../recovery/recoveryPlan';
 import type { PadCameraMode } from '../../scenes/launch-pad/launchPadController';
 import type { FlightCameraMode } from '../../scenes/flight/flightController';
 import type { StationCameraMode } from '../../scenes/station/stationController';
+import type { MoonCameraMode } from '../../scenes/moon/moonController';
 import type { FixAction } from '../../rocket/readiness/readiness';
 import type { HullFinish, RocketBlueprint, SocketRef, VehicleRole } from '../../rocket/model/types';
 import type { LocationId } from '../locations';
@@ -55,6 +56,7 @@ export interface GameData {
   flightCamera: FlightCameraMode;
   /** Orbital Station camera mode (not persisted). */
   stationCamera: StationCameraMode;
+  moonCamera: MoonCameraMode;
   /** Flight history (persisted, newest last). */
   flights: readonly FlightRecord[];
   /** Recovered boosters and ships (persisted). */
@@ -110,6 +112,8 @@ export interface MissionActions {
   standDown(): void;
   setMissionTab(tab: MissionTab): void;
   setRecovery(target: RecoveryTarget | null): void;
+  /** Buys or drops a refuelling option (Moon missions). */
+  setRefuel(kind: 'leo' | 'depot', on: boolean): void;
   assignFleet(kind: 'booster' | 'ship', vehicleId: string | null): void;
   refurbishVehicle(id: string): void;
   scrapVehicle(id: string): void;
@@ -134,6 +138,7 @@ export interface FlightActions {
   setPadCamera(mode: PadCameraMode): void;
   setFlightCamera(mode: FlightCameraMode): void;
   setStationCamera(mode: StationCameraMode): void;
+  setMoonCamera(mode: MoonCameraMode): void;
 }
 
 export type GameStore = GameData &

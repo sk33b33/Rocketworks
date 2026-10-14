@@ -4,6 +4,7 @@ import { MissionControlHud } from '../ui/mission/MissionControlHud';
 import { LaunchPadHud } from '../ui/launch/LaunchPadHud';
 import { FlightHud } from '../ui/flight/FlightHud';
 import { StationHud } from '../ui/station/StationHud';
+import { MoonHud } from '../ui/moon/MoonHud';
 import { LocationSelector } from '../ui/LocationSelector';
 import { NoticeBar } from '../ui/NoticeBar';
 import { Viewport } from '../ui/Viewport';
@@ -25,6 +26,7 @@ export function App() {
           {location === 'launch-pad' && <LaunchPadHud />}
           {location === 'flight' && <FlightHud />}
           {location === 'station' && <StationHud />}
+          {location === 'moon' && <MoonHud />}
         </ErrorBoundary>
         <NoticeBar />
       </main>

@@ -5,6 +5,7 @@ import {
   assignFleet,
   selectMission,
   setRecovery,
+  setRefuel,
   setMissionDesign,
   setPayload,
   toggleCrew,
@@ -78,6 +79,12 @@ export function createMissionActions(set: SetState, get: GetState): MissionActio
       const s = get();
       if (!s.mission.commit) return;
       update({ ...s.mission, commit: null }, 'Mission stood down; back to planning.');
+    },
+    setRefuel: (kind, on) => {
+      update(
+        setRefuel(get().mission, kind, on),
+        `${kind === 'leo' ? 'Orbital refuelling' : 'Lunar depot top-up'} ${on ? 'added' : 'removed'}.`,
+      );
     },
     setRecovery: (target) => {
       update(

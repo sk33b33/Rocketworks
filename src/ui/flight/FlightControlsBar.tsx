@@ -13,27 +13,58 @@ const CAMERAS: { id: FlightCameraMode; label: string; key: string }[] = [
   { id: 'map', label: 'Map', key: 'M' },
 ];
 
+export interface CameraSet<T extends string> {
+  readonly options: readonly { id: T; label: string; key: string }[];
+  readonly current: T;
+  readonly set: (id: T) => void;
+}
+
 /** Mission clock, pause, time warp, throttle shortcuts, cameras and help. */
-export function FlightControlsBar({ snap, onHelp }: { snap: FlightSnapshot; onHelp: () => void }) {
-  const camera = useGameStore((s) => s.flightCamera);
-  const setCamera = useGameStore((s) => s.setFlightCamera);
+export function FlightControlsBar<T extends string = FlightCameraMode>({
+  snap,
+  onHelp,
+  cameras,
+}: {
+  snap: FlightSnapshot;
+  onHelp: () => void;
+  /** Camera choices (defaults to the Flight scene's). */
+  cameras?: CameraSet<T>;
+}) {
+  const flightCamera = useGameStore((s) => s.flightCamera);
+  const setFlightCamera = useGameStore((s) => s.setFlightCamera);
   const requestCamera = useGameStore((s) => s.requestCamera);
   const [confirmEnd, setConfirmEnd] = useState(false);
   const rt = flightRuntime;
   const s = snap.state;
+  const onSurface = snap.phase === 'surface';
   const flying = snap.phase === 'flight' && s?.phase === 'flight';
-  const idx = FLIGHT_WARP_LEVELS.indexOf(snap.warp);
+  const timeRuns = flying || onSurface;
+  // Deep-space warp levels only matter on Moon missions.
+  const levels = FLIGHT_WARP_LEVELS.filter((w) => w <= 1000 || !!snap.lunar);
+  const idx = levels.indexOf(snap.warp as (typeof levels)[number]);
+  const cams = (cameras ?? {
+    options: CAMERAS,
+    current: flightCamera,
+    set: setFlightCamera,
+  }) as unknown as CameraSet<string>;
 
-  useShortcut(['1'], () => setCamera('chase'));
-  useShortcut(['2'], () => setCamera('orbit'));
-  useShortcut(['m', 'M'], () => setCamera(camera === 'map' ? 'chase' : 'map'));
-  useShortcut([' '], () => rt.togglePause(), flying);
+  useShortcut(['1'], () => cams.set(cams.options[0]!.id));
+  useShortcut(['2'], () => cams.options[1] && cams.set(cams.options[1].id));
+  useShortcut(
+    ['3'],
+    () => cams.options[2] && cams.options[2].key === '3' && cams.set(cams.options[2].id),
+  );
+  useShortcut(
+    ['m', 'M'],
+    () => !cameras && setFlightCamera(flightCamera === 'map' ? 'chase' : 'map'),
+  );
+  useShortcut([' '], () => rt.togglePause(), timeRuns);
   useShortcut(
     ['.', ']'],
-    () => rt.setWarp(FLIGHT_WARP_LEVELS[Math.min(FLIGHT_WARP_LEVELS.length - 1, idx + 1)]!),
-    flying,
+    () => rt.setWarp(levels[Math.min(levels.length - 1, idx + 1)]!),
+    timeRuns,
   );
-  useShortcut([',', '['], () => rt.setWarp(FLIGHT_WARP_LEVELS[Math.max(0, idx - 1)]!), flying);
+  useShortcut([',', '['], () => rt.setWarp(levels[Math.max(0, idx - 1)]!), timeRuns);
   useShortcut(['z', 'Z'], () => rt.setThrottle(1), flying);
   useShortcut(['x', 'X'], () => rt.cutoff(), flying);
 
@@ -49,18 +80,18 @@ export function FlightControlsBar({ snap, onHelp }: { snap: FlightSnapshot; onHe
         <button
           type="button"
           onClick={() => rt.togglePause()}
-          disabled={!flying}
-          title={flying ? undefined : 'The flight has ended.'}
+          disabled={!timeRuns}
+          title={timeRuns ? undefined : 'The flight has ended.'}
         >
           {snap.paused ? 'Resume' : 'Pause'} <kbd>Space</kbd>
         </button>
         <span className="warp" role="group" aria-label="Time warp">
-          {FLIGHT_WARP_LEVELS.map((w) => (
+          {levels.map((w) => (
             <button
               key={w}
               type="button"
               aria-pressed={snap.warp === w}
-              disabled={!flying || w > snap.maxWarp}
+              disabled={!timeRuns || w > snap.maxWarp}
               title={w > snap.maxWarp ? (snap.warpLimitReason ?? undefined) : undefined}
               onClick={() => rt.setWarp(w)}
             >
@@ -84,12 +115,12 @@ export function FlightControlsBar({ snap, onHelp }: { snap: FlightSnapshot; onHe
           Stage
         </button>
         <span className="warp" role="group" aria-label="Camera">
-          {CAMERAS.map((c) => (
+          {cams.options.map((c) => (
             <button
               key={c.id}
               type="button"
-              aria-pressed={camera === c.id}
-              onClick={() => setCamera(c.id)}
+              aria-pressed={cams.current === c.id}
+              onClick={() => cams.set(c.id)}
             >
               {c.label} <kbd>{c.key}</kbd>
             </button>
@@ -122,11 +153,11 @@ export function FlightControlsBar({ snap, onHelp }: { snap: FlightSnapshot; onHe
           <button
             type="button"
             className="danger"
-            disabled={!flying}
+            disabled={!timeRuns}
             onClick={() => setConfirmEnd(true)}
             title={
-              flying
-                ? 'End the flight here; a ship left in space is not recovered.'
+              timeRuns
+                ? 'End the flight here; a ship left in space or on the Moon is not recovered.'
                 : 'The flight has ended.'
             }
           >

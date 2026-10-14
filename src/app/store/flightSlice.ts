@@ -119,5 +119,6 @@ export function createFlightActions(set: SetState, get: GetState): FlightActions
     setPadCamera: (padCamera) => set({ padCamera }),
     setFlightCamera: (flightCamera) => set({ flightCamera }),
     setStationCamera: (stationCamera) => set({ stationCamera }),
+    setMoonCamera: (moonCamera) => set({ moonCamera }),
   };
 }

@@ -12,6 +12,7 @@ import { OrbitPanel } from './OrbitPanel';
 import { VehiclePanel } from './VehiclePanel';
 import { StationPanel } from './StationPanel';
 import { useFlightKeys, useFlightSnapshot } from './useFlight';
+import { LunarPanel } from '../moon/LunarPanel';
 
 /** Flight / Orbit overlay: empty state, orbit and ship telemetry, autopilot, controls, debrief. */
 export function FlightHud() {
@@ -71,6 +72,11 @@ export function FlightHud() {
         <section data-panel="autopilot">
           <AutopilotPanel snap={snap} />
         </section>
+        {snap.lunar && (snap.phase === 'flight' || snap.phase === 'surface') && (
+          <section data-panel="moon">
+            <LunarPanel snap={snap} />
+          </section>
+        )}
         {snap.station && snap.phase === 'flight' && (
           <section data-panel="station">
             <StationPanel snap={snap} />
@@ -93,6 +99,17 @@ export function FlightHud() {
           <div className="actions">
             <button type="button" className="primary" autoFocus onClick={() => goTo('station')}>
               Go to the Orbital Station
+            </button>
+          </div>
+        </div>
+      )}
+      {snap.phase === 'surface' && (
+        <div className="panel debrief" role="dialog" aria-label="On the Moon">
+          <h2 className="debrief-title">The ship is on the Moon</h2>
+          <p>Surface operations are in progress at the Moon location.</p>
+          <div className="actions">
+            <button type="button" className="primary" autoFocus onClick={() => goTo('moon')}>
+              Go to the Moon
             </button>
           </div>
         </div>

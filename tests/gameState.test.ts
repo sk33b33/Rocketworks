@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { navigate } from '../src/app/gameState';
+import { getAvailability } from '../src/app/locations';
 import {
   selectGuide,
   selectMissionReport,
@@ -42,13 +43,14 @@ describe('navigate', () => {
     expect(navigate('factory', 'mission-control').ok).toBe(true);
   });
 
-  it('rejects locked locations with a reason and keeps the current one', () => {
+  it('opens every implemented location and rejects stages beyond this build', () => {
     expect(navigate('factory', 'launch-pad').ok).toBe(true);
     expect(navigate('factory', 'flight').ok).toBe(true);
     expect(navigate('factory', 'station').ok).toBe(true);
-    const result = navigate('factory', 'moon');
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.reason).toContain('later stage');
+    expect(navigate('factory', 'moon').ok).toBe(true);
+    const locked = getAvailability('moon', 7);
+    expect(locked.available).toBe(false);
+    if (!locked.available) expect(locked.reason).toContain('later stage');
   });
 });
 

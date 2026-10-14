@@ -5,13 +5,23 @@ import { localFrame, orbitalElements, orbitPath } from '../../flight/orbitMath';
 import type { ResourceCache } from '../../render/ResourceCache';
 import { EARTH_RADIUS_M } from '../../simulation/constants';
 import { STATION_RADIUS_M } from '../../station/stationOrbit';
+import { MOON_DISTANCE_M, MOON_RADIUS_M } from '../../moon/moonOrbit';
+import { MOON_BODY } from '../../moon/lunarTransfer';
+
+/** Moon-mission extras for the map: the predicted path, the Moon and the ship's lunar orbit. */
+export interface LunarOverlay {
+  readonly path: readonly (readonly [number, number])[];
+  readonly moonR: readonly [number, number];
+  readonly moonV: readonly [number, number];
+  readonly nearMoon: boolean;
+}
 
 /*
  * Map-view overlay in Earth-centred coordinates (child of the planet group): the predicted
  * orbit or ballistic path, apoapsis/periapsis markers and a ship marker.
  */
 
-const SAMPLES = 256;
+const SAMPLES = 512;
 
 export class OrbitOverlay {
   readonly group = new THREE.Group();
@@ -23,6 +33,8 @@ export class OrbitOverlay {
   private readonly shipMarker: THREE.Mesh;
   private readonly stationMarker: THREE.Mesh;
   private readonly stationRing: THREE.Line;
+  private readonly moonMarker: THREE.Mesh;
+  private readonly moonRing: THREE.Line;
 
   constructor(cache: ResourceCache) {
     const geo = new THREE.BufferGeometry();
@@ -71,6 +83,27 @@ export class OrbitOverlay {
     );
     this.stationRing.renderOrder = 1;
     this.stationRing.frustumCulled = false;
+    this.moonMarker = new THREE.Mesh(dot, mat('flight:moonMarker', 0xd8d4cc));
+    this.moonMarker.renderOrder = 2;
+    const moonPts = Array.from({ length: 257 }, (_, i) => {
+      const a = (i / 256) * Math.PI * 2;
+      return new THREE.Vector3(Math.sin(a) * MOON_DISTANCE_M, Math.cos(a) * MOON_DISTANCE_M, 0);
+    });
+    this.moonRing = new THREE.Line(
+      cache.geometry('flight:moonRing', () => new THREE.BufferGeometry().setFromPoints(moonPts)),
+      cache.material(
+        'flight:moonRingMat',
+        () =>
+          new THREE.LineBasicMaterial({
+            color: 0xd8d4cc,
+            transparent: true,
+            opacity: 0.2,
+            depthTest: false,
+            fog: false,
+          }),
+      ),
+    );
+    this.moonRing.frustumCulled = false;
     this.group.add(
       this.line,
       this.apo,
@@ -78,6 +111,8 @@ export class OrbitOverlay {
       this.shipMarker,
       this.stationMarker,
       this.stationRing,
+      this.moonMarker,
+      this.moonRing,
     );
     this.group.visible = false;
   }
@@ -88,7 +123,14 @@ export class OrbitOverlay {
     zone: LandingZone,
     mapScale: number | null,
     station: { readonly r: readonly [number, number] } | null = null,
+    lunar: LunarOverlay | null = null,
   ): void {
+    this.moonMarker.visible = !!lunar;
+    this.moonRing.visible = !!lunar;
+    if (lunar && mapScale !== null) {
+      this.moonMarker.position.set(lunar.moonR[0], lunar.moonR[1], 0);
+      this.moonMarker.scale.setScalar(Math.max(MOON_RADIUS_M, mapScale * 0.008));
+    }
     this.stationMarker.visible = !!station;
     this.stationRing.visible = !!station;
     if (station && mapScale !== null) {
@@ -100,14 +142,31 @@ export class OrbitOverlay {
     if (mapScale === null) return;
     const el = orbitalElements(s.r, s.v);
     const f = localFrame(s.r);
-    const path = s.phase === 'flight' ? orbitPath(el, f.groundAngle, SAMPLES) : [];
     const arr = this.positions.array as Float32Array;
     let n = 0;
-    for (const p of path) {
-      arr[n * 3] = Math.sin(p.angle) * p.radiusM;
-      arr[n * 3 + 1] = Math.cos(p.angle) * p.radiusM;
+    const put = (x: number, y: number) => {
+      if (n > SAMPLES) return;
+      arr[n * 3] = x;
+      arr[n * 3 + 1] = y;
       arr[n * 3 + 2] = 0;
       n++;
+    };
+    if (lunar && s.phase === 'flight' && lunar.path.length > 1) {
+      // Numerically predicted Earth–Moon trajectory.
+      for (const p of lunar.path) put(p[0], p[1]);
+    } else if (lunar?.nearMoon && s.phase === 'flight') {
+      // A closed orbit around the Moon, drawn around the Moon's current position.
+      const rel: [number, number] = [s.r[0] - lunar.moonR[0], s.r[1] - lunar.moonR[1]];
+      const vr: [number, number] = [s.v[0] - lunar.moonV[0], s.v[1] - lunar.moonV[1]];
+      const mel = orbitalElements(rel, vr, MOON_BODY);
+      for (const p of orbitPath(mel, Math.atan2(rel[0], rel[1]), 256, MOON_RADIUS_M))
+        put(
+          lunar.moonR[0] + Math.sin(p.angle) * p.radiusM,
+          lunar.moonR[1] + Math.cos(p.angle) * p.radiusM,
+        );
+    } else if (s.phase === 'flight') {
+      for (const p of orbitPath(el, f.groundAngle, 256))
+        put(Math.sin(p.angle) * p.radiusM, Math.cos(p.angle) * p.radiusM);
     }
     this.line.geometry.setDrawRange(0, n);
     this.positions.needsUpdate = true;
@@ -118,7 +177,12 @@ export class OrbitOverlay {
     const size = mapScale * 0.007;
     this.shipMarker.position.set(s.r[0], s.r[1], 0);
     this.shipMarker.scale.setScalar(size * 1.5);
-    const bounded = el.status !== 'escape' && s.phase === 'flight' && el.eccentricity > 0.002;
+    const bounded =
+      !lunar?.nearMoon &&
+      !(lunar && lunar.path.length > 1) &&
+      el.status !== 'escape' &&
+      s.phase === 'flight' &&
+      el.eccentricity > 0.002;
     this.apo.visible = bounded;
     this.peri.visible = bounded && el.periapsisAltM > 0;
     if (bounded) {

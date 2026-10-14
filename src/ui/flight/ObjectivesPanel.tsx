@@ -16,7 +16,7 @@ export function ObjectivesPanel({ snap }: { snap: FlightSnapshot }) {
   const ctx = snap.context;
   if (!s || !ctx) return null;
   const p = snap.progress;
-  const ORDER: ObjectiveId[] = objectivesFor(ctx.outcome.missionId);
+  const ORDER: ObjectiveId[] = objectivesFor(ctx.outcome.missionId, ctx.lunar?.refuel ?? null);
   const next = ORDER.find((id) => !objectiveDone(id, p, s));
   const lapPct = p.orbit ? Math.min(1, p.travelSinceOrbit / (2 * Math.PI)) : 0;
   return (
@@ -68,6 +68,24 @@ function nextAction(next: ObjectiveId | undefined): string {
       return 'Next: begin proximity operations and dock at the forward port (assist available).';
     case 'tasks':
       return 'Next: finish the docked tasks, undock, back out beyond 300 m and depart.';
+    case 'refuel':
+      return 'Next: switch the autopilot off and call the tankers ("Refuel in orbit" in the Moon panel). Warp through the six hours.';
+    case 'tli':
+      return 'Next: engage "Trans-lunar injection". It plans the burn from your parking orbit, then corrects course on the way.';
+    case 'flyby':
+      return 'Next: coast to the Moon. Deep-space warp goes up to 10,000×; the autopilot handles course corrections.';
+    case 'lunar-orbit':
+      return 'Next: lunar orbit insertion engages automatically near the Moon (or engage it yourself).';
+    case 'depot':
+      return 'Next: top up at the lunar depot (Moon panel), then choose a landing site at the Moon location.';
+    case 'moon-landing':
+      return 'Next: at the Moon location, pick a site and engage "Lunar landing". Take over below 500 m for a manual landing.';
+    case 'surface':
+      return 'Next: run the surface tasks (time warp is available).';
+    case 'moon-ascent':
+      return 'Next: lift off back to lunar orbit.';
+    case 'earth-return':
+      return 'Next: engage "Return to Earth". The ship aerocaptures into Earth orbit on arrival.';
     case 'deorbit':
       return 'Next: pick a landing zone and engage "Deorbit to target".';
     case 'reentry':

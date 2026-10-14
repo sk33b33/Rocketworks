@@ -1543,3 +1543,56 @@ fieldset.stacked label {
   stroke: #000;
   stroke-width: 0.6;
 }
+
+/* Moon: terrain profile strip and refuelling legs */
+.terrain-strip {
+  margin: 8px 0 0;
+}
+.terrain-strip svg {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.terrain-strip .ground {
+  fill: rgba(190, 186, 176, 0.25);
+}
+.terrain-strip .ground-line {
+  fill: none;
+  stroke: #d8d4cc;
+  stroke-width: 1.2;
+}
+.terrain-strip .target-line {
+  stroke: var(--warn);
+  stroke-dasharray: 3 3;
+}
+.terrain-strip .aim-line {
+  stroke: #4fd1ff;
+  stroke-dasharray: 2 2;
+}
+.terrain-strip .ship-mark {
+  fill: #ff4fd8;
+}
+.target-key {
+  color: var(--warn);
+}
+.leg-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-top: 6px;
+}
+.leg-table th,
+.leg-table td {
+  text-align: left;
+  padding: 3px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.leg-table td:not(:first-child),
+.leg-table th:not(:first-child) {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

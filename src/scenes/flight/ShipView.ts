@@ -90,9 +90,23 @@ export class ShipView {
     this.renderer.root.visible = true;
   }
 
-  /** Orients the ship (at the scene origin) and updates its effects. */
-  update(s: FlightState, time: number, dt: number): void {
-    const f = localFrame(s.r);
+  /**
+   * Orients the ship (at the scene origin) and updates its effects. `frame` overrides Earth's
+   * local vertical and altitude (near the Moon, attitude refers to the Moon).
+   */
+  update(
+    s: FlightState,
+    time: number,
+    dt: number,
+    frame?: { readonly up: readonly [number, number]; readonly altitudeM: number },
+  ): void {
+    const f = frame
+      ? {
+          up: frame.up,
+          east: [frame.up[1], -frame.up[0]] as const,
+          altitudeM: frame.altitudeM,
+        }
+      : localFrame(s.r);
     const p = (s.pitchDeg * Math.PI) / 180;
     // Nose and belly in the orbital plane, then bank rolls the belly about the nose.
     this.nose.set(
@@ -114,7 +128,7 @@ export class ShipView {
 
     // Flaps trim the belly-flop (visual): deflect with the angle of attack error and bank.
     if (this.moving) {
-      const inAir = f.altitudeM < 90_000;
+      const inAir = !frame && f.altitudeM < 90_000;
       const trim = inAir ? Math.max(-0.6, Math.min(0.6, (s.angleOfAttackDeg - 65) / 60)) : 0;
       const roll = inAir ? (s.bankDeg / 90) * 0.25 : 0;
       setFlaps(this.moving, trim + roll, -trim * 0.8 + roll);

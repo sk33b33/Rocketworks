@@ -12,6 +12,9 @@ import { Planet } from './Planet';
 import { ShipView } from './ShipView';
 import { StationModel } from '../station/StationModel';
 import { stationState, type StationState } from '../../station/stationOrbit';
+import { MoonBody } from '../moon/MoonBody';
+import { bodyFrame, MOON_DISTANCE_M, MOON_RADIUS_M, moonState } from '../../moon/moonOrbit';
+import type { LunarOverlay } from './OrbitOverlay';
 
 /** Fixed sun direction in the inertial frame (the day side faces the launch site's morning). */
 const SUN_DIR = new THREE.Vector3(0.55, 0.6, 0.58).normalize();
@@ -30,6 +33,7 @@ export class FlightScene implements GameScene {
   private stationModel: StationModel | null = null;
   private readonly stationBasis = new THREE.Matrix4();
   private ship: ShipView | null = null;
+  private moon: MoonBody | null = null;
   private overlay: OrbitOverlay | null = null;
   private readonly sun = new THREE.DirectionalLight(0xfff3e0, 3.2);
   private readonly ambient = new THREE.HemisphereLight(0x8fb4ff, 0x0b0d12, 0.35);
@@ -45,6 +49,8 @@ export class FlightScene implements GameScene {
   private mapYaw = 0;
   private mapPitch = 1.1;
   private mapZoom = 1;
+  /** Map camera distance at zoom 1 (larger on Moon missions). */
+  private mapBase = EARTH_RADIUS_M * 3.4;
   private drag: { x: number; y: number } | null = null;
   private readonly centre = new THREE.Vector3();
   private readonly tmp = new THREE.Vector3();
@@ -71,6 +77,9 @@ export class FlightScene implements GameScene {
     this.scene.add(this.sun, this.sun.target, this.ambient);
     this.stationModel = new StationModel(this.cache);
     this.stationModel.root.visible = false;
+    this.moon = new MoonBody(this.cache);
+    this.moon.group.visible = false;
+    this.scene.add(this.moon.group);
     this.scene.add(
       this.planet.group,
       this.planet.stars,
@@ -107,16 +116,45 @@ export class FlightScene implements GameScene {
       return;
     }
     ship.build(`${snap.context.outcome.id}:${snap.context.designRevision}`, snap.context.blueprint);
-    ship.update(s, this.time, deltaSeconds);
+    const lunarEnv = snap.lunar?.env;
+    if (lunarEnv && s.ref === 'moon') {
+      const mf = bodyFrame('moon', s.r, s.v, s.tS, lunarEnv);
+      ship.update(s, this.time, deltaSeconds, { up: mf.up, altitudeM: mf.altitudeM });
+    } else ship.update(s, this.time, deltaSeconds);
     const f = localFrame(s.r);
     this.centre.set(-s.r[0], -s.r[1], 0);
     const mode: FlightCameraMode = this.controller.getCameraMode();
+    const lunar = snap.lunar;
+    const m = lunar ? moonState(lunar.env.moon, s.tS) : null;
+    // Moon missions: the map frames the Earth–Moon system once the ship heads out.
+    this.mapBase =
+      lunar && (lunar.path.length > 1 || s.ref === 'moon' || Math.hypot(...s.r) > 30_000_000)
+        ? MOON_DISTANCE_M * 2.6
+        : EARTH_RADIUS_M * 3.4;
     this.updateCamera(mode, s);
+    if (m)
+      this.camera.far = Math.max(
+        this.camera.far,
+        Math.hypot(m.r[0] - s.r[0], m.r[1] - s.r[1]) + MOON_RADIUS_M * 2,
+      );
+    this.camera.updateProjectionMatrix();
     const camAlt = this.camera.position.distanceTo(this.centre) - EARTH_RADIUS_M;
     const mapDist = mode === 'map' ? this.camera.position.distanceTo(this.centre) : null;
     planet.update(this.centre, f.groundAngle, f.altitudeM, camAlt, SUN_DIR, snap.zone, mapDist);
     const st = snap.station ? stationState(snap.station.eph, s.tS) : null;
-    this.overlay!.update(s, snap.zone, mapDist, st);
+    const moon = this.moon!;
+    moon.group.visible = !!m;
+    let lunarOverlay: LunarOverlay | null = null;
+    if (m && lunar) {
+      moon.update(
+        this.tmp.set(m.r[0] - s.r[0], m.r[1] - s.r[1], 0),
+        Math.atan2(-m.r[0], -m.r[1]),
+        false,
+        0,
+      );
+      lunarOverlay = { path: lunar.path, moonR: m.r, moonV: m.v, nearMoon: s.ref === 'moon' };
+    }
+    this.overlay!.update(s, snap.zone, mapDist, st, lunarOverlay);
     this.placeStation(st, s, mode === 'map');
     this.updateSky(camAlt);
   }
@@ -142,6 +180,7 @@ export class FlightScene implements GameScene {
   dispose(): void {
     this.exit();
     this.ship?.dispose();
+    this.moon?.dispose();
     this.overlay?.dispose();
     this.cache.dispose();
     this.envTarget?.dispose();
@@ -213,7 +252,7 @@ export class FlightScene implements GameScene {
     const focus = this.tmp.set(0, 0, 0);
 
     if (mode === 'map') {
-      const dist = EARTH_RADIUS_M * 3.4 * this.mapZoom;
+      const dist = this.mapBase * this.mapZoom;
       const dir = new THREE.Vector3(
         Math.sin(this.mapYaw) * Math.cos(this.mapPitch),
         -Math.cos(this.mapYaw) * Math.cos(this.mapPitch),
@@ -223,8 +262,9 @@ export class FlightScene implements GameScene {
       cam.up.set(0, 1, 0);
       cam.lookAt(this.centre);
       cam.fov = 40;
-      cam.near = Math.max(1_000, dist - EARTH_RADIUS_M * 1.5);
-      cam.far = dist + EARTH_RADIUS_M * 2;
+      const extent = Math.max(EARTH_RADIUS_M * 1.5, this.mapBase * 0.6);
+      cam.near = Math.max(1_000, dist - extent);
+      cam.far = dist + extent;
     } else {
       // Chase: behind along the flight path and above; Orbit: a slow cinematic circle.
       const yaw = mode === 'orbit' ? this.yaw + this.time * 0.06 : this.yaw;
@@ -306,7 +346,11 @@ export class FlightScene implements GameScene {
     e.preventDefault();
     const k = e.deltaY > 0 ? 1.1 : 0.9;
     if (this.controller.getCameraMode() === 'map')
-      this.mapZoom = THREE.MathUtils.clamp(this.mapZoom * k, 0.4, 3);
+      this.mapZoom = THREE.MathUtils.clamp(
+        this.mapZoom * k,
+        this.mapBase > EARTH_RADIUS_M * 10 ? 0.02 : 0.4,
+        3,
+      );
     else this.zoom = THREE.MathUtils.clamp(this.zoom * k, 0.3, 8);
   };
 }

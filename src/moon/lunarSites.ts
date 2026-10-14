@@ -20,10 +20,6 @@ export interface LunarSite {
   readonly roughness: number;
   /** Boulder fields: chance per 8 m cell of a boulder big enough to tilt the legs. */
   readonly boulderDensity: number;
-  /** Extra Δv the approach typically costs (longer hover, steeper descent). Game value. */
-  readonly extraDvMS: number;
-  /** Science return bonus (RP) for working here, on first completion. */
-  readonly scienceRp: number;
   readonly lighting: string;
   readonly seed: number;
 }
@@ -37,8 +33,6 @@ export const LUNAR_SITES: readonly LunarSite[] = [
     hazard: 'low',
     roughness: 0.25,
     boulderDensity: 0.004,
-    extraDvMS: 0,
-    scienceRp: 0,
     lighting: 'Low sun from the east; long shadows help judge height.',
     seed: 11,
   },
@@ -51,8 +45,6 @@ export const LUNAR_SITES: readonly LunarSite[] = [
     hazard: 'moderate',
     roughness: 0.55,
     boulderDensity: 0.012,
-    extraDvMS: 40,
-    scienceRp: 1,
     lighting: 'Sun high overhead; contrast is flat.',
     seed: 23,
   },
@@ -65,8 +57,6 @@ export const LUNAR_SITES: readonly LunarSite[] = [
     hazard: 'high',
     roughness: 0.9,
     boulderDensity: 0.03,
-    extraDvMS: 80,
-    scienceRp: 2,
     lighting: 'Sun low in the west; the crater floor is in shadow.',
     seed: 37,
   },
@@ -78,8 +68,6 @@ export const LUNAR_SITES: readonly LunarSite[] = [
     hazard: 'high',
     roughness: 0.8,
     boulderDensity: 0.025,
-    extraDvMS: 120,
-    scienceRp: 2,
     lighting: 'Grazing sunlight; Earth sits on the horizon.',
     seed: 53,
   },
@@ -208,6 +196,17 @@ export class SiteTerrain {
       if (score < best.score) best = { x, slopeDeg: slope, score };
     }
     return { x: best.x, slopeDeg: best.slopeDeg };
+  }
+
+  /** Share of ground within `radiusM` of the target steeper than `limitDeg` (0..1). */
+  steepShare(radiusM = 500, limitDeg = 9): number {
+    let n = 0;
+    let total = 0;
+    for (let x = -radiusM; x <= radiusM; x += 4) {
+      total++;
+      if (this.slopeAt(x) > limitDeg) n++;
+    }
+    return n / total;
   }
 
   /** Slope profile for the HUD strip: samples from `fromM` to `toM`. */

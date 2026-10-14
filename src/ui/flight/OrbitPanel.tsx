@@ -11,6 +11,9 @@ import {
 import type { FlightSnapshot } from '../../flight/flightRuntime';
 import { EARTH_RADIUS_M } from '../../simulation/constants';
 import { STATION_RADIUS_M, stationAngle } from '../../station/stationOrbit';
+import { EARTH_BODY } from '../../flight/orbitMath';
+import { bodyFrame } from '../../moon/moonOrbit';
+import { MOON_BODY } from '../../moon/lunarTransfer';
 import { fmt, formatDuration } from './useFlight';
 
 const STATUS = {
@@ -75,16 +78,21 @@ function OrbitInset({ snap, el }: { snap: FlightSnapshot; el: OrbitalElements })
 export function OrbitPanel({ snap }: { snap: FlightSnapshot }) {
   const s = flightRuntime.liveState ?? snap.state;
   if (!s) return null;
-  const f = localFrame(s.r);
-  const alt = Math.max(0, f.altitudeM);
-  const el = orbitalElements(s.r, s.v);
-  const t = timeToApsides(s.r, s.v, el);
+  // Near the Moon, everything here refers to the Moon.
+  const nearMoon = !!snap.lunar && s.ref === 'moon';
+  const mf = nearMoon && snap.lunar ? bodyFrame('moon', s.r, s.v, s.tS, snap.lunar.env) : null;
+  const body = mf ? MOON_BODY : EARTH_BODY;
+  const rr = mf ? mf.r : s.r;
+  const vv = mf ? mf.v : s.v;
+  const alt = Math.max(0, mf ? mf.altitudeM : localFrame(s.r).altitudeM);
+  const el = orbitalElements(rr, vv, body);
+  const t = timeToApsides(rr, vv, el);
   const st = STATUS[el.status];
   const down = s.phase !== 'flight';
   return (
     <div className="panel">
       <div className="panel-header">
-        <h2>Orbit</h2>
+        <h2>{nearMoon ? 'Orbit · Moon' : 'Orbit'}</h2>
         {!down && <span className={`badge tone-${st.tone}`}>{st.label}</span>}
       </div>
       <div className="eyebrow">Position</div>
@@ -110,7 +118,7 @@ export function OrbitPanel({ snap }: { snap: FlightSnapshot }) {
               )}
             </dd>
             <dt>Periapsis</dt>
-            <dd className={el.periapsisAltM < STABLE_PERIAPSIS_M ? 'tone-warn' : undefined}>
+            <dd className={el.periapsisAltM < body.stablePeriapsisM ? 'tone-warn' : undefined}>
               {fmt(el.periapsisAltM / 1000, 1)} km{' '}
               {el.status !== 'escape' && el.periapsisAltM > 0 && (
                 <span className="muted">in {formatDuration(t.toPeriS)}</span>
@@ -123,16 +131,26 @@ export function OrbitPanel({ snap }: { snap: FlightSnapshot }) {
           </dl>
         </>
       )}
-      <OrbitInset snap={snap} el={el} />
-      <p className="small-text muted inset-legend">
-        <span className="dot ship" /> ship · <span className="dot splash" /> splash ·{' '}
-        <span className="dot platform" /> platform · <span className="dot pad" /> pad. Map view (M):
-        violet = apoapsis, red = periapsis.
-      </p>
-      <p className="footnote">
-        Planar two-body model with a simple atmosphere; no Earth rotation. Stable orbit = periapsis
-        ≥ {fmt(STABLE_PERIAPSIS_M / 1000)} km (game rule).
-      </p>
+      {nearMoon ? (
+        <p className="footnote">
+          Relative to the Moon. Stable lunar orbit = low point ≥{' '}
+          {fmt(MOON_BODY.stablePeriapsisM / 1000)} km (game rule). Earth–Moon gravity is a
+          simplified planar model.
+        </p>
+      ) : (
+        <>
+          <OrbitInset snap={snap} el={el} />
+          <p className="small-text muted inset-legend">
+            <span className="dot ship" /> ship · <span className="dot splash" /> splash ·{' '}
+            <span className="dot platform" /> platform · <span className="dot pad" /> pad. Map view
+            (M): violet = apoapsis, red = periapsis.
+          </p>
+          <p className="footnote">
+            Planar two-body model with a simple atmosphere; no Earth rotation. Stable orbit =
+            periapsis ≥ {fmt(STABLE_PERIAPSIS_M / 1000)} km (game rule).
+          </p>
+        </>
+      )}
     </div>
   );
 }
