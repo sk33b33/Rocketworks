@@ -16,8 +16,20 @@ export const launchRuntime = new LaunchRuntime((record) =>
 
 export type ContextResult = { ok: true; context: LaunchContext } | { ok: false; reason: string };
 
+/** Set by the flight binding: true while an orbital flight (e.g. a resumed one) is in progress. */
+let flightBusy: () => boolean = () => false;
+export function setFlightBusyCheck(check: () => boolean): void {
+  flightBusy = check;
+}
+
 /** Builds a launch from the committed mission plan, or explains why there is nothing to launch. */
 export function buildLaunchContext(s: GameStore): ContextResult {
+  if (flightBusy() && launchRuntime.getSnapshot().phase === 'idle')
+    return {
+      ok: false,
+      reason:
+        "This mission's flight is in progress (Flight / Orbit, Orbital Station or Moon). Finish it before launching again.",
+    };
   const bp = s.blueprints.find((b) => b.id === s.mission.designId);
   const report = selectMissionReport(s);
   const state = commitState(s.mission, bp, report);

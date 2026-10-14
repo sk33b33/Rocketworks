@@ -160,6 +160,20 @@ const LUNAR_PROGRAMS: readonly string[] = [
 ];
 export const isLunarProgram = (p: string): p is LunarProgramId => LUNAR_PROGRAMS.includes(p);
 
+/** Everything needed to resume the Moon part of a flight (plain data). */
+export interface LunarSnapshot {
+  readonly plan: LunarMissionPlan;
+  readonly siteId: string;
+  readonly lg: LandingGuidance | null;
+  readonly surface: { startT: number; seleno: number; tasks: SurfaceTask[] } | null;
+  readonly surfaceElapsed: number;
+  readonly manualLow: boolean;
+  readonly assistedLow: boolean;
+  readonly g: LunarGuidance;
+  readonly p: LunarProgress;
+  readonly op: RefuelOp | null;
+}
+
 export class LunarFlight {
   private envNow: GravityEnv;
   private siteNow: LunarSite;
@@ -185,6 +199,40 @@ export class LunarFlight {
 
   get env(): GravityEnv {
     return this.envNow;
+  }
+
+  snapshot(): LunarSnapshot {
+    return {
+      plan: this.plan,
+      siteId: this.siteNow.id,
+      lg: this.lg,
+      surface: this.surface,
+      surfaceElapsed: this.surfaceElapsed,
+      manualLow: this.manualLow,
+      assistedLow: this.assistedLow,
+      g: this.g,
+      p: this.p,
+      op: this.op,
+    };
+  }
+
+  static fromSnapshot(snap: LunarSnapshot): LunarFlight {
+    const f = new LunarFlight(snap.plan);
+    const site = findLunarSite(snap.siteId);
+    if (site) {
+      f.siteNow = site;
+      f.terrainNow = new SiteTerrain(site);
+      f.envNow = { ...f.envNow, terrain: terrainEnv(f.terrainNow) };
+    }
+    f.lg = snap.lg;
+    f.surface = snap.surface;
+    f.surfaceElapsed = snap.surfaceElapsed;
+    f.manualLow = snap.manualLow;
+    f.assistedLow = snap.assistedLow;
+    f.g = snap.g;
+    f.p = { ...NO_LUNAR_PROGRESS, ...snap.p };
+    f.op = snap.op;
+    return f;
   }
   get site(): LunarSite {
     return this.siteNow;

@@ -57,6 +57,17 @@ export interface ProximityView {
   readonly canUndock: boolean;
 }
 
+/** Everything needed to resume a proximity session (plain data). */
+export interface ProxSnapshot {
+  readonly s: ProxState;
+  readonly assist: AssistMode;
+  readonly hold: boolean;
+  readonly align: boolean;
+  readonly dockedS: number;
+  readonly assistedFinal: boolean;
+  readonly tasks: readonly StationTask[];
+}
+
 export class ProximitySession {
   private s: ProxState;
   private assist: AssistMode = 'off';
@@ -75,6 +86,36 @@ export class ProximitySession {
 
   get state(): ProxState {
     return this.s;
+  }
+
+  snapshot(): ProxSnapshot {
+    return {
+      s: this.s,
+      assist: this.assist,
+      hold: this.hold,
+      align: this.align,
+      dockedS: this.dockedS,
+      assistedFinal: this.assistedFinal,
+      tasks: this.tasks,
+    };
+  }
+
+  static fromSnapshot(snap: ProxSnapshot): ProximitySession {
+    const session = new ProximitySession(
+      { p: snap.s.p, v: snap.s.v },
+      snap.s.tS,
+      snap.s.hull,
+      0,
+      false,
+    );
+    session.s = snap.s;
+    session.assist = snap.assist;
+    session.hold = snap.hold;
+    session.align = snap.align;
+    session.dockedS = snap.dockedS;
+    session.assistedFinal = snap.assistedFinal;
+    session.tasks.splice(0, session.tasks.length, ...snap.tasks);
+    return session;
   }
 
   view(): ProximityView {

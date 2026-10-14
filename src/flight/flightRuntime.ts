@@ -44,13 +44,19 @@ import {
   toStationFrame,
   type StationEphemeris,
 } from '../station/stationOrbit';
-import { ProximitySession, type ProximityView, type ProxKey } from '../station/proximitySession';
+import {
+  ProximitySession,
+  type ProximityView,
+  type ProxKey,
+  type ProxSnapshot,
+} from '../station/proximitySession';
 import type { AssistMode } from '../station/proximity';
 import { EARTH_RADIUS_M } from '../simulation/constants';
 import {
   isLunarProgram,
   LunarFlight,
   type LunarMissionPlan,
+  type LunarSnapshot,
   type LunarView,
 } from '../moon/lunarFlight';
 import {
@@ -173,6 +179,30 @@ const IDLE: FlightSnapshot = {
   lunar: null,
 };
 
+/** Everything needed to resume a flight after a reload (plain data; see persistence/flightSave). */
+export interface RuntimeSnapshot {
+  readonly v: 1;
+  readonly phase: 'flight' | 'proximity' | 'surface';
+  readonly context: FlightContext;
+  readonly zoneId: string;
+  readonly live: FlightState;
+  readonly progress: FlightProgress;
+  readonly ps: ProgramState;
+  readonly mode: AttitudeMode;
+  readonly manual: { pitchDeg: number; bankDeg: number; yawDeg: number; throttle: number };
+  readonly message: string | null;
+  readonly accumulator: number;
+  readonly maxAltitudeM: number;
+  readonly maxSpeedMS: number;
+  readonly lastAngle: number;
+  readonly manualDescent: boolean;
+  readonly assistedDescent: boolean;
+  readonly eph: StationEphemeris | null;
+  readonly rdv: RendezvousState;
+  readonly prox: ProxSnapshot | null;
+  readonly lunar: LunarSnapshot | null;
+}
+
 /** Highest warp allowed for a state (pure; exported for tests and the UI). */
 export function warpLimit(
   s: FlightState,
@@ -274,6 +304,74 @@ export class FlightRuntime {
     this.lunar = context.lunar ? new LunarFlight(context.lunar) : null;
     if (this.progress.orbit) this.trackStation(this.live);
     this.set({ ...IDLE, phase: 'flight', context, zone: this.state.zone }, true);
+  }
+
+  /**
+   * A resumable snapshot of the flight, or null when there's nothing worth resuming (no flight,
+   * the debrief, or the ship already down on Earth and about to be scored).
+   */
+  snapshot(): RuntimeSnapshot | null {
+    const st = this.state;
+    const live = this.live;
+    if (!live || !st.context) return null;
+    if (st.phase !== 'flight' && st.phase !== 'proximity' && st.phase !== 'surface') return null;
+    if (st.phase === 'flight' && live.phase !== 'flight') return null;
+    return {
+      v: 1,
+      phase: st.phase,
+      context: st.context,
+      zoneId: st.zone.id,
+      live,
+      progress: this.progress,
+      ps: this.ps,
+      mode: this.mode,
+      manual: { ...this.manual },
+      message: this.message,
+      accumulator: this.accumulator,
+      maxAltitudeM: this.maxAltitudeM,
+      maxSpeedMS: this.maxSpeedMS,
+      lastAngle: this.lastAngle,
+      manualDescent: this.manualDescent,
+      assistedDescent: this.assistedDescent,
+      eph: this.eph,
+      rdv: this.rdv,
+      prox: this.prox?.snapshot() ?? null,
+      lunar: this.lunar?.snapshot() ?? null,
+    };
+  }
+
+  /** Resumes a flight from a snapshot, paused at 1×. */
+  restore(snap: RuntimeSnapshot): void {
+    this.live = snap.live;
+    this.progress = snap.progress;
+    this.ps = snap.ps;
+    this.mode = snap.mode;
+    this.manual = { ...snap.manual };
+    this.keys.clear();
+    this.message = snap.message;
+    this.accumulator = snap.accumulator;
+    this.sincePublish = 0;
+    this.sinceDown = 0;
+    this.maxAltitudeM = snap.maxAltitudeM;
+    this.maxSpeedMS = snap.maxSpeedMS;
+    this.lastAngle = snap.lastAngle;
+    this.manualDescent = snap.manualDescent;
+    this.assistedDescent = snap.assistedDescent;
+    this.eph = snap.eph;
+    this.rdv = snap.rdv;
+    this.prox = snap.prox ? ProximitySession.fromSnapshot(snap.prox) : null;
+    this.lunar = snap.lunar ? LunarFlight.fromSnapshot(snap.lunar) : null;
+    this.set(
+      {
+        ...IDLE,
+        phase: snap.phase,
+        context: snap.context,
+        zone: findZone(snap.zoneId) ?? DEFAULT_ZONE,
+        paused: true,
+      },
+      false,
+    );
+    this.publish();
   }
 
   reset(): void {
