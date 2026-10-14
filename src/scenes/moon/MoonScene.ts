@@ -161,7 +161,8 @@ export class MoonScene implements GameScene {
 
   update(deltaSeconds: number): void {
     this.time += deltaSeconds;
-    this.controller.runtime.update(deltaSeconds);
+    // Mars missions are flown from Flight / Orbit and the Mars location, not from here.
+    if (!this.controller.runtime.current.mars) this.controller.runtime.update(deltaSeconds);
     const snap = this.controller.runtime.current;
     const s = this.controller.runtime.liveState ?? snap.state;
     const lunar = snap.lunar;

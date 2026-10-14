@@ -1,4 +1,4 @@
-import type { SiteTerrain } from '../../moon/lunarSites';
+import type { SiteTerrain, TerrainSite } from '../../moon/lunarSites';
 import { FLIGHT } from '../../flight/flightModel';
 
 /**
@@ -13,7 +13,7 @@ export function TerrainStrip({
   aimM,
   ship,
 }: {
-  terrain: SiteTerrain;
+  terrain: SiteTerrain<TerrainSite>;
   fromM: number;
   toM: number;
   aimM?: number | null;

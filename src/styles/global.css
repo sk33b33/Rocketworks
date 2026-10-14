@@ -1718,3 +1718,52 @@ fieldset.stacked label {
   border-radius: 4px;
   pointer-events: none;
 }
+
+/* ---------- Stage 10: Mars ---------- */
+.panel-sub {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.panel-sub.tone-ok {
+  border-color: var(--ok);
+}
+.map-legend {
+  position: absolute;
+  top: 56px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-solid);
+  zoom: var(--ui-scale, 1);
+}
+.legend-sun {
+  color: #ffd27a;
+}
+.legend-earth {
+  color: #4f9dff;
+}
+.legend-mars {
+  color: #e0663a;
+}
+.legend-ship {
+  color: #ff4fd8;
+}
+.legend-path {
+  color: #4fd1ff;
+}
+.mars-base {
+  margin: 10px 0;
+  padding: 8px 10px;
+  border-left: 3px solid #e0663a;
+}
+@media (max-width: 860px) {
+  .map-legend {
+    top: auto;
+    bottom: 8px;
+  }
+}

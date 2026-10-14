@@ -6,6 +6,7 @@ import { calculateRocketStats } from '../../rocket/stats/calculateRocketStats';
 import { formatMass } from '../format';
 import { RecoveryFleetSection } from './RecoveryFleetSection';
 import { RefuelSection } from './RefuelSection';
+import { MarsPlanSection } from './MarsPlanSection';
 
 const CERT_TEXT = {
   none: 'not certified',
@@ -57,6 +58,7 @@ export function ManifestTab() {
       <RecoveryFleetSection bp={bp} />
 
       <RefuelSection />
+      <MarsPlanSection />
 
       <fieldset className="stacked">
         <legend className="eyebrow">Payload</legend>

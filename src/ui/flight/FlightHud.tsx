@@ -13,6 +13,7 @@ import { VehiclePanel } from './VehiclePanel';
 import { StationPanel } from './StationPanel';
 import { useFlightKeys, useFlightSnapshot } from './useFlight';
 import { LunarPanel } from '../moon/LunarPanel';
+import { MarsPanel } from '../mars/MarsPanel';
 
 /** Flight / Orbit overlay: empty state, orbit and ship telemetry, autopilot, controls, debrief. */
 export function FlightHud() {
@@ -58,6 +59,29 @@ export function FlightHud() {
     );
   }
 
+  // On the way to Mars or on Mars: Earth telemetry no longer applies.
+  if (snap.mars && (snap.phase === 'voyage' || snap.phase === 'surface')) {
+    return (
+      <div className="factory-hud launch-hud">
+        <div className="panel empty-pad" role="status">
+          <h2>
+            {snap.phase === 'surface' ? 'The ship is on Mars' : 'The ship is on its way to Mars'}
+          </h2>
+          <p>
+            {snap.phase === 'surface'
+              ? 'Surface operations are in progress at the Mars location.'
+              : 'It has left Earth behind. Follow the cruise, the arrival and the landing at the Mars location.'}
+          </p>
+          <div className="actions">
+            <button type="button" className="primary" autoFocus onClick={() => goTo('mars')}>
+              Go to Mars
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="factory-hud launch-hud flight-hud">
       <div className="hud-col hud-left">
@@ -77,7 +101,12 @@ export function FlightHud() {
             <LunarPanel snap={snap} />
           </section>
         )}
-        {snap.station && !snap.lunar && snap.phase === 'flight' && (
+        {snap.mars && snap.phase === 'flight' && (
+          <section data-panel="mars">
+            <MarsPanel snap={snap} />
+          </section>
+        )}
+        {snap.station && !snap.lunar && !snap.mars && snap.phase === 'flight' && (
           <section data-panel="station">
             <StationPanel snap={snap} />
           </section>

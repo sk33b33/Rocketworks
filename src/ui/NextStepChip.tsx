@@ -15,13 +15,15 @@ export function NextStepChip() {
   const current = useGameStore((s) => s.currentLocation);
   const goTo = useGameStore((s) => s.goTo);
   const flightAt =
-    flight.phase === 'proximity'
-      ? 'station'
-      : flight.phase === 'surface' || (flight.phase === 'flight' && flight.state?.ref === 'moon')
-        ? 'moon'
-        : flight.phase === 'flight'
-          ? 'flight'
-          : null;
+    flight.mars && (flight.phase === 'voyage' || flight.phase === 'surface')
+      ? 'mars'
+      : flight.phase === 'proximity'
+        ? 'station'
+        : flight.phase === 'surface' || (flight.phase === 'flight' && flight.state?.ref === 'moon')
+          ? 'moon'
+          : flight.phase === 'flight'
+            ? 'flight'
+            : null;
   const step = nextStep({
     blueprints,
     completedMissionIds: completed,

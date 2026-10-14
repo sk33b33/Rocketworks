@@ -111,6 +111,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   flightCamera: 'chase',
   stationCamera: 'chase',
   moonCamera: 'chase',
+  marsCamera: 'chase',
   showPerf: typeof location !== 'undefined' && new URLSearchParams(location.search).has('perf'),
   history: { past: [], future: [] },
   ...initialData(),

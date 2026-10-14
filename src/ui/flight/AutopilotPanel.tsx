@@ -12,6 +12,8 @@ import { fmt, formatDuration } from './useFlight';
 import { RENDEZVOUS_LABELS } from '../../station/rendezvous';
 import { TRANSFER_PHASE_LABELS } from '../../moon/lunarTransfer';
 import { ASCENT_LABELS, DESCENT_LABELS } from '../../moon/lunarLanding';
+import { MARS_PHASE_LABELS } from '../../mars/marsFlight';
+import { MARS_DESCENT_LABELS } from '../../mars/marsEntry';
 
 const MODES: { id: AttitudeMode; label: string }[] = [
   { id: 'prograde', label: 'Prograde' },
@@ -33,6 +35,9 @@ const LUNAR_PROGRAMS: ProgramId[] = [
   'reentry',
   'landing',
 ];
+/** Mars missions: in Earth orbit, then (at Mars) entry and landing. */
+const MARS_EARTH_PROGRAMS: ProgramId[] = ['circularize', 'trans-mars'];
+const MARS_VOYAGE_PROGRAMS: ProgramId[] = ['mars-entry'];
 const LANDING_PROGRAMS: ProgramId[] = [
   'circularize',
   'translunar',
@@ -50,9 +55,20 @@ const LANDING_PROGRAMS: ProgramId[] = [
 export function AutopilotPanel({ snap }: { snap: FlightSnapshot }) {
   const s = flightRuntime.liveState ?? snap.state;
   if (!s) return null;
-  const flying = s.phase === 'flight';
-  const active = flying ? snap.program.program : 'none';
+  const mars = snap.mars;
+  const voyage = snap.phase === 'voyage';
+  const flying = s.phase === 'flight' && (!voyage || !!mars?.manualAllowed);
+  const active = s.phase === 'flight' ? snap.program.program : 'none';
   const lunar = snap.lunar;
+  const programs = mars
+    ? voyage
+      ? MARS_VOYAGE_PROGRAMS
+      : MARS_EARTH_PROGRAMS
+    : lunar
+      ? lunar.plan.landing
+        ? LANDING_PROGRAMS
+        : LUNAR_PROGRAMS
+      : PROGRAMS;
   const angle = localFrame(s.r).groundAngle;
   // Distance ahead along the ground track (0..40,000 km eastward).
   const ahead = (z: LandingZone) => {
@@ -67,30 +83,32 @@ export function AutopilotPanel({ snap }: { snap: FlightSnapshot }) {
           {active === 'none' ? 'OFF' : 'ACTIVE'}
         </span>
       </div>
-      <fieldset className="zone-picker" disabled={!flying}>
-        <legend className="eyebrow">Landing zone</legend>
-        {LANDING_ZONES.map((z) => (
-          <label key={z.id} className="zone-option" title={z.description}>
-            <input
-              type="radio"
-              name="zone"
-              checked={snap.zone.id === z.id}
-              onChange={() => flightRuntime.setZone(z.id)}
-            />
-            <span>
-              {z.name}
-              <span className="muted small-text">
-                {' '}
-                · ±{fmt(z.toleranceM / 1000, z.toleranceM < 10_000 ? 1 : 0)} km ·{' '}
-                {fmt(ahead(z) / 1000)} km ahead
+      {!mars && (
+        <fieldset className="zone-picker" disabled={!flying}>
+          <legend className="eyebrow">Landing zone</legend>
+          {LANDING_ZONES.map((z) => (
+            <label key={z.id} className="zone-option" title={z.description}>
+              <input
+                type="radio"
+                name="zone"
+                checked={snap.zone.id === z.id}
+                onChange={() => flightRuntime.setZone(z.id)}
+              />
+              <span>
+                {z.name}
+                <span className="muted small-text">
+                  {' '}
+                  · ±{fmt(z.toleranceM / 1000, z.toleranceM < 10_000 ? 1 : 0)} km ·{' '}
+                  {fmt(ahead(z) / 1000)} km ahead
+                </span>
               </span>
-            </span>
-          </label>
-        ))}
-      </fieldset>
+            </label>
+          ))}
+        </fieldset>
+      )}
       <div className="eyebrow section-gap">Programs</div>
       <div className="program-list">
-        {(lunar ? (lunar.plan.landing ? LANDING_PROGRAMS : LUNAR_PROGRAMS) : PROGRAMS).map((id) => {
+        {programs.map((id) => {
           const check = programAvailability(
             id,
             s,
@@ -107,6 +125,7 @@ export function AutopilotPanel({ snap }: { snap: FlightSnapshot }) {
                   landing: lunar.plan.landing,
                 }
               : null,
+            mars ? (p) => mars.programs[p] : null,
           );
           const on = active === id;
           return (
@@ -197,6 +216,20 @@ function programStatus(snap: FlightSnapshot): string {
       if (g.phase === 'coast' && g.mccT !== null)
         return `Coasting · course check in ${formatDuration(Math.max(0, g.mccT - t))}`;
       return TRANSFER_PHASE_LABELS[g.phase];
+    }
+    case 'trans-mars':
+    case 'mars-cruise':
+    case 'mars-entry': {
+      const m = snap.mars;
+      const t = snap.state?.tS ?? 0;
+      if (!m) return '';
+      const g = m.guidance;
+      if (g.phase === 'wait' && g.tmi)
+        return `Burn of ${fmt(g.tmi.dvMS)} m/s in ${formatDuration(Math.max(0, g.tmi.burnStartT - t))}`;
+      if (g.phase === 'cruise' && g.mccT !== null)
+        return `Cruising · course check in ${fmt((g.mccT - t) / 86_400, 1)} days`;
+      if (g.phase === 'descent' && g.descent) return MARS_DESCENT_LABELS[g.descent.phase];
+      return MARS_PHASE_LABELS[g.phase];
     }
     default:
       return '';

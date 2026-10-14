@@ -106,7 +106,14 @@ export class FlightScene implements GameScene {
 
   update(deltaSeconds: number): void {
     this.time += deltaSeconds;
-    // The scene drives the flight runtime only while Flight is the active location.
+    // The scene drives the flight runtime only while Flight is the active location. A Mars
+    // voyage (or a ship on Mars) is flown from the Mars location instead.
+    const cur = this.controller.runtime.current;
+    if (cur.mars && (cur.phase === 'voyage' || cur.phase === 'surface')) {
+      this.ship!.root.visible = false;
+      this.idleView();
+      return;
+    }
     this.controller.runtime.update(deltaSeconds);
     const snap = this.controller.runtime.current;
     const s = this.controller.runtime.liveState ?? snap.state;

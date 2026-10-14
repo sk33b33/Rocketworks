@@ -71,14 +71,15 @@ export interface MarsBase {
   readonly ice: number;
 }
 
-export function plantRateKgPerDay(ice: number): number {
-  return Math.round(PLANT_BASE_KG_PER_DAY * (0.3 + 0.7 * ice));
+/** Plant output (kg per day) for a site's ice; better drills (research) make 50% more. */
+export function plantRateKgPerDay(ice: number, boosted = false): number {
+  return Math.round(PLANT_BASE_KG_PER_DAY * (0.3 + 0.7 * ice) * (boosted ? 1.5 : 1));
 }
 
 /** Propellant the plant has made by a program day (kg, capped by its storage). */
-export function plantStockKg(base: MarsBase, day: number): number {
+export function plantStockKg(base: MarsBase, day: number, boosted = false): number {
   const days = Math.max(0, day - base.sinceDay);
-  return Math.min(PLANT_CAPACITY_KG, Math.round(days * plantRateKgPerDay(base.ice)));
+  return Math.min(PLANT_CAPACITY_KG, Math.round(days * plantRateKgPerDay(base.ice, boosted)));
 }
 
 // ---- surface tasks ----

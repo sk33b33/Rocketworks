@@ -1,4 +1,5 @@
 import { selectMissionReport, useGameStore } from '../../app/gameStore';
+import { MarsWindowCard } from './MarsPlanSection';
 
 const TEXT = { green: '✓ GO', amber: '! MARGINAL', red: '✕ NO-GO' } as const;
 const TONE = { green: 'ok', amber: 'warn', red: 'bad' } as const;
@@ -15,6 +16,7 @@ export function ConditionsTab() {
         Weather {TEXT[c.overall]} · window opens T-{c.windowOpensInHours} h, lasts {c.windowMinutes}{' '}
         min
       </div>
+      <MarsWindowCard />
       <table className="cond-table">
         <thead>
           <tr>

@@ -151,7 +151,7 @@ export function StationHud() {
             {snap.paused ? 'Resume' : 'Pause'} <kbd>Space</kbd>
           </button>
           <span className="warp" role="group" aria-label="Time warp">
-            {FLIGHT_WARP_LEVELS.map((w) => (
+            {FLIGHT_WARP_LEVELS.filter((w) => w <= 1000).map((w) => (
               <button
                 key={w}
                 type="button"

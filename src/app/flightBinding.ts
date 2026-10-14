@@ -6,6 +6,7 @@ import type { AscentState } from '../simulation/ascent/ascentModel';
 import type { FlightController } from '../scenes/flight/flightController';
 import type { StationController } from '../scenes/station/stationController';
 import type { MoonController } from '../scenes/moon/moonController';
+import type { MarsController } from '../scenes/mars/marsController';
 import { useGameStore } from './gameStore';
 import { launchRuntime } from './launchBinding';
 import { findMission } from '../missions/missionCatalog';
@@ -130,6 +131,22 @@ export function createMoonController(): MoonController {
           s.cameraRequest &&
           s.cameraRequest !== prev.cameraRequest &&
           s.currentLocation === 'moon'
+        )
+          listener();
+      }),
+  };
+}
+
+export function createMarsController(): MarsController {
+  return {
+    runtime: flightRuntime,
+    getCameraMode: () => useGameStore.getState().marsCamera,
+    subscribeCameraReset: (listener) =>
+      useGameStore.subscribe((s, prev) => {
+        if (
+          s.cameraRequest &&
+          s.cameraRequest !== prev.cameraRequest &&
+          s.currentLocation === 'mars'
         )
           listener();
       }),

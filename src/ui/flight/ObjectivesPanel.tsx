@@ -16,7 +16,8 @@ export function ObjectivesPanel({ snap }: { snap: FlightSnapshot }) {
   const ctx = snap.context;
   if (!s || !ctx) return null;
   const p = snap.progress;
-  const ORDER: ObjectiveId[] = objectivesFor(ctx.outcome.missionId, ctx.lunar?.refuel ?? null);
+  const refuel = ctx.mars ? { leo: ctx.mars.refuelLeo, depot: false } : (ctx.lunar?.refuel ?? null);
+  const ORDER: ObjectiveId[] = objectivesFor(ctx.outcome.missionId, refuel);
   const next = ORDER.find((id) => !objectiveDone(id, p, s));
   const lapPct = p.orbit ? Math.min(1, p.travelSinceOrbit / (2 * Math.PI)) : 0;
   return (
@@ -51,13 +52,21 @@ export function ObjectivesPanel({ snap }: { snap: FlightSnapshot }) {
           records a partial result.
         </p>
       )}
-      <p className="hint">{nextAction(next)}</p>
+      <p className="hint">{nextAction(next, !!ctx.mars)}</p>
     </div>
   );
 }
 
-function nextAction(next: ObjectiveId | undefined): string {
+function nextAction(next: ObjectiveId | undefined, mars: boolean): string {
   switch (next) {
+    case 'tmi':
+      return 'Next: engage "Trans-Mars injection". It plans the burn for today\'s window and sends the ship on its way.';
+    case 'mars-arrival':
+      return 'Next: cruise to Mars at the Mars location. Warp up to 1,000,000×; course corrections are automatic. Choose a landing site on the way.';
+    case 'mars-landing':
+      return 'Next: entry guidance flies the entry and the landing burn. Take over below 500 m for a manual landing.';
+    case 'mars-surface':
+      return 'Next: lower the propellant plant and start it (time warp up to 10,000× on the surface), then complete the mission.';
     case 'orbit':
       return 'Next: raise periapsis with the Circularize program (or burn prograde near apoapsis).';
     case 'lap':
@@ -69,7 +78,7 @@ function nextAction(next: ObjectiveId | undefined): string {
     case 'tasks':
       return 'Next: finish the docked tasks, undock, back out beyond 300 m and depart.';
     case 'refuel':
-      return 'Next: switch the autopilot off and call the tankers ("Refuel in orbit" in the Moon panel). Warp through the six hours.';
+      return `Next: switch the autopilot off and call the tankers ("Refuel in orbit" in the ${mars ? 'Mars' : 'Moon'} panel). Warp through the six hours.`;
     case 'tli':
       return 'Next: engage "Trans-lunar injection". It plans the burn from your parking orbit, then corrects course on the way.';
     case 'flyby':

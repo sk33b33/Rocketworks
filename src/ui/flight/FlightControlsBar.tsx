@@ -13,6 +13,11 @@ const CAMERAS: { id: FlightCameraMode; label: string; key: string }[] = [
   { id: 'map', label: 'Map', key: 'M' },
 ];
 
+/** Compact warp label: 10000× → 10k×, 1000000× → 1M×. */
+export function warpLabel(w: number): string {
+  return w >= 1_000_000 ? `${w / 1_000_000}M×` : w >= 10_000 ? `${w / 1000}k×` : `${w}×`;
+}
+
 export interface CameraSet<T extends string> {
   readonly options: readonly { id: T; label: string; key: string }[];
   readonly current: T;
@@ -37,10 +42,12 @@ export function FlightControlsBar<T extends string = FlightCameraMode>({
   const rt = flightRuntime;
   const s = snap.state;
   const onSurface = snap.phase === 'surface';
-  const flying = snap.phase === 'flight' && s?.phase === 'flight';
+  const flying = (snap.phase === 'flight' || snap.phase === 'voyage') && s?.phase === 'flight';
   const timeRuns = flying || onSurface;
-  // Deep-space warp levels only matter on Moon missions.
-  const levels = FLIGHT_WARP_LEVELS.filter((w) => w <= 1000 || !!snap.lunar);
+  // Deep-space warp levels only matter on Moon and Mars missions (the fastest ones on Mars only).
+  const levels = FLIGHT_WARP_LEVELS.filter(
+    (w) => w <= 1000 || (!!snap.lunar && w <= 10_000) || !!snap.mars,
+  );
   const idx = levels.indexOf(snap.warp as (typeof levels)[number]);
   const cams = (cameras ?? {
     options: CAMERAS,
@@ -53,6 +60,10 @@ export function FlightControlsBar<T extends string = FlightCameraMode>({
   useShortcut(
     ['3'],
     () => cams.options[2] && cams.options[2].key === '3' && cams.set(cams.options[2].id),
+  );
+  useShortcut(
+    ['4'],
+    () => cams.options[3] && cams.options[3].key === '4' && cams.set(cams.options[3].id),
   );
   useShortcut(
     ['m', 'M'],
@@ -73,7 +84,7 @@ export function FlightControlsBar<T extends string = FlightCameraMode>({
       <div className={`mission-clock ${snap.paused ? 'held' : ''}`} role="timer" aria-live="off">
         {formatTMinus(s?.tS ?? 0)}
         {snap.paused && <span className="clock-tag">PAUSED</span>}
-        {snap.warp > 1 && <span className="clock-tag">{snap.warp}×</span>}
+        {snap.warp > 1 && <span className="clock-tag">{warpLabel(snap.warp)}</span>}
         {s && s.throttle > 0 && <span className="clock-tag">THR {formatPercent(s.throttle)}</span>}
       </div>
       <div className="toolbar">
@@ -95,7 +106,7 @@ export function FlightControlsBar<T extends string = FlightCameraMode>({
               title={w > snap.maxWarp ? (snap.warpLimitReason ?? undefined) : undefined}
               onClick={() => rt.setWarp(w)}
             >
-              {w}×
+              {warpLabel(w)}
             </button>
           ))}
         </span>

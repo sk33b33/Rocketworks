@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { MOON_RADIUS_M } from '../../moon/moonOrbit';
-import type { SiteTerrain } from '../../moon/lunarSites';
+import type { SiteTerrain, TerrainSite } from '../../moon/lunarSites';
 import type { ResourceCache } from '../../render/ResourceCache';
 import { createRegolithTexture } from './moonTextures';
 
@@ -18,6 +18,21 @@ const SEG_Z = 96;
 /** The Moon sphere is drawn this much lower while the patch is shown. */
 export const SPHERE_SINK_M = 500;
 
+/** How the patch looks and curves (the Moon by default; Mars passes its own). */
+export interface PatchStyle {
+  readonly key: string;
+  readonly radiusM: number;
+  readonly groundColor: number;
+  readonly boulderColor: number;
+}
+
+export const MOON_PATCH: PatchStyle = {
+  key: 'moon',
+  radiusM: MOON_RADIUS_M,
+  groundColor: 0xd9d6cf,
+  boulderColor: 0x9a968e,
+};
+
 export class TerrainPatch {
   readonly group = new THREE.Group();
   private readonly geometry: THREE.BufferGeometry;
@@ -28,20 +43,21 @@ export class TerrainPatch {
   readonly baseH: number;
 
   constructor(
-    readonly terrain: SiteTerrain,
+    readonly terrain: SiteTerrain<TerrainSite>,
     cache: ResourceCache,
+    private readonly style: PatchStyle = MOON_PATCH,
   ) {
     this.baseH = terrain.heightAt(0);
     this.geometry = this.buildGround();
     const mat = cache.material(
-      'moon:ground',
+      `${style.key}:ground`,
       () =>
         new THREE.MeshStandardMaterial({
           map: (() => {
             const t = cache.texture('moon:regolith', () => createRegolithTexture());
             return t;
           })(),
-          color: 0xd9d6cf,
+          color: style.groundColor,
           roughness: 0.97,
           metalness: 0,
         }),
@@ -75,7 +91,7 @@ export class TerrainPatch {
 
   /** Local height (patch frame) of the ground at (x, z), with the Moon's curvature. */
   localY(x: number, z: number): number {
-    return this.terrain.heightAt(x, z) - this.baseH - (x * x + z * z) / (2 * MOON_RADIUS_M);
+    return this.terrain.heightAt(x, z) - this.baseH - (x * x + z * z) / (2 * this.style.radiusM);
   }
 
   private buildGround(): THREE.BufferGeometry {
@@ -107,8 +123,13 @@ export class TerrainPatch {
     const mesh = new THREE.InstancedMesh(
       cache.geometry('moon:boulder', () => new THREE.IcosahedronGeometry(1, 1)),
       cache.material(
-        'moon:boulderMat',
-        () => new THREE.MeshStandardMaterial({ color: 0x9a968e, roughness: 1, flatShading: true }),
+        `${this.style.key}:boulderMat`,
+        () =>
+          new THREE.MeshStandardMaterial({
+            color: this.style.boulderColor,
+            roughness: 1,
+            flatShading: true,
+          }),
       ),
       Math.max(1, spots.length),
     );

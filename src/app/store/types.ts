@@ -9,6 +9,7 @@ import type { PadCameraMode } from '../../scenes/launch-pad/launchPadController'
 import type { FlightCameraMode } from '../../scenes/flight/flightController';
 import type { StationCameraMode } from '../../scenes/station/stationController';
 import type { MoonCameraMode } from '../../scenes/moon/moonController';
+import type { MarsCameraMode } from '../../scenes/mars/marsController';
 import type { FixAction } from '../../rocket/readiness/readiness';
 import type { HullFinish, RocketBlueprint, SocketRef, VehicleRole } from '../../rocket/model/types';
 import type { LocationId } from '../locations';
@@ -57,6 +58,7 @@ export interface GameData {
   /** Orbital Station camera mode (not persisted). */
   stationCamera: StationCameraMode;
   moonCamera: MoonCameraMode;
+  marsCamera: MarsCameraMode;
   /** Performance readout (session only, not saved). */
   showPerf: boolean;
   /** Flight history (persisted, newest last). */
@@ -147,6 +149,7 @@ export interface FlightActions {
   setFlightCamera(mode: FlightCameraMode): void;
   setStationCamera(mode: StationCameraMode): void;
   setMoonCamera(mode: MoonCameraMode): void;
+  setMarsCamera(mode: MarsCameraMode): void;
 }
 
 export type GameStore = GameData &

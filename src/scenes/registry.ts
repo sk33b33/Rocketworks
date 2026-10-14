@@ -1,6 +1,7 @@
 import { createFactoryController } from '../app/factoryBinding';
 import {
   createFlightController,
+  createMarsController,
   createMoonController,
   createStationController,
 } from '../app/flightBinding';
@@ -11,6 +12,7 @@ import { FactoryScene } from './factory/FactoryScene';
 import { FlightScene } from './flight/FlightScene';
 import { StationScene } from './station/StationScene';
 import { MoonScene } from './moon/MoonScene';
+import { MarsScene } from './mars/MarsScene';
 import { LaunchPadScene } from './launch-pad/LaunchPadScene';
 import { MissionControlScene } from './mission-control/MissionControlScene';
 
@@ -22,4 +24,5 @@ export const sceneFactories: SceneFactories = {
   flight: () => new FlightScene(createFlightController()),
   station: () => new StationScene(createStationController()),
   moon: () => new MoonScene(createMoonController()),
+  mars: () => new MarsScene(createMarsController()),
 };

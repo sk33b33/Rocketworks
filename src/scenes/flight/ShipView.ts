@@ -99,7 +99,12 @@ export class ShipView {
     s: FlightState,
     time: number,
     dt: number,
-    frame?: { readonly up: readonly [number, number]; readonly altitudeM: number },
+    frame?: {
+      readonly up: readonly [number, number];
+      readonly altitudeM: number;
+      /** In an atmosphere (flaps trim the belly-flop). */
+      readonly inAir?: boolean;
+    },
   ): void {
     const f = frame
       ? {
@@ -129,7 +134,7 @@ export class ShipView {
 
     // Flaps trim the belly-flop (visual): deflect with the angle of attack error and bank.
     if (this.moving) {
-      const inAir = !frame && f.altitudeM < 90_000;
+      const inAir = frame ? !!frame.inAir : f.altitudeM < 90_000;
       const trim = inAir ? Math.max(-0.6, Math.min(0.6, (s.angleOfAttackDeg - 65) / 60)) : 0;
       const roll = inAir ? (s.bankDeg / 90) * 0.25 : 0;
       setFlaps(this.moving, trim + roll, -trim * 0.8 + roll);

@@ -109,7 +109,7 @@ export class StationScene implements GameScene {
 
   update(dt: number): void {
     this.time += dt;
-    this.controller.runtime.update(dt);
+    if (!this.controller.runtime.current.mars) this.controller.runtime.update(dt);
     const snap = this.controller.runtime.current;
     const prox = this.controller.runtime.proximity;
     this.station?.update(this.time);

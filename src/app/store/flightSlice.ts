@@ -142,5 +142,6 @@ export function createFlightActions(set: SetState, get: GetState): FlightActions
     setFlightCamera: (flightCamera) => set({ flightCamera }),
     setStationCamera: (stationCamera) => set({ stationCamera }),
     setMoonCamera: (moonCamera) => set({ moonCamera }),
+    setMarsCamera: (marsCamera) => set({ marsCamera }),
   };
 }
