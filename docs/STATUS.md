@@ -1,7 +1,7 @@
 # Project Status
 
 ## Current stage
-**Stage 8: Moon missions.** Complete and waiting for review.
+**Stage 9: Polish and robustness.** Complete and waiting for review.
 
 ## Completed
 - **Stage 0–2:** foundation; Rocket Factory with modular assembly; validation, certification, design library, progression.
@@ -129,13 +129,32 @@
   - **Flight / Orbit:** the Moon is drawn in the chase view, and the map frames the Earth–Moon system with the predicted path, the Moon and its orbit (or the lunar orbit near the Moon). The orbit panel switches to lunar figures near the Moon, and a Moon panel shows the trip status, closest approach or return perigee, the next course check and refuelling.
   - **Save format v6:** mission plans carry refuelling choices (v5 → v6 migration), and flight records carry the lunar summary (parsed with validation).
 
+- **Stage 9 (polish and robustness):**
+  - **Flight autosave and resume** (`src/persistence/flightSave.ts`, `src/app/flightAutosave.ts`):
+    - Flights in orbit, at the station, on the way to or at the Moon, and on the lunar surface are saved under a separate key (`rocketworks.flight`, version 1). They're saved every 30 s, on every location change, when a flight changes, and when the tab is hidden or closed. A damaged flight save can never stop the program from loading.
+    - The runtime snapshot holds the full flight state: the ship, programs and guidance, proximity operations, the lunar plan, surface tasks and the station or Moon ephemeris. A restored flight continues bit-for-bit, as the unit tests show.
+    - After a reload the flight resumes **paused** at the right location, with a notice. It resumes only if its mission is still committed. A launch still climbing from the pad can't resume: a notice explains that, and the mission stays committed.
+    - A damaged or foreign flight save is discarded with a notice. A new launch is refused while a saved flight is still in progress.
+  - **Settings** (top-bar *Settings*; save format v7): *Reduce motion* (defaults to the OS setting; stops camera shake, idle spins, pulsing markers and CSS animations), *Interface size* (90–125%; scales the HUD, never the 3D view), random failures, *Show performance stats*, and *Show program overview*.
+  - **Onboarding:** a first-run *Program overview* (factory → mission control → pad → orbit → station → Moon) and a top-bar **Next** chip with the single most useful next action anywhere in the game (`src/progression/nextStep.ts`, unit-tested). Clicking it goes there.
+  - **Accessibility:** larger touch targets on coarse pointers; the flight notice now keeps clear of the scene toolbar at every width and interface size (it used to cover the flight controls).
+  - **Performance:** an opt-in overlay (Settings or `?perf`) with fps, update and render time, draw calls, triangles and live GPU resources; it's also exposed as `window.__rocketworksPerf` for scripts. Procedural Earth, cloud and Moon textures are painted once and shared across revisits, and per-frame allocations were removed from the Moon scene. Measured headless, the simulation update costs about 0.1–0.4 ms a frame, and GPU resource counts stay flat (116 geometries, 24 textures) across repeated location cycles: no leaks.
+  - **End-to-end tests** (`e2e/`, `npm run e2e`): Playwright runs against the production build with software WebGL. Every test fails on any console error. Coverage:
+    - the first-run overview;
+    - every location opening, or explaining why it's locked;
+    - settings persisting;
+    - build → certify → commit kept across a reload;
+    - a flight in orbit resuming paused at the identical mission time across reloads, and the game's own autosave carrying a later time;
+    - a damaged flight save being discarded with a notice.
+
 ## Assumptions (documented, reversible)
 - Flight physics is a simplified planar gameplay model: one orbital plane (the equator), no Earth rotation, an exponential atmosphere, lumped aerodynamics, and Sutton–Graves heating with gameplay heat capacities. The UI and footnotes say so; it is not a flight simulator.
 - Out-of-plane steering isn't simulated. Yaw is visual only, and bank only reduces in-plane lift (enough to steer re-entry range).
 - Geography is simplified: the launch coast is the only land on the ground track. Landing on the coast off-pad still recovers the ship; any gentle or hard contact on water is a crew-safe splashdown, but the ship is lost.
 - Assisted flight is on by default (the ship starts with Circularize engaged if the orbit isn't yet stable). Any manual input hands over without a jump.
 - A crew left in space via *End flight* is assumed rescued (the result is "flight ended", not credited). Breakup or a crash is fatal for the crew.
-- The orbital flight isn't saved mid-flight. Reloading during a flight loses it, but the mission commitment is only used up when the flight is recorded, so you can launch again.
+- Flights resume paused after a reload. The ascent from the pad (and the booster replay) isn't resumable: it lasts minutes, and a mid-ascent snapshot would need the launch runtime's full state. The mission stays committed, so you roll out again.
+- The flight autosave is at most 30 s old if the browser is killed outright. Normal closes, reloads and tab switches save immediately.
 - A flight advances only while its location is active (the pad for the ascent, Flight / Orbit for the orbit), as in Stage 4.
 - Mission readiness Δv remains a conservative estimate, now including the booster's recovery reserve.
   - The reference design flies the Crewed Orbital Shakedown with a tower catch and lands its ship with about 11 t of propellant to spare.
@@ -146,7 +165,6 @@
 - Wear, reflight pricing and rating thresholds are game values.
 - The station shares the ship's orbital plane (no plane-change problem). Proximity motion uses the linearised Clohessy–Wiltshire equations, accurate near the station, and docking limits, RCS budget and task durations are game values.
 - Rendezvous uses the main engines from orbit until the hold point; RCS takes over only for proximity operations, and RCS propellant is a separate budget, not drawn from main tanks.
-- Proximity operations aren't saved mid-flight, like the rest of the orbital flight.
 - The Moon shares the single orbital plane: no inclination or plane changes; landing sites lie on the Moon's equator in that plane. The Moon's orbit is circular.
 - Moon gravity uses the restricted three-body model on Moon missions only; other missions keep pure Earth gravity (the difference in low orbit is negligible).
 - Refuelling is abstracted: tanker rendezvous and the lunar depot are timed operations, not flown. The depot is fictional and assumed stocked by earlier uncrewed tankers.
@@ -157,8 +175,13 @@
 - Lunar transfer guidance, insertion, descent and ascent are simplified gameplay guidance tuned for this model, not flight software. Δv figures are estimates.
 
 ## Checks (last run)
-- `npm run typecheck`, `npm run lint`, `npm run build`: pass.
-- `npm test`: 208 tests pass across 19 files. New in Stage 8 (`tests/moon.test.ts`, plus mission, save and progression updates):
+- `npm run typecheck` (app and e2e), `npm run lint`, `npm run build`: pass.
+- `npm test`: 216 tests pass across 21 files. New in Stage 9:
+  - `tests/flightSave.test.ts`: Infinity-safe encoding; damaged and foreign saves are rejected without throwing; flight and ascent records round-trip; exact resume of a rendezvous, docked proximity operations, a lunar transfer and a lunar surface stay;
+  - `tests/nextStep.test.ts`: the next-step hint for each point in the program;
+  - v6 → v7 save migration.
+- `npm run e2e`: 6 Playwright tests pass in headless Chromium (about 6 min with software WebGL).
+- Stage 8 tests (`tests/moon.test.ts`, plus mission, save and progression updates):
   - the Moon's orbit and gravity; synchronous rotation of surface points; a stable low lunar orbit at the coasting step; the sphere-of-influence switch keeping the nose fixed; the propagator matching single coast steps; time to periapsis for ellipses and hyperbolas;
   - lunar touchdown outcomes: gentle, tipped on a slope, tipped by sideways speed, crash, hard landing with damage;
   - trans-lunar planning reaching the Moon within the transfer window;
@@ -211,7 +234,9 @@
     - The hand-off dialog carries the simulated catch result. *End flight* in orbit gives a debrief with the booster line, and B-2 joins the fleet.
 
 ## Known limitations
-- Headless software rendering is slow, so timings in the smoke test differ from real browsers.
+- Headless software rendering is slow, so timings in the smoke and e2e tests differ from real browsers. The e2e suite takes about 6 minutes, so it's a pre-review check rather than a per-save one.
+- The e2e suite doesn't fly a launch to orbit through the UI (minutes under software WebGL). The resume test seeds a real snapshot made by the game's own runtime instead; the Stage 4–8 manual smoke tests covered the full flows.
+- Performance numbers come from headless software rendering. There's no measurement on a real GPU or a phone yet.
 - Manual landings take practice: there is no landing-burn predictor beyond the HUD's height, speeds and target distance.
 - Asymmetric flap deflection for bank isn't modelled visually (all flaps deflect together).
 - The replay doesn't show the ship and booster at the same time.
@@ -227,4 +252,4 @@
 - In headless browsers the deep-space coast is fast, but 10× phases (burns, descent, re-entry) take a few real minutes.
 
 ## Next action
-Review Stage 8. Stage 9 (expansion and polish) is open-ended in the roadmap: choose its focus (e.g. polish, performance and accessibility; Mars; contracts; photo mode) before starting.
+Review Stage 9. The roadmap's remaining items are optional expansions: e.g. Mars or other destinations, a contracts/economy layer, photo mode, EVA on the Moon, or more polish (audio, a manoeuvre planner). Pick the next focus before starting.

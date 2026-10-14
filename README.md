@@ -12,6 +12,7 @@ npm run dev        # dev server at http://localhost:5173
 npm run build      # typecheck + production build into dist/
 npm run preview    # serve the production build
 npm test           # unit tests (Vitest)
+npm run e2e        # build, then end-to-end tests (Playwright, headless Chromium)
 npm run typecheck  # TypeScript strict check
 npm run lint       # ESLint
 npm run format     # Prettier
@@ -71,6 +72,12 @@ Current progress is tracked in `docs/STATUS.md`.
 - Flyby: the free return brings the ship home; *Aerocapture* engages near Earth, then circularize and *Deorbit to target* as usual.
 - Landing: lunar orbit insertion engages on arrival. At the **Moon** location, top up at the depot, pick a landing site (hazard ratings and a terrain profile), and engage *Lunar landing*. Take over above 500 m (button or W/S pitch, Shift/Ctrl throttle; landing thrusters below 3 km, ~40% hovers) for a manual landing. Cameras: 1 chase, 2 landing site, 3 Moon.
 - Touch down at ≤ 3 m/s with ≤ 2 m/s sideways and tilt plus slope ≤ 12°, or the ship tips over. Run the surface tasks, *Lift off*, then *Return to Earth*. The Earth–Moon physics is a simplified planar model.
+
+**Settings, saving and help (Stage 9):**
+- Everything autosaves, including a flight in progress: after a reload it resumes paused where you left it (a launch still climbing from the pad has to roll out again).
+- *Settings* (top bar): reduce motion, interface size, random failures, performance stats, and the program overview.
+- The **Next** chip in the top bar always says what to do next; click it to go there.
+- The e2e suite needs a Chromium for Playwright: `npx playwright install chromium`, or point `PW_CHROMIUM_PATH` at an existing one.
 
 ## Core concept
 
