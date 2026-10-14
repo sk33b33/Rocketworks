@@ -7,6 +7,7 @@ const LOCATIONS = [
   'Flight',
   'Orbital Station',
   'Moon',
+  'Mars',
 ] as const;
 
 test('first run shows the program overview, then the Factory', async ({ page }) => {

@@ -65,3 +65,68 @@ export function orbitingFlightSave(missionId: string): { json: string; clock: st
   };
   return { json: encodeJson(record), clock: formatTMinus(runtime.live.tS) };
 }
+
+/**
+ * A Mars cargo flight in the middle of its cruise (Sun-centred), made by the game's runtime:
+ * refuelled in orbit, injected toward Mars and coasted ~20 days past Earth.
+ */
+export function cruisingMarsSave(launchDay: number): { json: string; clock: string } {
+  const bp = createCompleteStarterDesign(NOW);
+  const vehicle = deriveFlightVehicle(bp, 40_000);
+  const lc: LaunchContext = {
+    outcome: {
+      id: 'e2e-mars',
+      at: NOW,
+      missionId: 'mars-cargo',
+      missionName: 'Mars Cargo Lander (e2e)',
+      designId: bp.id,
+      designName: bp.name,
+      crewed: false,
+    },
+    blueprint: bp,
+    designRevision: bp.revision,
+    crewed: false,
+    crewNames: [],
+    config: {
+      vehicle,
+      target: { kind: 'orbit', altitudeM: 150_000 },
+      failures: [],
+      boosterReserveKg: vehicle.booster.propellantKg * RESERVE_FRACTION.platform,
+    },
+  };
+  const rt = new FlightRuntime(
+    () => undefined,
+    () => NOW,
+  );
+  rt.start(
+    flightContextFromLaunch(lc, simulateAscent(lc.config, SIM_DT_S), null, undefined, undefined, {
+      launchDay,
+      refuelLeo: true,
+      plant: true,
+    }),
+  );
+  const run = (n: number, until: () => boolean) => {
+    for (let i = 0; i < n && !until(); i++) {
+      if (rt.current.warp < rt.current.maxWarp) rt.setWarp(rt.current.maxWarp);
+      rt.update(0.1);
+    }
+  };
+  run(50_000, () => rt.current.program.program === 'none' && rt.current.progress.orbit);
+  rt.refuel();
+  run(50_000, () => !!rt.current.progress.mars?.refuelLeo);
+  rt.engage('trans-mars');
+  run(400_000, () => rt.current.phase === 'voyage');
+  const departed = rt.liveState!.tS;
+  run(10_000, () => rt.liveState!.tS > departed + 20 * 86_400);
+  if (rt.current.phase !== 'voyage') throw new Error('fixture flight is not cruising to Mars');
+  const runtime = rt.snapshot()!;
+  const record: FlightSaveRecord = {
+    version: 1,
+    kind: 'flight',
+    savedAt: NOW,
+    missionId: 'mars-cargo',
+    outcomeId: lc.outcome.id,
+    runtime,
+  };
+  return { json: encodeJson(record), clock: formatTMinus(runtime.live.tS) };
+}

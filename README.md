@@ -79,6 +79,13 @@ Current progress is tracked in `docs/STATUS.md`.
 - The **Next** chip in the top bar always says what to do next; click it to go there.
 - The e2e suite needs a Chromium for Playwright: `npx playwright install chromium`, or point `PW_CHROMIUM_PATH` at an existing one.
 
+**Sending cargo to Mars (Stage 10):**
+- The Lunar Landing unlocks the *Mars Cargo Lander*. It's uncrewed and carries a propellant plant, so the ship needs a cargo bay (role: Cargo).
+- Mars launches only work in a transfer window, every ~26 months on the program calendar. Mission Control's Conditions tab shows the window; *Wait for Mars window* jumps there.
+- In orbit, *Refuel in orbit*, then engage *Trans-Mars injection*. Engage *Mars cruise* for the course corrections and warp up to 1,000,000× (the map, camera 4 at the Mars location, shows both planets and the path).
+- Before arrival, pick a landing site at the **Mars** location (ice ratings set the plant's output), then engage *Mars entry and landing*. Take over below 500 m for a manual landing bonus.
+- Warp through the surface tasks, then *Complete the mission*. The plant keeps producing propellant on the program calendar. The interplanetary model is simplified (circular coplanar orbits, patched conics).
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:

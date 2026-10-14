@@ -1,7 +1,7 @@
 # Project Status
 
 ## Current stage
-**Stage 9: Polish and robustness.** Complete and waiting for review.
+**Stage 10: Mars cargo missions.** Complete and waiting for review.
 
 ## Completed
 - **Stage 0–2:** foundation; Rocket Factory with modular assembly; validation, certification, design library, progression.
@@ -147,6 +147,27 @@
     - a flight in orbit resuming paused at the identical mission time across reloads, and the game's own autosave carrying a later time;
     - a damaged flight save being discarded with a notice.
 
+- **Stage 10 (Mars cargo missions):**
+  - **Mission:** *Mars Cargo Lander* (`mars-cargo`) unlocks after the Lunar Landing. It is uncrewed, carries the 40 t propellant plant in a cargo bay, needs about 9,300 m/s with refuelling in Earth orbit, and pays 8 RP and 120,000 cr. A crewed return is left for a later stage.
+  - **Program calendar and launch windows** (`src/mars/solarSystem.ts`, `marsTransfer.ts`):
+    - The program now keeps a calendar (`progression.calendarDay`): each flight advances it by its duration (at least a day), and Mission Control's *Wait for Mars window* jumps to the next window.
+    - Earth and Mars move on circular, coplanar orbits. A window opens every ~780 days (the first on day 240); the transfer takes about 7–9 months.
+    - The Conditions and Manifest tabs show the window status, the injection Δv for today, and the arrival speed. Outside the window, the readiness poll is NO-GO with a fix button.
+  - **Flight:**
+    - In orbit, *Refuel in orbit*, then the *Trans-Mars injection* program plans and flies the departure.
+    - At Earth's sphere of influence the flight hands over to a Sun-centred cruise (patched conics with universal-variable Kepler propagation). Warp goes up to 1,000,000×.
+    - *Mars cruise* makes three course corrections and an approach correction that targets a −12° entry; corrections usually total 7–60 m/s.
+    - The new **Mars** location has a procedural Mars (original texture), four fictional landing sites with hazard and ice ratings, a site picker with terrain profile, and four cameras (chase, landing site, Mars, and a solar-system map with both orbits and the path).
+  - **Entry and landing:**
+    - *Mars entry and landing* flies a lifting entry with a bank predictor-corrector, then a supersonic retro-burn, explicit guidance to a gate 500 m up, hazard avoidance and terminal descent.
+    - Take over below 500 m for a manual landing bonus. The touchdown limits are the same as on the Moon.
+  - **Surface and base:**
+    - Timed surface tasks run on the surface: safing, survey, unloading, deployment and a first production run.
+    - Completing the mission leaves a **propellant plant** in the progression (`progression.marsBase`). It accumulates propellant by program day according to the site's ice, and the *Ice mining* research makes 50% more.
+    - Milestones: *Red planet* and *Fuel on Mars*.
+  - **Saves:** save format v8 (calendar and Mars base; v7 → v8 migration). Flight autosave and resume cover the cruise, approach, entry and the Mars surface.
+  - Flight-model helpers (`mainEngineThrust`, `aeroAcceleration`, `applyHeating`) were extracted unchanged so the Mars model can reuse them. A lunar-flight fingerprint confirmed that the results are identical.
+
 ## Assumptions (documented, reversible)
 - Flight physics is a simplified planar gameplay model: one orbital plane (the equator), no Earth rotation, an exponential atmosphere, lumped aerodynamics, and Sutton–Graves heating with gameplay heat capacities. The UI and footnotes say so; it is not a flight simulator.
 - Out-of-plane steering isn't simulated. Yaw is visual only, and bank only reduces in-plane lift (enough to steer re-entry range).
@@ -173,14 +194,35 @@
 - Lunar terrain is only modelled in detail near the chosen site (±40 km); elsewhere the Moon is a smooth sphere. Slopes include boulders under the legs. Terrain heights are relative to the mean radius.
 - The Earth return uses aerocapture into orbit, then a normal deorbit to a landing zone, so the ship can be recovered; heating and the shield budget are game values.
 - Lunar transfer guidance, insertion, descent and ascent are simplified gameplay guidance tuned for this model, not flight software. Δv figures are estimates.
+- Mars:
+  - The solar system is circular and coplanar. Windows come from a planar transfer solve, not real ephemerides, so dates are indicative only.
+  - Patched conics hand over at fixed sphere-of-influence radii.
+  - Mars's rotation isn't simulated. The site is placed under the ship's predicted entry ("timed arrival"), so any site can be reached on any arrival.
+  - Mars's atmosphere is an exponential model (ρ₀ 0.020 kg/m³, scale height 11.1 km). The ship's entry aerodynamics, a fixed 70° angle of attack and the deep-throttle minimum (15% per engine) are game values.
+  - The landing Δv allowance (1,900 m/s) and the course-correction reserve (150 m/s) are conservative game figures.
+  - The propellant plant's output, storage and surface-task durations are game values. The plant has no use yet beyond progression (a future crewed return would draw on it).
+  - The program calendar starts at 0 with the first flight. Older saves take their flight count as the day.
 
 ## Checks (last run)
 - `npm run typecheck` (app and e2e), `npm run lint`, `npm run build`: pass.
-- `npm test`: 216 tests pass across 21 files. New in Stage 9:
+- `npm test`: 233 tests pass across 22 files. New in Stage 10 (`tests/mars.test.ts`, plus game-state, save, mission and location updates):
+  - solar-system motion, transfer solutions and window timing; Kepler propagation against fine numeric integration;
+  - Δv legs, plant output and storage, and surface-task gating;
+  - assisted entry and landing at a low site (Boreal Flats) and a high one (Redstone Plateau); tip-over and crash outcomes;
+  - a full credited mission in the flight runtime: refuel, injection, cruise, corrections, entry, landing and surface tasks;
+  - exact resume during the cruise and during entry; a manual landing credited as manual; crash and aborted outcomes;
+  - Mission Control: window and cargo-bay issues, GO for a cargo design in the window;
+  - the calendar and Mars base in the store; v7 → v8 migration.
+- Stage 9 tests:
   - `tests/flightSave.test.ts`: Infinity-safe encoding; damaged and foreign saves are rejected without throwing; flight and ascent records round-trip; exact resume of a rendezvous, docked proximity operations, a lunar transfer and a lunar surface stay;
   - `tests/nextStep.test.ts`: the next-step hint for each point in the program;
   - v6 → v7 save migration.
-- `npm run e2e`: 6 Playwright tests pass in headless Chromium (about 6 min with software WebGL).
+- `npm run e2e`: E2E_RESULT
+- Headless Chromium smoke test, Stage 10 (manual script, not committed), with no console errors:
+  - Commit the Mars Cargo Lander with a cargo-bay design after waiting for the window, then launch, continue to orbit, refuel and run *Trans-Mars injection*.
+  - The cruise and map views work; the approach correction is flown.
+  - At the Mars location, choose Delta Hollow and fly *Mars entry and landing*: landed rated A.
+  - Surface tasks complete, and *Complete the mission* opens the debrief: success and credited, with the milestones and the Mars base shown in the Program tab.
 - Stage 8 tests (`tests/moon.test.ts`, plus mission, save and progression updates):
   - the Moon's orbit and gravity; synchronous rotation of surface points; a stable low lunar orbit at the coasting step; the sphere-of-influence switch keeping the nose fixed; the propagator matching single coast steps; time to periapsis for ellipses and hyperbolas;
   - lunar touchdown outcomes: gentle, tipped on a slope, tipped by sideways speed, crash, hard landing with damage;
@@ -250,6 +292,12 @@
 - Moon missions: no manual trajectory planning tools (the transfer, corrections, insertion and the burn home are assisted only); no EVA (the roadmap lists it as a later optional feature); no Moon rotation-dependent lighting changes on the surface.
 - Hazard avoidance and manual landings are along the ground track only (the 2D model has no cross-track motion); the 3D terrain shows cross-track variation for looks.
 - In headless browsers the deep-space coast is fast, but 10× phases (burns, descent, re-entry) take a few real minutes.
+- Mars:
+  - The trajectory is assisted only: there's no manual injection or correction planning, and no porkchop plot (the window card shows one day's figures).
+  - There is no crewed Mars flight or return yet. The propellant plant only accumulates propellant for a future stage.
+  - The Mars surface has no dust storms, no weather and no day/night cycle.
+  - Entry heating uses the Earth shield budget model with Mars density; entries at the nominal angle never come near the limit.
+  - When standing on the surface, the vehicle panel shows a meaningless angle of attack (cosmetic). The notice can overlap the debrief briefly.
 
 ## Next action
-Review Stage 9. The roadmap's remaining items are optional expansions: e.g. Mars or other destinations, a contracts/economy layer, photo mode, EVA on the Moon, or more polish (audio, a manoeuvre planner). Pick the next focus before starting.
+Review Stage 10. Suggested next: a crewed Mars round trip that refuels from the propellant plant (Mars ascent, trans-Earth injection, Earth entry), or other options: a contracts/economy layer, photo mode, EVA, audio, or a manoeuvre planner. Pick the next focus before starting.

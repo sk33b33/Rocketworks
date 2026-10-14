@@ -308,6 +308,47 @@ describe('game store: flights', () => {
     expect(selectProgram(st()).researchAvailable - before.researchAvailable).toBe(2);
   });
 
+  it('advances the program calendar by each flight and keeps the Mars base', () => {
+    const day0 = st().progression.calendarDay ?? 0;
+    st().recordFlight(record());
+    expect(st().progression.calendarDay).toBe(day0 + 1);
+    st().recordFlight(
+      record({
+        missionId: 'mars-cargo',
+        missionName: 'Mars Cargo Lander',
+        durationS: 270 * 86_400 + 5,
+        credited: false,
+        mars: {
+          launchDay: 240,
+          departed: true,
+          cruiseDays: 262,
+          corrections: 2,
+          correctionDvMS: 30,
+          entrySpeedMS: 5_600,
+          landing: {
+            siteId: 'boreal-flats',
+            siteName: 'Boreal Flats',
+            outcome: 'landed',
+            grade: 'A',
+            manual: false,
+            missM: 20,
+          },
+          surfaceDone: true,
+          plantRunning: true,
+          ice: 1,
+          landedDay: 504,
+        },
+      }),
+    );
+    expect(st().progression.calendarDay).toBe(day0 + 1 + 271);
+    expect(st().progression.marsBase).toEqual({
+      siteId: 'boreal-flats',
+      siteName: 'Boreal Flats',
+      sinceDay: 504,
+      ice: 1,
+    });
+  });
+
   it('keeps the commitment after a scrub and does not credit failures', () => {
     const commit = { designId: 'x', revision: 1, at: 'now' };
     useGameStore.setState({ mission: { ...st().mission, commit } });
