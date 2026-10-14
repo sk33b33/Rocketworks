@@ -259,7 +259,7 @@
   - `tests/flightSave.test.ts`: Infinity-safe encoding; damaged and foreign saves are rejected without throwing; flight and ascent records round-trip; exact resume of a rendezvous, docked proximity operations, a lunar transfer and a lunar surface stay;
   - `tests/nextStep.test.ts`: the next-step hint for each point in the program;
   - v6 → v7 save migration.
-- `npm run e2e`: E2E_RESULT
+- `npm run e2e`: 8 Playwright tests pass in headless Chromium (about 9 min with software WebGL). New in Stage 11: a crewed ship resumes on the Mars surface at the same clock, opens the propellant line, waits for the return window with full tanks, and lifts off with the ascent program.
 - Headless Chromium smoke test, Stage 11 (manual script, not committed), with no console errors:
   - With the plant at Delta Hollow on day 960, the Mars Expedition is committed through the UI (2 crew, ocean platform) after *Wait 24 days for the window*. The Manifest shows the way-home forecast.
   - Refuel in orbit, then trans-Mars injection, the cruise and an assisted landing rated A, 118 m from the plant.
@@ -325,7 +325,7 @@
     - The hand-off dialog carries the simulated catch result. *End flight* in orbit gives a debrief with the booster line, and B-2 joins the fleet.
 
 ## Known limitations
-- Headless software rendering is slow, so timings in the smoke and e2e tests differ from real browsers. The e2e suite takes about 8 minutes, so it's a pre-review check rather than a per-save one.
+- Headless software rendering is slow, so timings in the smoke and e2e tests differ from real browsers. The e2e suite takes about 9 minutes, so it's a pre-review check rather than a per-save one.
 - The e2e suite doesn't fly a launch to orbit through the UI (minutes under software WebGL). The resume test seeds a real snapshot made by the game's own runtime instead; the Stage 4–8 manual smoke tests covered the full flows.
 - Performance numbers come from headless software rendering. There's no measurement on a real GPU or a phone yet.
 - Manual landings take practice: there is no landing-burn predictor beyond the HUD's height, speeds and target distance.
