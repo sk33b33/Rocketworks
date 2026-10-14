@@ -67,6 +67,16 @@ function nextAction(next: ObjectiveId | undefined, mars: boolean): string {
       return 'Next: entry guidance flies the entry and the landing burn. Take over below 500 m for a manual landing.';
     case 'mars-surface':
       return 'Next: lower the propellant plant and start it (time warp up to 10,000× on the surface), then complete the mission.';
+    case 'mars-crew-tasks':
+      return 'Next: the crew works through the surface tasks at the Mars location (time warp up to 10,000×).';
+    case 'mars-refuel':
+      return 'Next: once the propellant line is connected, press "Refuel from the plant". "Wait for the window" skips ahead to the return window while it pumps.';
+    case 'mars-ascent':
+      return 'Next: "Lift off" from the surface panel. The ascent program climbs to a 200 km Mars orbit.';
+    case 'tei':
+      return 'Next: inside the return window, engage "Trans-Earth injection" from Mars orbit (warp up to 100,000× while you wait).';
+    case 'mars-return':
+      return 'Next: cruise home (up to 1,000,000×). Course corrections aim the ship at the aerocapture corridor; the arrival is flown at Flight / Orbit.';
     case 'orbit':
       return 'Next: raise periapsis with the Circularize program (or burn prograde near apoapsis).';
     case 'lap':

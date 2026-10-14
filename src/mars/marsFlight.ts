@@ -1,12 +1,19 @@
-import { EARTH_MU_M3S2, G0_MS2 } from '../simulation/constants';
+import { EARTH_MU_M3S2, EARTH_RADIUS_M, G0_MS2 } from '../simulation/constants';
 import type { FlightControls, FlightEvent, FlightState, ShipSpec } from '../flight/flightModel';
 import { flightPathAngleDeg } from '../flight/flightModel';
 import { orbitalElements, type OrbitalElements, type Vec2 } from '../flight/orbitMath';
 import type { MarsSummary } from '../launch/flightRecord';
 import { REFUEL, type RefuelOp } from '../moon/lunarFlight';
 import type { SiteTerrain } from '../moon/lunarSites';
+import {
+  runAerocapture,
+  startLunarProgram,
+  type LunarGuidance,
+  type LunarOutput,
+} from '../moon/lunarTransfer';
 import { rateLanding } from '../recovery/rating';
 import { excessSpeed, outgoingAsymptote, propagateKepler, type KeplerState } from './kepler';
+import { timeToPeriapsis } from '../moon/lunarTransfer';
 import {
   approachMetric,
   cruiseMetric,
@@ -14,7 +21,15 @@ import {
   solveImpulse,
   timeToRadius,
 } from './marsCruise';
-import { earthEnergy, planTmi, tmiBurnControls } from './marsDeparture';
+import { ASCENT_START, MARS_ASCENT_LABELS, runMarsAscent, type MarsAscent } from './marsAscent';
+import {
+  earthEnergy,
+  marsEnergy,
+  planInjection,
+  planTmi,
+  tmiBurnControls,
+  type DepartureBody,
+} from './marsDeparture';
 import {
   ENTRY_START,
   lockSiteAngle,
@@ -31,7 +46,17 @@ import {
   stepMarsFlight,
   type MarsGround,
 } from './marsModel';
-import { marsSurfaceProgress, marsSurfaceTasks, type MarsTask } from './marsRules';
+import {
+  marsSurfaceProgress,
+  marsSurfaceTasks,
+  PLANT_REACH_M,
+  plantRateKgPerDay,
+  plantStockKg,
+  plantTransferKg,
+  type MarsBase,
+  type MarsTask,
+} from './marsRules';
+import { windowStatus, type Leg, type WindowStatus } from './marsTransfer';
 import {
   DEFAULT_MARS_SITE_ID,
   findMarsSite,
@@ -49,6 +74,7 @@ import {
   planetState,
   programTime,
   SUN_MU_M3S2,
+  type Planet,
   type PlanetState,
 } from './solarSystem';
 
@@ -57,6 +83,11 @@ import {
  * LunarFlight): orbital refuelling, trans-Mars injection, the voyage (Sun-centred cruise with
  * course corrections, then the Mars-centred approach) on analytic conics so it can run at very
  * high time warp, entry and landing on fixed steps, the landing site, and the surface tasks.
+ *
+ * Crewed round trips add the way home: refuelling from the propellant plant on the surface, the
+ * ascent to Mars orbit, trans-Earth injection inside a return window, the cruise home with its
+ * own corrections, the analytic approach to Earth (aimed at the aerocapture perigee), and the
+ * aerocapture pass itself once the runtime is back on the normal Earth flight.
  * Framework-free and deterministic.
  */
 
@@ -67,21 +98,45 @@ export interface MarsMissionPlan {
   readonly refuelLeo: boolean;
   /** Carries the propellant plant as cargo. */
   readonly plant: boolean;
+  /** Crewed round trip: lands at the plant, refuels from it and flies the crew home. */
+  readonly crewed?: boolean;
+  /** The propellant plant on Mars (what a crewed trip refuels from). */
+  readonly base?: MarsBase | null;
+  /** Better drills (research): the plant makes more propellant. */
+  readonly boosted?: boolean;
 }
 
-export type MarsProgramId = 'trans-mars' | 'mars-cruise' | 'mars-entry';
+export type MarsProgramId =
+  | 'trans-mars'
+  | 'mars-cruise'
+  | 'mars-entry'
+  | 'mars-ascent'
+  | 'trans-earth-mars'
+  | 'earth-aerocapture';
 
 export const MARS_PROGRAM_LABELS: Record<MarsProgramId, string> = {
   'trans-mars': 'Trans-Mars injection',
   'mars-cruise': 'Cruise navigation',
   'mars-entry': 'Mars entry and landing',
+  'mars-ascent': 'Mars ascent',
+  'trans-earth-mars': 'Trans-Earth injection',
+  'earth-aerocapture': 'Aerocapture at Earth',
 };
 
-const MARS_PROGRAMS: readonly string[] = ['trans-mars', 'mars-cruise', 'mars-entry'];
+const MARS_PROGRAMS: readonly string[] = Object.keys(MARS_PROGRAM_LABELS);
 export const isMarsProgram = (p: string): p is MarsProgramId => MARS_PROGRAMS.includes(p);
 
 export type MarsPhase =
-  'plan' | 'wait' | 'burn' | 'depart' | 'cruise' | 'approach' | 'descent' | 'done';
+  | 'plan'
+  | 'wait'
+  | 'burn'
+  | 'depart'
+  | 'cruise'
+  | 'approach'
+  | 'descent'
+  | 'ascent'
+  | 'home'
+  | 'done';
 
 export const MARS_PHASE_LABELS: Record<MarsPhase, string> = {
   plan: 'Planning',
@@ -91,8 +146,24 @@ export const MARS_PHASE_LABELS: Record<MarsPhase, string> = {
   cruise: 'Cruising to Mars',
   approach: 'Approaching Mars',
   descent: 'Entry and landing',
+  ascent: 'Ascent to Mars orbit',
+  home: 'Approaching Earth',
   done: 'Complete',
 };
+
+const HOME_PHASE_LABELS: Partial<Record<MarsPhase, string>> = {
+  plan: 'Planning trans-Earth injection',
+  wait: 'Waiting for the trans-Earth burn',
+  burn: 'Trans-Earth injection burn',
+  depart: 'Leaving Mars',
+  cruise: 'Cruising home to Earth',
+};
+
+/** Label of a guidance phase, worded for the way out or the way home. */
+export function marsPhaseLabel(g: MarsGuidance, leg: Leg): string {
+  if (g.phase === 'ascent' && g.ascent) return MARS_ASCENT_LABELS[g.ascent.phase];
+  return (leg === 'home' ? HOME_PHASE_LABELS[g.phase] : undefined) ?? MARS_PHASE_LABELS[g.phase];
+}
 
 export interface TmiInfo {
   readonly burnStartT: number;
@@ -114,6 +185,12 @@ export interface MarsGuidance {
   /** Approach correction time inside Mars's sphere of influence. */
   readonly approachT: number | null;
   readonly descent: MarsLanding | null;
+  /** Ascent from the surface (crewed round trips). */
+  readonly ascent?: MarsAscent | null;
+  /** Trans-Earth injection plan (crewed round trips). */
+  readonly tei?: TmiInfo | null;
+  /** The aerocapture pass at Earth (the lunar return's guidance, reused). */
+  readonly capture?: LunarGuidance | null;
 }
 
 export const MARS_IDLE: MarsGuidance = {
@@ -124,6 +201,9 @@ export const MARS_IDLE: MarsGuidance = {
   mccLeft: 0,
   approachT: null,
   descent: null,
+  ascent: null,
+  tei: null,
+  capture: null,
 };
 
 export interface MarsProgress {
@@ -141,6 +221,20 @@ export interface MarsProgress {
   readonly landing: MarsSummary['landing'];
   readonly landedT: number | null;
   readonly surfaceDone: boolean;
+  // ---- the way home (crewed round trips) ----
+  /** Propellant pumped from the plant (kg), and when the line was closed (flight clock). */
+  readonly plantDrawKg: number;
+  readonly plantDoneT: number | null;
+  readonly liftedOffT: number | null;
+  /** Reached a safe Mars orbit after lift-off. */
+  readonly marsOrbit: boolean;
+  readonly tei: boolean;
+  /** Left Mars's sphere of influence on the way home (flight clock). */
+  readonly leftMarsT: number | null;
+  /** Entered Earth's sphere of influence on the way home (flight clock). */
+  readonly earthArrivedT: number | null;
+  /** Handed back to the normal Earth flight for the aerocapture pass. */
+  readonly earthHandover: boolean;
 }
 
 export const NO_MARS_PROGRESS: MarsProgress = {
@@ -156,6 +250,14 @@ export const NO_MARS_PROGRESS: MarsProgress = {
   landing: null,
   landedT: null,
   surfaceDone: false,
+  plantDrawKg: 0,
+  plantDoneT: null,
+  liftedOffT: null,
+  marsOrbit: false,
+  tei: false,
+  leftMarsT: null,
+  earthArrivedT: null,
+  earthHandover: false,
 };
 
 export interface MarsSurfaceView {
@@ -164,6 +266,26 @@ export interface MarsSurfaceView {
   readonly tasks: readonly MarsTask[];
   readonly progress: readonly number[];
   readonly done: boolean;
+}
+
+/** Pumping propellant from the plant into the ship (crewed round trips). */
+export interface PlantOp {
+  readonly startT: number;
+  readonly fromKg: number;
+  /** Plant stock when the line opened (kg). */
+  readonly stockKg: number;
+}
+
+/** The plant as seen from the ship on the surface. */
+export interface PlantView {
+  readonly siteName: string;
+  /** Stock now (kg; what's left after this ship's draw). */
+  readonly stockKg: number;
+  readonly rateKgPerDay: number;
+  /** Close enough to connect a line. */
+  readonly inReach: boolean;
+  readonly op: PlantOp | null;
+  readonly available: { readonly ok: boolean; readonly reason?: string };
 }
 
 /** Arrival prediction for the HUD (flight clock times). */
@@ -203,6 +325,13 @@ export interface MarsView {
   readonly surface: MarsSurfaceView | null;
   readonly refuel: RefuelOp | null;
   readonly refuelAvailable: { readonly ok: boolean; readonly reason?: string };
+  /** Crewed round trips: the leg being flown, the return window, the plant and lift-off. */
+  readonly leg: Leg;
+  readonly returnWindow: WindowStatus | null;
+  readonly plant: PlantView | null;
+  readonly liftOff: { readonly ok: boolean; readonly reason?: string } | null;
+  /** Altitude and speed relative to Earth while approaching it on the way home. */
+  readonly earthAltitudeM: number | null;
   /** Manual flying is possible (entry and landing only). */
   readonly manualAllowed: boolean;
   /** Whether each Mars program can be engaged now. */
@@ -221,6 +350,8 @@ export interface MarsSnapshot {
   readonly surfaceElapsed: number;
   readonly manualLow: boolean;
   readonly assistedLow: boolean;
+  /** Absent in saves made before crewed round trips existed. */
+  readonly plantOp?: PlantOp | null;
 }
 
 export interface VoyageStep {
@@ -231,6 +362,8 @@ export interface VoyageStep {
   readonly message?: string;
   /** Something happened the player should see at normal speed. */
   readonly slowDown?: boolean;
+  /** Close to Earth on the way home: the normal Earth flight takes over (aerocapture). */
+  readonly handBack?: boolean;
 }
 
 /** Below this altitude near Mars the ship is flown on fixed steps (entry, landing). */
@@ -240,6 +373,26 @@ const MCC_FIRST_AFTER_S = 3 * DAY_S;
 const MCC_BEFORE_ARRIVAL_S = [50 * DAY_S, 8 * DAY_S];
 const APPROACH_DELAY_S = 2 * 3_600;
 const PATH_REFRESH_S = 2 * DAY_S;
+/** Coming home: the normal Earth flight takes over this high above Earth (aerocapture). */
+export const EARTH_HANDBACK_ALT_M = 400_000;
+/** Final Earth-approach correction, this long before the hand-over. */
+const EARTH_FINAL_CORRECTION_S = 6 * 3_600;
+const HOUR_S = 3_600;
+
+/** Mars-orbit departures: Mars gravity and the Mars flight model. */
+const marsDeparture = (ground: MarsGround): DepartureBody => ({
+  leg: 'home',
+  mu: MARS_MU_M3S2,
+  step: (s, spec, c, dt) => stepMarsFlight(s, spec, c, dt, ground),
+  slew: marsSlewRate,
+});
+
+/** The state without its frame tag (Earth-centred). */
+function earthCentred(s: FlightState): FlightState {
+  const { origin: _origin, ...rest } = s;
+  void _origin;
+  return rest;
+}
 
 export class MarsFlight {
   private g: MarsGuidance = MARS_IDLE;
@@ -256,9 +409,12 @@ export class MarsFlight {
   private pathT = -Infinity;
   private pathProp = -1;
   private arrivalCache: { at: number; prop: number; view: ArrivalView | null } | null = null;
+  private plantOp: PlantOp | null = null;
 
   constructor(readonly plan: MarsMissionPlan) {
-    this.siteNow = findMarsSite(DEFAULT_MARS_SITE_ID) ?? MARS_SITES[0]!;
+    // A crewed round trip lands next to the plant.
+    const base = plan.crewed && plan.base ? findMarsSite(plan.base.siteId) : undefined;
+    this.siteNow = base ?? findMarsSite(DEFAULT_MARS_SITE_ID) ?? MARS_SITES[0]!;
     this.terrainNow = marsTerrain(this.siteNow);
   }
 
@@ -276,6 +432,7 @@ export class MarsFlight {
       surfaceElapsed: this.surfaceElapsed,
       manualLow: this.manualLow,
       assistedLow: this.assistedLow,
+      plantOp: this.plantOp,
     };
   }
 
@@ -294,6 +451,7 @@ export class MarsFlight {
     f.surfaceElapsed = snap.surfaceElapsed;
     f.manualLow = snap.manualLow;
     f.assistedLow = snap.assistedLow;
+    f.plantOp = snap.plantOp ?? null;
     return f;
   }
 
@@ -317,13 +475,24 @@ export class MarsFlight {
   get onSurface(): boolean {
     return this.surface !== null;
   }
+  /** Out to Mars, or home to Earth (after lift-off). */
+  get leg(): Leg {
+    return this.p.liftedOffT !== null ? 'home' : 'out';
+  }
+  get crewed(): boolean {
+    return !!this.plan.crewed;
+  }
+  /** On the way home, close to Earth: the analytic approach is still flying it. */
+  get approachingEarth(): boolean {
+    return this.p.earthArrivedT !== null && !this.p.earthHandover;
+  }
   /** Program time for a flight-clock reading. */
   programT(tS: number): number {
     return programTime(this.plan.launchDay, tS);
   }
 
   get canChangeSite(): boolean {
-    return !this.p.siteLocked && !this.p.landing;
+    return !this.crewed && !this.p.siteLocked && !this.p.landing;
   }
 
   setSite(id: string): boolean {
@@ -334,7 +503,7 @@ export class MarsFlight {
     return true;
   }
 
-  /** Manual flying is offered for entry and landing (near Mars, low), not the cruise. */
+  /** Manual flying is offered near Mars, low (entry, landing and the ascent), not the cruise. */
   manualAllowed(s: FlightState): boolean {
     return (
       s.origin === 'mars' && s.phase === 'flight' && marsFrame(s.r).altitudeM < MARS_NUMERIC_ALT_M
@@ -361,15 +530,71 @@ export class MarsFlight {
           ? { ok: true }
           : { ok: false, reason: 'Cruise navigation runs between Earth and Mars.' };
       case 'mars-entry':
+        if (this.p.liftedOffT !== null)
+          return { ok: false, reason: 'The ship has left the surface.' };
         if (s.origin !== 'mars')
           return { ok: false, reason: 'Entry guidance takes over near Mars.' };
         return { ok: true };
+      case 'mars-ascent': {
+        if (this.p.liftedOffT === null)
+          return { ok: false, reason: 'Lift off from the Mars surface first.' };
+        if (s.origin !== 'mars') return { ok: false, reason: 'Only near Mars.' };
+        if (this.p.marsOrbit) return { ok: false, reason: 'Already in Mars orbit.' };
+        if (s.propKg <= 0) return { ok: false, reason: 'No propellant to climb to orbit.' };
+        return { ok: true };
+      }
+      case 'trans-earth-mars': {
+        if (!this.crewed) return { ok: false, reason: 'Only on crewed round trips.' };
+        if (this.p.tei) return { ok: false, reason: 'Trans-Earth injection is done.' };
+        if (s.origin !== 'mars' || !this.p.marsOrbit)
+          return { ok: false, reason: 'Needs a low Mars orbit to depart from.' };
+        const el = orbitalElements(s.r, s.v, MARS_BODY);
+        if (el.status !== 'orbit' || el.apoapsisAltM > 2_000_000)
+          return { ok: false, reason: 'Needs a low Mars orbit to depart from.' };
+        if (s.propKg <= 0) return { ok: false, reason: 'No propellant for the burn home.' };
+        const w = windowStatus(this.programT(s.tS) / DAY_S, 'home');
+        if (!w.open)
+          return {
+            ok: false,
+            reason: `The return window opens in ${Math.ceil(w.opensInDays)} days: wait in orbit with time warp.`,
+          };
+        return { ok: true };
+      }
+      case 'earth-aerocapture': {
+        if (this.p.earthArrivedT === null)
+          return { ok: false, reason: 'Only when arriving back at Earth.' };
+        if (s.origin) return { ok: false, reason: 'Only near Earth.' };
+        const el = orbitalElements(s.r, s.v);
+        if (el.status !== 'escape' && el.apoapsisAltM < 2_000_000)
+          return { ok: false, reason: 'Already captured into Earth orbit.' };
+        if (el.periapsisAltM > 120_000)
+          return { ok: false, reason: 'Perigee is above the atmosphere.' };
+        return { ok: true };
+      }
     }
   }
 
   startProgram(program: MarsProgramId, s: FlightState): void {
     if (program === 'trans-mars') this.g = { ...MARS_IDLE, program, phase: 'plan' };
     else if (program === 'mars-cruise') this.g = { ...this.g, program, phase: 'cruise' };
+    else if (program === 'mars-ascent') {
+      // Re-engaged after a takeover: carry on climbing.
+      const ascent =
+        this.g.ascent && this.g.ascent.phase !== 'done'
+          ? this.g.ascent
+          : marsGeometry(s, this.ground).radarM > 300
+            ? { ...ASCENT_START, phase: 'climb' as const }
+            : ASCENT_START;
+      this.g = { ...this.g, program, phase: 'ascent', ascent };
+    } else if (program === 'trans-earth-mars')
+      this.g = { ...this.g, program, phase: 'plan', tei: null };
+    else if (program === 'earth-aerocapture')
+      this.g = {
+        ...this.g,
+        program,
+        phase: 'home',
+        capture: this.g.capture ?? startLunarProgram('aerocapture', 'flyby'),
+      };
     else {
       const low = marsFrame(s.r).altitudeM < MARS_NUMERIC_ALT_M;
       this.g = {
@@ -508,6 +733,7 @@ export class MarsFlight {
     return (
       !s.origin &&
       this.p.tmi &&
+      this.p.liftedOffT === null &&
       s.phase === 'flight' &&
       Math.hypot(s.r[0], s.r[1]) >= EARTH_SOI_M &&
       orbitalElements(s.r, s.v).status === 'escape'
@@ -550,11 +776,19 @@ export class MarsFlight {
   ): VoyageStep {
     if (s.phase !== 'flight') return { state: s, used: 0, notes: [] };
     if (s.origin === 'sun') return this.cruiseStep(s, spec, budget);
-    if (s.origin !== 'mars') return { state: s, used: 0, notes: [] };
+    if (!s.origin)
+      return this.approachingEarth
+        ? this.earthApproachStep(s, spec, budget)
+        : { state: s, used: 0, notes: [] };
     const f = marsFrame(s.r);
+    const g = this.g;
+    const powered =
+      (g.program === 'mars-ascent' && !!g.ascent && g.ascent.phase !== 'done') ||
+      (g.program === 'trans-earth-mars' && g.phase === 'burn');
     const numeric =
       f.altitudeM < MARS_NUMERIC_ALT_M + 10 ||
       s.throttle > 0 ||
+      powered ||
       (manual !== null && manual.throttle > 0);
     if (!numeric) return this.approachStep(s, spec, budget);
     if (budget < FINE_DT_S) return { state: s, used: 0, notes: [] };
@@ -569,8 +803,28 @@ export class MarsFlight {
     return { ...s, v: [s.v[0] + dv[0], s.v[1] + dv[1]], propKg: s.propKg - used };
   }
 
+  /** Applies a correction impulse (if worth it) and counts it. */
+  private correct(s: FlightState, spec: ShipSpec, dv: Vec2 | null, min: number): FlightState {
+    if (!dv) return s;
+    const size = Math.hypot(dv[0], dv[1]);
+    if (size < min) return s;
+    this.p = {
+      ...this.p,
+      corrections: this.p.corrections + 1,
+      correctionDvMS: this.p.correctionDvMS + size,
+    };
+    return this.consume(s, spec, dv);
+  }
+
+  /** The planet the cruise is heading for. */
+  private get target(): Planet {
+    return this.leg === 'home' ? 'earth' : 'mars';
+  }
+
   private cruiseStep(s: FlightState, spec: ShipSpec, budget: number): VoyageStep {
     const g = this.g;
+    const target = this.target;
+    const soi = target === 'mars' ? MARS_SOI_M : EARTH_SOI_M;
     let dt = Math.min(budget, DAY_S);
     if (g.mccT !== null) dt = Math.min(dt, Math.max(0, g.mccT - s.tS));
     const notes: FlightEvent[] = [];
@@ -579,40 +833,54 @@ export class MarsFlight {
     const k0: KeplerState = { r: s.r, v: s.v };
     let k = dt > 0 ? propagateKepler(k0, SUN_MU_M3S2, dt) : k0;
     let t = s.tS + dt;
-    const distMars = (ks: KeplerState, T: number) => {
-      const m = planetState('mars', T);
+    const distTarget = (ks: KeplerState, T: number) => {
+      const m = planetState(target, T);
       return Math.hypot(ks.r[0] - m.r[0], ks.r[1] - m.r[1]);
     };
-    // Entering Mars's sphere of influence: find the crossing and switch frames.
-    if (dt > 0 && distMars(k, T0 + dt) < MARS_SOI_M) {
+    // Entering the target's sphere of influence: find the crossing and switch frames.
+    if (dt > 0 && distTarget(k, T0 + dt) < soi) {
       let a = 0;
       let b = dt;
       for (let i = 0; i < 40; i++) {
         const m = (a + b) / 2;
-        if (distMars(propagateKepler(k0, SUN_MU_M3S2, m), T0 + m) > MARS_SOI_M) a = m;
+        if (distTarget(propagateKepler(k0, SUN_MU_M3S2, m), T0 + m) > soi) a = m;
         else b = m;
       }
       k = propagateKepler(k0, SUN_MU_M3S2, b);
       t = s.tS + b;
-      const m = planetState('mars', this.programT(t));
-      const rel: FlightState = {
-        ...s,
-        tS: t,
-        origin: 'mars',
-        r: [k.r[0] - m.r[0], k.r[1] - m.r[1]],
-        v: [k.v[0] - m.v[0], k.v[1] - m.v[1]],
-      };
-      this.p = { ...this.p, arrivedT: t };
-      this.g = {
-        ...g,
-        program: 'mars-entry',
-        phase: 'approach',
-        mccT: null,
-        mccLeft: 0,
-        approachT: t + APPROACH_DELAY_S,
-      };
-      const days = this.p.departedT !== null ? (t - this.p.departedT) / DAY_S : null;
-      const text = `Entered Mars's sphere of influence${days !== null ? ` after ${Math.round(days)} days` : ''}.`;
+      const m = planetState(target, this.programT(t));
+      const r: Vec2 = [k.r[0] - m.r[0], k.r[1] - m.r[1]];
+      const v: Vec2 = [k.v[0] - m.v[0], k.v[1] - m.v[1]];
+      const from = target === 'mars' ? this.p.departedT : this.p.leftMarsT;
+      const days = from !== null ? ` after ${Math.round((t - from) / DAY_S)} days` : '';
+      let rel: FlightState;
+      let text: string;
+      if (target === 'mars') {
+        rel = { ...s, tS: t, origin: 'mars', r, v };
+        this.p = { ...this.p, arrivedT: t };
+        this.g = {
+          ...g,
+          program: 'mars-entry',
+          phase: 'approach',
+          mccT: null,
+          mccLeft: 0,
+          approachT: t + APPROACH_DELAY_S,
+        };
+        text = `Entered Mars's sphere of influence${days}.`;
+      } else {
+        rel = { ...earthCentred(s), tS: t, r, v };
+        this.p = { ...this.p, earthArrivedT: t };
+        this.g = {
+          ...g,
+          program: 'earth-aerocapture',
+          phase: 'home',
+          mccT: null,
+          mccLeft: 0,
+          approachT: t + APPROACH_DELAY_S,
+          capture: startLunarProgram('aerocapture', 'flyby'),
+        };
+        text = `Back in Earth's sphere of influence${days}.`;
+      }
       notes.push({ tS: t, kind: 'success', text });
       return {
         state: { ...rel, pitchDeg: flightPathAngleDeg(rel.r, rel.v) },
@@ -626,9 +894,13 @@ export class MarsFlight {
     // A cruise correction falls due.
     if (g.mccT !== null && t >= g.mccT - 1e-6) {
       const T = this.programT(t);
-      const dv = solveImpulse({ r: state.r, v: state.v }, (ks) => cruiseMetric(ks, T), 20_000);
+      const dv = solveImpulse(
+        { r: state.r, v: state.v },
+        (ks) => cruiseMetric(ks, T, target),
+        20_000,
+      );
       const left = g.mccLeft - 1;
-      const arrival = predictArrival({ r: state.r, v: state.v }, T);
+      const arrival = predictArrival({ r: state.r, v: state.v }, T, 420, target);
       const nextT = this.nextCorrectionT(
         t,
         left,
@@ -638,20 +910,12 @@ export class MarsFlight {
       const n = this.p.corrections + 1;
       if (!dv) {
         message = 'No course correction found: holding the current trajectory.';
+      } else if (Math.hypot(dv[0], dv[1]) < 0.3) {
+        message = `Course check ${n}: on course, no correction needed.`;
       } else {
-        const size = Math.hypot(dv[0], dv[1]);
-        if (size < 0.3) {
-          message = `Course check ${n}: on course, no correction needed.`;
-        } else {
-          state = this.consume(state, spec, dv);
-          this.p = {
-            ...this.p,
-            corrections: n,
-            correctionDvMS: this.p.correctionDvMS + size,
-          };
-          message = `Course correction ${n}: ${size.toFixed(1)} m/s.`;
-          notes.push({ tS: t, kind: 'info', text: message });
-        }
+        state = this.correct(state, spec, dv, 0.3);
+        message = `Course correction ${n}: ${Math.hypot(dv[0], dv[1]).toFixed(1)} m/s.`;
+        notes.push({ tS: t, kind: 'info', text: message });
       }
       this.arrivalCache = null;
       this.pathT = -Infinity;
@@ -673,19 +937,94 @@ export class MarsFlight {
     return null;
   }
 
+  /** Leaves a planet's sphere of influence along the asymptote: the Sun-centred cruise begins. */
+  private toHelio(s: FlightState, from: Planet): FlightState {
+    const p = planetState(from, this.programT(s.tS));
+    const mu = from === 'mars' ? MARS_MU_M3S2 : EARTH_MU_M3S2;
+    // Patched conics: leave with the hyperbolic excess velocity along the departure asymptote
+    // (at the sphere's edge the path is still turning toward it).
+    const vInf = excessSpeed(s.r, s.v, mu);
+    const dir = outgoingAsymptote(s.r, s.v, mu) ?? [0, 0];
+    return {
+      ...s,
+      origin: 'sun',
+      r: [s.r[0] + p.r[0], s.r[1] + p.r[1]],
+      v: [dir[0] * vInf + p.v[0], dir[1] * vInf + p.v[1]],
+      throttle: 0,
+    };
+  }
+
+  /** Plans trans-Earth injection from Mars orbit; returns the message to show. */
+  private planTei(s: FlightState, spec: ShipSpec): string {
+    const plan = planInjection(s, spec, (tS) => this.programT(tS), marsDeparture(this.ground));
+    if (!plan) {
+      this.g = { ...this.g, program: 'none', phase: 'ascent' };
+      return "Couldn't plan trans-Earth injection: check the orbit.";
+    }
+    this.g = {
+      ...this.g,
+      phase: 'wait',
+      tei: {
+        burnStartT: plan.burnStartT,
+        targetEnergy: plan.targetEnergy,
+        dvMS: plan.dvMS,
+        arrivalT: plan.transfer.arrivalT - this.plan.launchDay * DAY_S,
+        tofS: plan.transfer.tofS,
+        vInfArrMS: plan.transfer.vInfArrMS,
+      },
+    };
+    return `Trans-Earth injection planned: ${Math.round(plan.dvMS)} m/s, home in ${Math.round(plan.transfer.tofS / DAY_S)} days.`;
+  }
+
   private approachStep(s: FlightState, spec: ShipSpec, budget: number): VoyageStep {
-    const g = this.g;
     const notes: FlightEvent[] = [];
     let message: string | undefined;
+    if (this.g.program === 'trans-earth-mars' && this.g.phase === 'plan') {
+      message = this.planTei(s, spec);
+      notes.push({ tS: s.tS, kind: 'info', text: message });
+    }
+    const g = this.g;
+    const home = this.leg === 'home';
     const k0: KeplerState = { r: s.r, v: s.v };
     const toLow = timeToRadius(k0, MARS_RADIUS_M + MARS_NUMERIC_ALT_M);
     let dt = Math.min(budget, DAY_S);
     if (toLow !== null) dt = Math.min(dt, toLow);
     if (g.approachT !== null) dt = Math.min(dt, Math.max(0, g.approachT - s.tS));
+    const teiWait = g.program === 'trans-earth-mars' && g.phase === 'wait' && g.tei;
+    if (teiWait) dt = Math.min(dt, Math.max(0, g.tei!.burnStartT - s.tS));
+    if (dt <= 0 && teiWait) {
+      // The burn is due: it runs on fixed steps from here.
+      this.g = { ...g, phase: 'burn' };
+      return {
+        state: s,
+        used: Math.min(budget, FINE_DT_S),
+        notes,
+        message: 'Trans-Earth injection burn.',
+      };
+    }
     let k = dt > 0 ? propagateKepler(k0, MARS_MU_M3S2, dt) : k0;
     const t = s.tS + dt;
-    // Left Mars behind (missed): back to the Sun-centred frame.
+    // Leaving Mars's sphere of influence: home (after the burn), or a missed arrival.
     if (Math.hypot(k.r[0], k.r[1]) > MARS_SOI_M && k.r[0] * k.v[0] + k.r[1] * k.v[1] > 0) {
+      if (home && this.p.tei) {
+        const helio = this.toHelio({ ...s, tS: t, r: k.r, v: k.v }, 'mars');
+        this.p = { ...this.p, leftMarsT: t };
+        this.g = {
+          ...this.g,
+          program: 'mars-cruise',
+          phase: 'cruise',
+          mccT: t + MCC_FIRST_AFTER_S,
+          mccLeft: 3,
+        };
+        const text = "Left Mars's sphere of influence: cruising home to Earth.";
+        return {
+          state: helio,
+          used: dt,
+          notes: [...notes, { tS: t, kind: 'success', text }],
+          message: text,
+          slowDown: true,
+        };
+      }
       const m = planetState('mars', this.programT(t));
       return {
         state: {
@@ -704,21 +1043,17 @@ export class MarsFlight {
       };
     }
     let state: FlightState = { ...s, tS: t, r: k.r, v: k.v };
-    if (g.approachT !== null && t >= g.approachT - 1e-6) {
-      const dv = solveImpulse(k, approachMetric, 200, 600);
+    if (!home && g.approachT !== null && t >= g.approachT - 1e-6) {
       this.g = { ...g, approachT: null };
-      if (dv) {
-        const size = Math.hypot(dv[0], dv[1]);
-        if (size >= 0.05) {
-          state = this.consume(state, spec, dv);
-          k = { r: state.r, v: state.v };
-          this.p = {
-            ...this.p,
-            corrections: this.p.corrections + 1,
-            correctionDvMS: this.p.correctionDvMS + size,
-          };
-          notes.push({ tS: t, kind: 'info', text: `Approach correction: ${size.toFixed(1)} m/s.` });
-        }
+      const dv = solveImpulse(k, approachMetric, 200, 600);
+      state = this.correct(state, spec, dv, 0.05);
+      if (dv && state.v !== k.v) {
+        k = { r: state.r, v: state.v };
+        notes.push({
+          tS: t,
+          kind: 'info',
+          text: `Approach correction: ${Math.hypot(dv[0], dv[1]).toFixed(1)} m/s.`,
+        });
       }
       // Fix where the site lies on the ground track (the timed-arrival abstraction).
       const tEntry = timeToRadius(k, MARS_RADIUS_M + MARS_NUMERIC_ALT_M);
@@ -735,22 +1070,86 @@ export class MarsFlight {
         if (angle !== null) {
           this.siteAngle = angle;
           this.p = { ...this.p, siteLocked: true };
-          message = `Approach set for ${this.siteNow.name}: entry in ${Math.round(tEntry / 3_600)} h.`;
+          message = `Approach set for ${this.siteNow.name}: entry in ${Math.round(tEntry / HOUR_S)} h.`;
         } else message = 'No safe entry corridor found: the ship will come down off target.';
       } else message = 'The approach misses the atmosphere.';
       notes.push({ tS: t, kind: this.p.siteLocked ? 'success' : 'warn', text: message });
     }
     // Reached the numeric region: entry guidance takes over (if engaged).
     if (toLow !== null && dt >= toLow - 1e-6) {
-      if (this.g.program === 'mars-entry')
-        this.g = { ...this.g, phase: 'descent', descent: ENTRY_START };
-      message = 'Entry interface: guidance flying the entry.';
+      if (!home) {
+        if (this.g.program === 'mars-entry')
+          this.g = { ...this.g, phase: 'descent', descent: ENTRY_START };
+        message = 'Entry interface: guidance flying the entry.';
+      }
       return {
         state: { ...state, pitchDeg: flightPathAngleDeg(state.r, state.v) },
         used: dt,
         notes,
-        message,
+        ...(message ? { message } : {}),
         slowDown: true,
+      };
+    }
+    return { state, used: dt, notes, ...(message ? { message } : {}) };
+  }
+
+  /** Coming home: the analytic coast through Earth's sphere of influence, with corrections. */
+  private earthApproachStep(s: FlightState, spec: ShipSpec, budget: number): VoyageStep {
+    const g = this.g;
+    const notes: FlightEvent[] = [];
+    let message: string | undefined;
+    const handR = EARTH_RADIUS_M + EARTH_HANDBACK_ALT_M;
+    const k0: KeplerState = { r: s.r, v: s.v };
+    const toLow = timeToRadius(k0, handR, 30 * DAY_S, EARTH_MU_M3S2);
+    // Missing the atmosphere: hand over at perigee instead (the flight carries on from there).
+    const toPerigee =
+      toLow === null && g.approachT === null && k0.r[0] * k0.v[0] + k0.r[1] * k0.v[1] < 0
+        ? timeToPeriapsis(k0.r, k0.v, EARTH_MU_M3S2)
+        : null;
+    let dt = Math.min(budget, DAY_S);
+    if (toLow !== null) dt = Math.min(dt, toLow);
+    if (toPerigee !== null) dt = Math.min(dt, toPerigee);
+    if (g.approachT !== null) dt = Math.min(dt, Math.max(0, g.approachT - s.tS));
+    const k = dt > 0 ? propagateKepler(k0, EARTH_MU_M3S2, dt) : k0;
+    const t = s.tS + dt;
+    let state: FlightState = { ...s, tS: t, r: k.r, v: k.v };
+    if (g.approachT !== null && t >= g.approachT - 1e-6) {
+      const before = state.v;
+      state = this.correct(
+        state,
+        spec,
+        solveImpulse(k, (ks) => approachMetric(ks, 'earth'), 100, 600),
+        0.05,
+      );
+      const size = Math.hypot(state.v[0] - before[0], state.v[1] - before[1]);
+      // One more, fine correction a few hours out.
+      const kk = { r: state.r, v: state.v };
+      const reach = timeToRadius(kk, handR, 30 * DAY_S, EARTH_MU_M3S2);
+      const final = reach !== null ? t + reach - EARTH_FINAL_CORRECTION_S : null;
+      this.g = { ...this.g, approachT: final !== null && final > t + HOUR_S ? final : null };
+      message =
+        size >= 0.05
+          ? `Earth approach correction: ${size.toFixed(1)} m/s.`
+          : 'Earth approach check: on course for the aerocapture corridor.';
+      notes.push({ tS: t, kind: 'info', text: message });
+      if (reach === null) {
+        message = 'The approach misses the atmosphere.';
+        notes.push({ tS: t, kind: 'warn', text: message });
+      }
+    }
+    if ((toLow !== null && dt >= toLow - 1e-6) || (toPerigee !== null && dt >= toPerigee - 1e-6)) {
+      this.p = { ...this.p, earthHandover: true };
+      const text =
+        toLow !== null
+          ? 'Entry interface ahead: aerocapture guidance flying the pass.'
+          : 'Closest approach to Earth.';
+      return {
+        state: { ...state, pitchDeg: flightPathAngleDeg(state.r, state.v) },
+        used: dt,
+        notes: [...notes, { tS: t, kind: 'info', text }],
+        message: text,
+        slowDown: true,
+        handBack: true,
       };
     }
     return { state, used: dt, notes, ...(message ? { message } : {}) };
@@ -758,31 +1157,53 @@ export class MarsFlight {
 
   private descentStep(s: FlightState, spec: ShipSpec, manual: FlightControls | null): VoyageStep {
     const ground = this.ground;
+    const g = this.g;
     let controls: FlightControls;
     let message: string | undefined;
     const notes: FlightEvent[] = [];
-    if (this.g.program === 'mars-entry' && this.g.descent && !manual) {
-      const out = runMarsDescent(this.g.descent, s, spec, ground, FINE_DT_S);
-      this.g = { ...this.g, descent: out.next, phase: 'descent' };
+    const hold: FlightControls = {
+      targetPitchDeg: s.pitchDeg,
+      bankDeg: 0,
+      yawDeg: 0,
+      throttle: 0,
+      slewDegS: marsSlewRate(s),
+    };
+    if (manual) controls = manual;
+    else if (g.program === 'mars-entry' && g.descent) {
+      const out = runMarsDescent(g.descent, s, spec, ground, FINE_DT_S);
+      this.g = { ...g, descent: out.next, phase: 'descent' };
       controls = out.controls;
       if (out.message) message = out.message;
-    } else {
-      controls = manual ?? {
-        targetPitchDeg: s.pitchDeg,
-        bankDeg: 0,
-        yawDeg: 0,
-        throttle: 0,
-        slewDegS: marsSlewRate(s),
-      };
-    }
+    } else if (g.program === 'mars-ascent' && g.ascent) {
+      const out = runMarsAscent(g.ascent, s, spec, ground);
+      controls = out.controls;
+      if (out.message) message = out.message;
+      this.g = { ...g, ascent: out.next };
+      if (out.done) {
+        const el = orbitalElements(s.r, s.v, MARS_BODY);
+        const safe = el.status === 'orbit' && el.periapsisAltM > MARS_NUMERIC_ALT_M - 10_000;
+        this.g = { ...this.g, program: 'none', phase: 'ascent' };
+        if (safe) this.p = { ...this.p, marsOrbit: true };
+      }
+    } else if (g.program === 'trans-earth-mars' && g.phase === 'burn' && g.tei) {
+      if (marsEnergy(s.r, s.v) >= g.tei.targetEnergy || s.propKg <= 0) {
+        this.g = { ...g, phase: 'depart' };
+        this.p = { ...this.p, tei: true };
+        message =
+          s.propKg <= 0
+            ? 'Propellant depleted during the trans-Earth burn.'
+            : 'Trans-Earth injection complete: leaving Mars.';
+        controls = hold;
+      } else controls = tmiBurnControls(s, true, marsSlewRate);
+    } else controls = hold;
     const next = stepMarsFlight(s, spec, controls, FINE_DT_S, ground);
-    // Objectives near the ground.
+    // Objectives near the ground (the landing only).
     const geo = marsGeometry(next, ground);
-    if (geo.radarM < MANUAL_MARS_ALT_M && next.phase === 'flight') {
-      if (this.g.program === 'mars-entry' && !manual) this.assistedLow = true;
+    if (!this.p.landing && geo.radarM < MANUAL_MARS_ALT_M && next.phase === 'flight') {
+      if (g.program === 'mars-entry' && !manual) this.assistedLow = true;
       else this.manualLow = true;
     }
-    if (!this.p.entry && geo.h < 100_000 && next.heatFluxWm2 > 0) {
+    if (!this.p.entry && !this.p.landing && geo.h < 100_000 && next.heatFluxWm2 > 0) {
       this.p = { ...this.p, entry: true, entrySpeedMS: geo.speed };
       notes.push({
         tS: next.tS,
@@ -794,13 +1215,38 @@ export class MarsFlight {
     return { state: next, used: FINE_DT_S, notes, ...(message ? { message } : {}) };
   }
 
-  /** Warp limit while on the way to Mars or near it. */
+  /** Warp limit while on the way to Mars, near it, or coming home to Earth. */
   voyageLimit(s: FlightState): { max: number; reason: string | null } {
     if (s.phase !== 'flight') return { max: 1, reason: 'The ship is down.' };
     if (s.origin === 'sun') return { max: 1_000_000, reason: null };
+    if (!s.origin) {
+      const handR = EARTH_RADIUS_M + EARTH_HANDBACK_ALT_M;
+      const toLow = timeToRadius({ r: s.r, v: s.v }, handR, 30 * DAY_S, EARTH_MU_M3S2);
+      if (toLow !== null && toLow < 900)
+        return { max: 10, reason: 'Aerocapture coming up: warp limited to 10×.' };
+      if (toLow !== null && toLow < 4 * HOUR_S)
+        return { max: 1_000, reason: 'Close to Earth: warp limited to 1000×.' };
+      return { max: 100_000, reason: 'Near Earth: warp limited to 100,000×.' };
+    }
     const f = marsFrame(s.r);
+    const g = this.g;
     if (f.altitudeM < MARS_NUMERIC_ALT_M + 10 || s.throttle > 0)
-      return { max: 10, reason: 'Entry and landing: warp limited to 10×.' };
+      return {
+        max: 10,
+        reason: this.p.liftedOffT
+          ? 'Ascent and burns: warp limited to 10×.'
+          : 'Entry and landing: warp limited to 10×.',
+      };
+    if (g.program === 'mars-ascent' && g.ascent && g.ascent.phase !== 'done')
+      return { max: 10, reason: 'Ascent: warp limited to 10×.' };
+    if (g.program === 'trans-earth-mars' && g.tei) {
+      if (g.phase === 'burn') return { max: 10, reason: 'Engines burning: warp limited to 10×.' };
+      if (g.phase === 'wait') {
+        const togo = g.tei.burnStartT - s.tS;
+        if (togo < 300) return { max: 10, reason: 'Burn coming up: warp limited to 10×.' };
+        if (togo < 3_000) return { max: 100, reason: 'Burn coming up: warp limited to 100×.' };
+      }
+    }
     const toLow = timeToRadius({ r: s.r, v: s.v }, MARS_RADIUS_M + MARS_NUMERIC_ALT_M);
     if (toLow !== null && toLow < 900)
       return { max: 10, reason: 'Entry interface coming up: warp limited to 10×.' };
@@ -812,6 +1258,8 @@ export class MarsFlight {
   /** Extra warp limits in the Earth phase (injection), and deep-space warp once well away. */
   earthLimit(s: FlightState): { max: number; reason: string | null } | null {
     const g = this.g;
+    if (g.program === 'earth-aerocapture' && Math.hypot(s.r[0], s.r[1]) < EARTH_RADIUS_M + 600_000)
+      return { max: 10, reason: 'Aerocapture pass: warp limited to 10×.' };
     if (g.program === 'trans-mars' && g.tmi) {
       if (g.phase === 'burn') return { max: 10, reason: 'Engines burning: warp limited to 10×.' };
       if (g.phase === 'wait') {
@@ -820,7 +1268,12 @@ export class MarsFlight {
         if (togo < 3_000) return { max: 100, reason: 'Burn coming up: warp limited to 100×.' };
       }
     }
-    if (this.p.tmi && Math.hypot(s.r[0], s.r[1]) > 60_000_000 && !this.op)
+    if (
+      this.p.tmi &&
+      this.p.liftedOffT === null &&
+      Math.hypot(s.r[0], s.r[1]) > 60_000_000 &&
+      !this.op
+    )
       return { max: 10_000, reason: null };
     return null;
   }
@@ -864,28 +1317,147 @@ export class MarsFlight {
     };
     this.g = { ...this.g, program: 'none', phase: 'done' };
     if (outcome !== 'landed') return false;
-    this.surface = { startT: s.tS, tasks: marsSurfaceTasks(this.siteNow, this.plan.plant) };
+    this.surface = {
+      startT: s.tS,
+      tasks: marsSurfaceTasks(this.siteNow, this.plan.plant, this.crewed),
+    };
     this.surfaceElapsed = 0;
     return true;
   }
 
-  /** Advances surface time; returns a note when the tasks complete. */
-  surfaceStep(dt: number): string | null {
-    if (!this.surface) return null;
+  /**
+   * Advances surface time by `dt`: the tasks, and propellant flowing in from the plant.
+   * Returns the ship and a note when something finishes.
+   */
+  surfaceTick(
+    s: FlightState,
+    spec: ShipSpec,
+    dt: number,
+  ): { state: FlightState; note: string | null } {
+    if (!this.surface) return { state: s, note: null };
+    const t = s.tS + dt;
     this.surfaceElapsed += dt;
+    let note: string | null = null;
     const done = marsSurfaceProgress(this.surface.tasks, this.surfaceElapsed).every((p) => p >= 1);
     if (done && !this.p.surfaceDone) {
       this.p = { ...this.p, surfaceDone: true };
-      return this.plan.plant
-        ? 'The propellant plant is running. Complete the mission to hand it over to ground control.'
-        : 'Cargo delivered. Complete the mission to hand over to ground control.';
+      note = this.crewed
+        ? 'Surface tasks complete. Fill the tanks from the plant, then lift off for the return window.'
+        : this.plan.plant
+          ? 'The propellant plant is running. Complete the mission to hand it over to ground control.'
+          : 'Cargo delivered. Complete the mission to hand over to ground control.';
     }
-    return null;
+    let state: FlightState = { ...s, tS: t };
+    const op = this.plantOp;
+    if (op) {
+      const cap = spec.stage.propellantKg;
+      const moved = plantTransferKg(t - op.startT, op.stockKg, this.plantRate, cap - op.fromKg);
+      if (op.fromKg + moved >= cap - 0.5) {
+        this.closeLine(t, cap - op.fromKg);
+        state = { ...state, propKg: cap };
+        note = `Tanks full: ${Math.round((cap - op.fromKg) / 1000)} t pumped from the plant.`;
+      } else state = { ...state, propKg: op.fromKg + moved };
+    }
+    return { state, note };
   }
 
-  /** A ship standing on Mars at time t (it doesn't move: Mars's rotation isn't simulated). */
-  standing(s: FlightState): FlightState {
-    return s;
+  // ---- the propellant plant (crewed round trips) ----
+
+  private get plantRate(): number {
+    const base = this.plan.base;
+    return base ? plantRateKgPerDay(base.ice, !!this.plan.boosted) : 0;
+  }
+
+  /** Plant stock now (kg), after what this ship has drawn. */
+  plantStock(s: FlightState): number {
+    const base = this.plan.base;
+    if (!base) return 0;
+    const pumping = this.plantOp ? Math.max(0, s.propKg - this.plantOp.fromKg) : 0;
+    const made = plantStockKg(base, this.programT(s.tS) / DAY_S, !!this.plan.boosted);
+    return Math.max(0, made - this.p.plantDrawKg - pumping);
+  }
+
+  private closeLine(t: number, movedKg: number): void {
+    this.p = { ...this.p, plantDrawKg: this.p.plantDrawKg + movedKg, plantDoneT: t };
+    this.plantOp = null;
+  }
+
+  plantAvailability(s: FlightState, spec: ShipSpec): { ok: boolean; reason?: string } {
+    if (!this.crewed || !this.plan.base)
+      return { ok: false, reason: 'No propellant plant on this mission.' };
+    if (!this.surface) return { ok: false, reason: 'Only on the surface next to the plant.' };
+    const miss = this.p.landing?.missM ?? Infinity;
+    if (miss > PLANT_REACH_M)
+      return {
+        ok: false,
+        reason: `Landed ${(miss / 1000).toFixed(1)} km from the plant: too far to run a propellant line.`,
+      };
+    const hookup = this.surface.tasks.findIndex((t) => t.id === 'hookup');
+    if (hookup >= 0 && marsSurfaceProgress(this.surface.tasks, this.surfaceElapsed)[hookup]! < 1)
+      return { ok: false, reason: 'Connect the propellant line first (surface tasks).' };
+    if (this.plantOp) return { ok: false, reason: 'Already pumping propellant.' };
+    if (s.propKg >= spec.stage.propellantKg - 1)
+      return { ok: false, reason: 'The tanks are full.' };
+    if (this.plantStock(s) < 1 && this.plantRate <= 0)
+      return { ok: false, reason: 'The plant is empty.' };
+    return { ok: true };
+  }
+
+  /** Opens the propellant line from the plant. */
+  startPlantRefuel(s: FlightState, spec: ShipSpec): { ok: boolean; reason?: string } {
+    const a = this.plantAvailability(s, spec);
+    if (!a.ok) return a;
+    this.plantOp = { startT: s.tS, fromKg: s.propKg, stockKg: this.plantStock(s) };
+    return { ok: true };
+  }
+
+  /** Closes the line early (what has flowed stays in the tanks). */
+  stopPlantRefuel(s: FlightState): void {
+    if (this.plantOp) this.closeLine(s.tS, Math.max(0, s.propKg - this.plantOp.fromKg));
+  }
+
+  /** Seconds until the return window opens (0 while open). */
+  returnWindowWaitS(s: FlightState): number {
+    const w = windowStatus(this.programT(s.tS) / DAY_S, 'home');
+    return w.open ? 0 : Math.max(0, w.opensInDays * DAY_S);
+  }
+
+  liftOffAvailability(s: FlightState): { ok: boolean; reason?: string } {
+    if (!this.crewed) return { ok: false, reason: 'Cargo landers stay on Mars.' };
+    if (!this.surface) return { ok: false, reason: 'Not on the surface.' };
+    if (s.propKg <= 0) return { ok: false, reason: 'No propellant to lift off with.' };
+    return { ok: true };
+  }
+
+  /** Lifts off (surface operations end) with the ascent program engaged. */
+  liftOff(s: FlightState): FlightState | null {
+    if (!this.liftOffAvailability(s).ok) return null;
+    if (this.plantOp) this.stopPlantRefuel(s);
+    this.surface = null;
+    this.p = { ...this.p, liftedOffT: s.tS };
+    this.g = { ...MARS_IDLE, program: 'mars-ascent', phase: 'ascent', ascent: ASCENT_START };
+    const up = marsFrame(s.r).up;
+    const { touchdown: _td, ...rest } = s;
+    void _td;
+    return {
+      ...rest,
+      r: [s.r[0] + up[0] * 0.5, s.r[1] + up[1] * 0.5],
+      v: [0, 0],
+      phase: 'flight',
+      pitchDeg: 90,
+      throttle: 0,
+    };
+  }
+
+  // ---- back at Earth ----
+
+  /** One step of aerocapture guidance (the normal Earth flight, on the way home). */
+  runCapture(s: FlightState, spec: ShipSpec): LunarOutput {
+    const g = this.g.capture ?? startLunarProgram('aerocapture', 'flyby');
+    const out = runAerocapture(g, s, spec);
+    this.g = { ...this.g, capture: out.next };
+    if (out.chain) this.g = { ...this.g, program: 'none', phase: 'done' };
+    return out;
   }
 
   // ---- objectives ----
@@ -893,6 +1465,7 @@ export class MarsFlight {
   /** Summary for the flight record. */
   summary(): MarsSummary {
     const p = this.p;
+    const day = (t: number | null) => (t !== null ? Math.floor(this.programT(t) / DAY_S) : null);
     return {
       launchDay: this.plan.launchDay,
       departed: p.departedT !== null,
@@ -905,7 +1478,27 @@ export class MarsFlight {
       surfaceDone: p.surfaceDone,
       plantRunning: this.plan.plant && p.surfaceDone,
       ice: p.landing?.outcome === 'landed' ? this.siteNow.ice : null,
-      landedDay: p.landedT !== null ? Math.floor(this.programT(p.landedT) / DAY_S) : null,
+      landedDay: day(p.landedT),
+      ...(this.crewed
+        ? {
+            returnTrip: {
+              plantDrawKg: p.plantDrawKg,
+              plantDrawDay: day(p.plantDoneT),
+              liftedOff: p.liftedOffT !== null,
+              marsOrbit: p.marsOrbit,
+              tei: p.tei,
+              surfaceDays:
+                p.liftedOffT !== null && p.landedT !== null
+                  ? (p.liftedOffT - p.landedT) / DAY_S
+                  : null,
+              homeCruiseDays:
+                p.earthArrivedT !== null && p.leftMarsT !== null
+                  ? (p.earthArrivedT - p.leftMarsT) / DAY_S
+                  : null,
+              earthArrived: p.earthArrivedT !== null,
+            },
+          }
+        : {}),
     };
   }
 
@@ -916,8 +1509,9 @@ export class MarsFlight {
     const c = this.arrivalCache;
     if (c && Math.abs(c.at - s.tS) < 6 * 3_600 && c.prop === s.propKg) return c.view;
     const T = this.programT(s.tS);
-    const p = predictArrival({ r: s.r, v: s.v }, T);
-    const metric = cruiseMetric({ r: s.r, v: s.v }, T);
+    const target = this.target;
+    const p = predictArrival({ r: s.r, v: s.v }, T, 420, target);
+    const metric = cruiseMetric({ r: s.r, v: s.v }, T, target);
     const view: ArrivalView | null = p
       ? {
           closestT: p.closestT - this.plan.launchDay * DAY_S,
@@ -929,7 +1523,20 @@ export class MarsFlight {
     return view;
   }
 
-  view(s: FlightState | null): MarsView {
+  private plantView(s: FlightState, spec: ShipSpec | null): PlantView | null {
+    const base = this.plan.base;
+    if (!this.crewed || !base) return null;
+    return {
+      siteName: base.siteName,
+      stockKg: this.plantStock(s),
+      rateKgPerDay: this.plantRate,
+      inReach: (this.p.landing?.missM ?? Infinity) <= PLANT_REACH_M,
+      op: this.plantOp,
+      available: spec ? this.plantAvailability(s, spec) : { ok: false },
+    };
+  }
+
+  view(s: FlightState | null, spec: ShipSpec | null = null): MarsView {
     const tS = s?.tS ?? 0;
     const T = this.programT(tS);
     const earth = planetState('earth', T);
@@ -966,6 +1573,7 @@ export class MarsFlight {
       } else if (s.origin !== 'sun') this.path = [];
     }
     const near = s?.origin === 'mars';
+    const avail = (p: MarsProgramId) => (s ? this.availability(p, s) : { ok: false });
     return {
       plan: this.plan,
       guidance: this.g,
@@ -999,11 +1607,22 @@ export class MarsFlight {
         : null,
       refuel: this.op,
       refuelAvailable: s ? this.refuelAvailability(s) : { ok: false },
+      leg: this.leg,
+      returnWindow: this.crewed ? windowStatus(T / DAY_S, 'home') : null,
+      plant: s ? this.plantView(s, spec) : null,
+      liftOff: this.crewed && s && this.surface ? this.liftOffAvailability(s) : null,
+      earthAltitudeM:
+        s && !s.origin && this.p.earthArrivedT !== null
+          ? Math.hypot(s.r[0], s.r[1]) - EARTH_RADIUS_M
+          : null,
       manualAllowed: s ? this.manualAllowed(s) : false,
       programs: {
-        'trans-mars': s ? this.availability('trans-mars', s) : { ok: false },
-        'mars-cruise': s ? this.availability('mars-cruise', s) : { ok: false },
-        'mars-entry': s ? this.availability('mars-entry', s) : { ok: false },
+        'trans-mars': avail('trans-mars'),
+        'mars-cruise': avail('mars-cruise'),
+        'mars-entry': avail('mars-entry'),
+        'mars-ascent': avail('mars-ascent'),
+        'trans-earth-mars': avail('trans-earth-mars'),
+        'earth-aerocapture': avail('earth-aerocapture'),
       },
     };
   }

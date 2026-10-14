@@ -194,6 +194,28 @@ export const MILESTONES: readonly Milestone[] = [
     rewardRp: 1,
     isAchieved: (ctx) => anyFlight(ctx, (f) => f.mars?.plantRunning === true),
   },
+  {
+    id: 'crew-on-mars',
+    title: 'Footprints in red dust',
+    description: 'Land a crew on Mars.',
+    rewardRp: 0,
+    rewardCredits: 100_000,
+    isAchieved: (ctx) =>
+      anyFlight(ctx, (f) => !!f.mars?.returnTrip && f.mars.landing?.outcome === 'landed'),
+  },
+  {
+    id: 'home-from-mars',
+    title: 'Home from Mars',
+    description: 'Bring a Mars crew home safely, refuelled on Mars.',
+    rewardRp: 0,
+    rewardCredits: 150_000,
+    isAchieved: (ctx) =>
+      anyFlight(
+        ctx,
+        (f) =>
+          f.missionId === 'mars-crewed' && f.credited && (f.mars?.returnTrip?.plantDrawKg ?? 0) > 0,
+      ),
+  },
 ];
 
 /** Milestones achieved by the context that are not yet recorded. */

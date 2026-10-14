@@ -25,7 +25,7 @@ export function MarsSitePicker({ mars }: { mars: MarsView }) {
     <div className="panel">
       <div className="panel-header">
         <h2>Landing site</h2>
-        <span className="badge">{locked ? 'LOCKED' : 'CHOOSE'}</span>
+        <span className="badge">{mars.plan.crewed ? 'PLANT' : locked ? 'LOCKED' : 'CHOOSE'}</span>
       </div>
       <fieldset className="zone-picker" disabled={locked}>
         <legend className="sr-only">Mars landing site</legend>
@@ -57,9 +57,11 @@ export function MarsSitePicker({ mars }: { mars: MarsView }) {
       <p className="small-text muted">{mars.site.science}</p>
       <TerrainStrip terrain={mars.terrain} fromM={-1_500} toM={1_500} />
       <p className="small-text muted">
-        {locked
-          ? 'The approach has been set for this site.'
-          : 'Higher ground has less air to slow down in: the landing burn starts faster and uses more propellant. The site is fixed by the approach correction after arriving at Mars.'}
+        {mars.plan.crewed
+          ? `The crew lands next to the propellant plant at ${mars.site.name} (within 2 km to run a propellant line).`
+          : locked
+            ? 'The approach has been set for this site.'
+            : 'Higher ground has less air to slow down in: the landing burn starts faster and uses more propellant. The site is fixed by the approach correction after arriving at Mars.'}
       </p>
     </div>
   );

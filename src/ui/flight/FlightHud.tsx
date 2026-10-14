@@ -3,6 +3,7 @@ import { useGameStore } from '../../app/gameStore';
 import { continueToOrbit, handoffPending } from '../../app/flightBinding';
 import { launchRuntime } from '../../app/launchBinding';
 import { useShortcut } from '../useShortcut';
+import { flownFromMars } from '../../flight/flightRuntime';
 import { AutopilotPanel } from './AutopilotPanel';
 import { FlightControlsBar } from './FlightControlsBar';
 import { FlightDebrief } from './FlightDebrief';
@@ -60,17 +61,23 @@ export function FlightHud() {
   }
 
   // On the way to Mars or on Mars: Earth telemetry no longer applies.
-  if (snap.mars && (snap.phase === 'voyage' || snap.phase === 'surface')) {
+  if (flownFromMars(snap)) {
     return (
       <div className="factory-hud launch-hud">
         <div className="panel empty-pad" role="status">
           <h2>
-            {snap.phase === 'surface' ? 'The ship is on Mars' : 'The ship is on its way to Mars'}
+            {snap.phase === 'surface'
+              ? 'The ship is on Mars'
+              : snap.mars?.leg === 'home'
+                ? 'The crew is on the way home from Mars'
+                : 'The ship is on its way to Mars'}
           </h2>
           <p>
             {snap.phase === 'surface'
               ? 'Surface operations are in progress at the Mars location.'
-              : 'It has left Earth behind. Follow the cruise, the arrival and the landing at the Mars location.'}
+              : snap.mars?.leg === 'home'
+                ? "Follow the ascent and the cruise home at the Mars location; the arrival at Earth is flown here once the ship is back in Earth's sphere of influence."
+                : 'It has left Earth behind. Follow the cruise, the arrival and the landing at the Mars location.'}
           </p>
           <div className="actions">
             <button type="button" className="primary" autoFocus onClick={() => goTo('mars')}>

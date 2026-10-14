@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { autoMotion } from '../../render/motion';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { FlightState } from '../../flight/flightModel';
+import { flownFromMars } from '../../flight/flightRuntime';
 import { localFrame } from '../../flight/orbitMath';
 import type { GameScene, SceneContext } from '../../game/GameScene';
 import { ResourceCache } from '../../render/ResourceCache';
@@ -109,7 +110,7 @@ export class FlightScene implements GameScene {
     // The scene drives the flight runtime only while Flight is the active location. A Mars
     // voyage (or a ship on Mars) is flown from the Mars location instead.
     const cur = this.controller.runtime.current;
-    if (cur.mars && (cur.phase === 'voyage' || cur.phase === 'surface')) {
+    if (flownFromMars({ ...cur, state: this.controller.runtime.liveState ?? cur.state })) {
       this.ship!.root.visible = false;
       this.idleView();
       return;

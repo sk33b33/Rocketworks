@@ -768,7 +768,8 @@ function runTransEarth(
  * leaves the atmosphere into an orbit with the target apogee. Predicts the exit for a few
  * candidate banks every few seconds and flies the best one.
  */
-function runAerocapture(g: LunarGuidance, s: FlightState, spec: ShipSpec): LunarOutput {
+/** One step of aerocapture guidance (also used for Earth returns from Mars). */
+export function runAerocapture(g: LunarGuidance, s: FlightState, spec: ShipSpec): LunarOutput {
   const f = localFrame(s.r);
   const el = orbitalElements(s.r, s.v);
   const gamma = el.flightPathAngleDeg;

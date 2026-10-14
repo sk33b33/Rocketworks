@@ -38,6 +38,11 @@ export type ObjectiveId =
   | 'mars-arrival'
   | 'mars-landing'
   | 'mars-surface'
+  | 'mars-crew-tasks'
+  | 'mars-refuel'
+  | 'mars-ascent'
+  | 'tei'
+  | 'mars-return'
   | 'deorbit'
   | 'reentry'
   | 'landing';
@@ -98,6 +103,11 @@ export const OBJECTIVE_LABELS: Record<ObjectiveId, string> = {
   'mars-arrival': 'Cruise to Mars (course corrections)',
   'mars-landing': 'Land at the selected Mars site',
   'mars-surface': 'Unload and start the propellant plant',
+  'mars-crew-tasks': "Finish the crew's surface tasks",
+  'mars-refuel': 'Refuel from the propellant plant',
+  'mars-ascent': 'Lift off and reach Mars orbit',
+  tei: 'Trans-Earth injection in the return window',
+  'mars-return': 'Cruise home to Earth',
   deorbit: 'Deorbit burn (periapsis into the atmosphere)',
   reentry: 'Survive re-entry',
   landing: 'Land or splash down safely',
@@ -144,7 +154,16 @@ export function objectiveDone(id: ObjectiveId, p: FlightProgress, s: FlightState
     case 'mars-landing':
       return p.mars?.landing?.outcome === 'landed';
     case 'mars-surface':
+    case 'mars-crew-tasks':
       return !!p.mars?.surfaceDone;
+    case 'mars-refuel':
+      return (p.mars?.plantDrawKg ?? 0) > 0;
+    case 'mars-ascent':
+      return !!p.mars?.marsOrbit;
+    case 'tei':
+      return !!p.mars?.tei;
+    case 'mars-return':
+      return p.mars?.earthArrivedT !== null && p.mars?.earthArrivedT !== undefined;
     case 'deorbit':
       return p.deorbit;
     case 'reentry':
@@ -196,6 +215,7 @@ export const CREDITABLE_IN_FLIGHT = new Set([
   'lunar-transfer',
   'lunar-landing',
   'mars-cargo',
+  'mars-crewed',
 ]);
 
 /** The objective checklist for a mission's orbital flight. */
@@ -211,6 +231,21 @@ export function objectivesFor(
       return ['orbit', ...leo, 'tli', 'flyby', 'earth-return', 'deorbit', 'reentry', 'landing'];
     case 'mars-cargo':
       return ['orbit', ...leo, 'tmi', 'mars-arrival', 'mars-landing', 'mars-surface'];
+    case 'mars-crewed':
+      return [
+        'orbit',
+        ...leo,
+        'tmi',
+        'mars-arrival',
+        'mars-landing',
+        'mars-crew-tasks',
+        'mars-refuel',
+        'mars-ascent',
+        'tei',
+        'mars-return',
+        'reentry',
+        'landing',
+      ];
     case 'lunar-landing':
       return [
         'orbit',
@@ -242,6 +277,17 @@ export function orbitalGoalsMet(missionId: string, p: FlightProgress): boolean {
       return !!l && l.landing?.outcome === 'landed' && l.surfaceDone && l.ascent && l.earthReturn;
     case 'mars-cargo':
       return p.mars?.landing?.outcome === 'landed' && !!p.mars.surfaceDone;
+    case 'mars-crewed': {
+      const m = p.mars;
+      return (
+        !!m &&
+        m.landing?.outcome === 'landed' &&
+        m.surfaceDone &&
+        m.marsOrbit &&
+        m.tei &&
+        m.earthArrivedT !== null
+      );
+    }
     default:
       return p.orbit && completedOrbits(p) >= 1;
   }
@@ -252,6 +298,7 @@ const INCOMPLETE: Record<string, string> = {
   'lunar-transfer': 'fly past the Moon and return to Earth orbit.',
   'lunar-landing': 'land on the Moon, finish the surface tasks and fly home.',
   'mars-cargo': 'land on Mars and finish the surface tasks.',
+  'mars-crewed': 'land on Mars, finish the surface tasks, and fly the crew home.',
 };
 
 /** Classifies how the flight ended. `ended` = the player ended the flight while still flying. */
@@ -421,6 +468,7 @@ function evaluateMarsFlight(
   p: FlightProgress,
   at: string,
 ): FlightRecord {
+  if (m.returnTrip) return evaluateMarsRoundTrip(ctx, m, s, p, at);
   const onMars = s.touchdown?.body === 'mars';
   const outcome: LandingSummary['outcome'] =
     s.phase === 'destroyed'
@@ -484,6 +532,96 @@ function evaluateMarsFlight(
     summary,
     credited,
     crewSafe: ctx.outcome.crewed ? outcome !== 'crash' && outcome !== 'breakup' : null,
+    maxAltitudeM: Math.max(ctx.ascent.maxAltitudeM, ctx.maxAltitudeM),
+    maxSpeedMS: Math.max(ctx.ascent.maxSpeedMS, ctx.maxSpeedMS),
+    maxQPa: ctx.ascent.maxQPa,
+    durationS: s.tS,
+    events: [
+      ...ctx.ascent.events,
+      ...s.events.map((e) => `T+${Math.round(e.tS)}s ${e.text}`),
+    ].slice(-60),
+    landing,
+    mars: m,
+    ...(ctx.recovery ? { recovery: ctx.recovery } : {}),
+    hardware: ctx.hardware ?? { boosterId: null, shipId: null },
+  };
+}
+
+/**
+ * Crewed round trips end back on Earth: the usual landing rules apply there, and success needs
+ * every Mars goal on the way. A flight ended on Mars or in space leaves the crew to be rescued by
+ * a later flight (gameplay simplification); a crash or breakup is fatal.
+ */
+function evaluateMarsRoundTrip(
+  ctx: FlightOutcomeContext,
+  m: MarsSummary,
+  s: FlightState,
+  p: FlightProgress,
+  at: string,
+): FlightRecord {
+  const r = m.returnTrip!;
+  const onMars = s.touchdown?.body === 'mars' || (s.origin === 'mars' && s.phase !== 'flight');
+  const atEarth = !s.origin && s.phase !== 'flight' && !onMars;
+  let landing: LandingSummary;
+  let summary: string;
+  if (atEarth) {
+    landing = landingSummary(s, p, ctx.zone, ctx.manualLanding ?? false);
+    summary = summarize(landing, ctx.zone);
+  } else {
+    const outcome: LandingSummary['outcome'] =
+      s.phase === 'destroyed' ? 'breakup' : s.phase === 'crashed' ? 'crash' : 'stranded';
+    landing = {
+      outcome,
+      zoneName: null,
+      missM: null,
+      shipRecovered: false,
+      orbits: completedOrbits(p),
+      hull: s.hull,
+      shield: s.shield,
+      peakG: s.peakG,
+      peakHeatKWm2: s.peakHeatFluxWm2 / 1000,
+      grade: null,
+      manual: false,
+    };
+    const site = m.landing?.siteName ?? 'Mars';
+    summary =
+      outcome === 'breakup'
+        ? r.liftedOff
+          ? 'The ship broke up on the way home.'
+          : 'The ship broke up during Mars entry.'
+        : outcome === 'crash'
+          ? r.liftedOff
+            ? 'The ship crashed after lifting off from Mars.'
+            : 'The ship crashed on Mars.'
+          : s.phase === 'tipped'
+            ? `The ship tipped over at ${site} and is lost; the crew is assumed rescued by a later flight.`
+            : onMars && !r.liftedOff
+              ? `Flight ended with the crew on Mars at ${site}; they are assumed rescued by a later flight.`
+              : 'Flight ended with the ship still in space; the crew is assumed rescued by a later flight.';
+  }
+  const safe = landing.outcome === 'landed' || landing.outcome === 'splashdown';
+  const goals = orbitalGoalsMet(ctx.outcome.missionId, p);
+  const credited = safe && goals && CREDITABLE_IN_FLIGHT.has(ctx.outcome.missionId);
+  const result: FlightRecord['result'] =
+    landing.outcome === 'stranded'
+      ? 'aborted'
+      : !safe
+        ? 'failure'
+        : credited
+          ? 'success'
+          : 'partial';
+  if (credited)
+    summary += ` The crew is home after ${Math.round(s.tS / 86_400)} days, ${Math.round(r.surfaceDays ?? 0)} of them on Mars.`;
+  else if (safe)
+    summary += ` Mission objectives incomplete: ${INCOMPLETE[ctx.outcome.missionId] ?? 'fly the crew home.'}`;
+  return {
+    ...recordBase({ ...ctx.outcome, at }),
+    result,
+    summary,
+    credited,
+    crewSafe: ctx.outcome.crewed
+      ? landing.outcome !== 'crash' && landing.outcome !== 'breakup'
+      : null,
     maxAltitudeM: Math.max(ctx.ascent.maxAltitudeM, ctx.maxAltitudeM),
     maxSpeedMS: Math.max(ctx.ascent.maxSpeedMS, ctx.maxSpeedMS),
     maxQPa: ctx.ascent.maxQPa,

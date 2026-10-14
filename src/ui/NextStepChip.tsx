@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react';
+import { flownFromMars } from '../flight/flightRuntime';
 import { useGameStore } from '../app/gameStore';
 import { flightRuntime } from '../app/flightBinding';
 import { launchRuntime } from '../app/launchBinding';
@@ -14,16 +15,15 @@ export function NextStepChip() {
   const committed = useGameStore((s) => !!s.mission.commit);
   const current = useGameStore((s) => s.currentLocation);
   const goTo = useGameStore((s) => s.goTo);
-  const flightAt =
-    flight.mars && (flight.phase === 'voyage' || flight.phase === 'surface')
-      ? 'mars'
-      : flight.phase === 'proximity'
-        ? 'station'
-        : flight.phase === 'surface' || (flight.phase === 'flight' && flight.state?.ref === 'moon')
-          ? 'moon'
-          : flight.phase === 'flight'
-            ? 'flight'
-            : null;
+  const flightAt = flownFromMars(flight)
+    ? 'mars'
+    : flight.phase === 'proximity'
+      ? 'station'
+      : flight.phase === 'surface' || (flight.phase === 'flight' && flight.state?.ref === 'moon')
+        ? 'moon'
+        : flight.phase === 'flight'
+          ? 'flight'
+          : null;
   const step = nextStep({
     blueprints,
     completedMissionIds: completed,

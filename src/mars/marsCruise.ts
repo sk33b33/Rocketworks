@@ -1,23 +1,38 @@
+import { EARTH_MU_M3S2, EARTH_RADIUS_M } from '../simulation/constants';
 import type { Vec2 } from '../flight/orbitMath';
+import { AEROCAPTURE_PERIGEE_M } from '../moon/lunarTransfer';
 import { angularMomentum, periapsisRadius, propagateKepler, type KeplerState } from './kepler';
 import { entrySpeed } from './marsTransfer';
 import {
   DAY_S,
+  EARTH_SOI_M,
   MARS_INTERFACE_M,
   MARS_MU_M3S2,
   MARS_RADIUS_M,
   MARS_SOI_M,
   planetState,
   SUN_MU_M3S2,
+  type Planet,
 } from './solarSystem';
 
 /*
  * Cruise navigation with patched conics (gameplay guidance). Between the planets the ship follows
- * a Sun-centred conic; its aim at Mars is judged by the signed impact parameter (b) of the
- * straight-line approach, which gravity doesn't change: the pass is clockwise when b < 0. Inside
- * Mars's sphere of influence the exact Mars-centred hyperbola gives the periapsis. Corrections
- * are small impulses solved by the secant method along the most effective direction.
+ * a Sun-centred conic; its aim at the target planet is judged by the signed impact parameter (b)
+ * of the straight-line approach, which gravity doesn't change: the pass is clockwise when b < 0.
+ * Inside the planet's sphere of influence the exact planet-centred hyperbola gives the periapsis.
+ * Mars arrivals aim for an entry flight-path angle; Earth returns aim for the aerocapture
+ * perigee. Corrections are small impulses solved by the secant method along the most effective
+ * direction.
  */
+
+/** Gravity and sphere of influence of an arrival planet. */
+const TARGET = {
+  mars: { mu: MARS_MU_M3S2, soi: MARS_SOI_M },
+  earth: { mu: EARTH_MU_M3S2, soi: EARTH_SOI_M },
+} as const;
+
+export const targetMu = (target: Planet): number => TARGET[target].mu;
+export const targetSoi = (target: Planet): number => TARGET[target].soi;
 
 /** Entry flight-path angle the approach is aimed for (deg, below the horizon). */
 export const ENTRY_FPA_DEG = -12;
@@ -27,29 +42,37 @@ export interface ArrivalPrediction {
   readonly closestT: number;
   /** Signed impact parameter (m; negative = clockwise pass). */
   readonly signedB: number;
-  /** Approach speed relative to Mars (m/s). */
+  /** Approach speed relative to the target planet (m/s). */
   readonly vInfMS: number;
-  /** Time the ship enters Mars's sphere of influence (null if it misses it). */
+  /** Time the ship enters the planet's sphere of influence (null if it misses it). */
   readonly soiT: number | null;
 }
 
-/** Impact parameter that gives the entry flight-path angle at the interface, for a v∞. */
-export function targetImpactParameter(vInfMS: number): number {
+/** Earth-return periapsis aimed for: the aerocapture perigee. */
+export const EARTH_AIM_PERIGEE_R = EARTH_RADIUS_M + AEROCAPTURE_PERIGEE_M;
+
+/** Impact parameter that gives the arrival aim (Mars entry angle, or Earth's aerocapture perigee). */
+export function targetImpactParameter(vInfMS: number, target: Planet = 'mars'): number {
+  if (target === 'earth') {
+    const rp = EARTH_AIM_PERIGEE_R;
+    return rp * Math.sqrt(1 + (2 * EARTH_MU_M3S2) / (rp * vInfMS * vInfMS));
+  }
   const ri = MARS_RADIUS_M + MARS_INTERFACE_M;
   const vi = entrySpeed(vInfMS);
   const h = ri * vi * Math.cos((ENTRY_FPA_DEG * Math.PI) / 180);
   return h / vInfMS;
 }
 
-/** Periapsis radius aimed for from inside the sphere of influence (same flight-path target). */
-export function targetPeriapsisRadius(vInfMS: number): number {
+/** Periapsis radius aimed for from inside the sphere of influence (same aim). */
+export function targetPeriapsisRadius(vInfMS: number, target: Planet = 'mars'): number {
+  if (target === 'earth') return EARTH_AIM_PERIGEE_R;
   const h = targetImpactParameter(vInfMS) * vInfMS;
   const mu = MARS_MU_M3S2;
   return (-mu + Math.sqrt(mu * mu + vInfMS * vInfMS * h * h)) / (vInfMS * vInfMS);
 }
 
-const relTo = (s: KeplerState, T: number) => {
-  const m = planetState('mars', T);
+const relTo = (s: KeplerState, T: number, target: Planet) => {
+  const m = planetState(target, T);
   return {
     r: [s.r[0] - m.r[0], s.r[1] - m.r[1]] as Vec2,
     v: [s.v[0] - m.v[0], s.v[1] - m.v[1]] as Vec2,
@@ -57,17 +80,19 @@ const relTo = (s: KeplerState, T: number) => {
 };
 
 /**
- * Predicts the heliocentric approach to Mars from (helio state at program time T0), ignoring
- * Mars's gravity: steps a day at a time to the closest approach, then refines it.
+ * Predicts the heliocentric approach to the target planet from (helio state at program time T0),
+ * ignoring the planet's gravity: steps a day at a time to the closest approach, then refines it.
  */
 export function predictArrival(
   s: KeplerState,
   T0: number,
   maxDays = 420,
+  target: Planet = 'mars',
 ): ArrivalPrediction | null {
+  const soi = TARGET[target].soi;
   const dist = (t: number) => {
     const p = propagateKepler(s, SUN_MU_M3S2, t - T0);
-    const rel = relTo(p, t);
+    const rel = relTo(p, t, target);
     return Math.hypot(rel.r[0], rel.r[1]);
   };
   let bestT = T0;
@@ -99,19 +124,19 @@ export function predictArrival(
   }
   const tCa = (lo + hi) / 2;
   const p = propagateKepler(s, SUN_MU_M3S2, tCa - T0);
-  const rel = relTo(p, tCa);
+  const rel = relTo(p, tCa, target);
   const u = Math.hypot(rel.v[0], rel.v[1]);
   const signedB = angularMomentum(rel.r, rel.v) / u;
   // Sphere-of-influence crossing (bisection between the start and closest approach).
   let soiT: number | null = null;
-  if (Math.hypot(rel.r[0], rel.r[1]) < MARS_SOI_M) {
-    if (dist(T0) <= MARS_SOI_M) soiT = T0;
+  if (Math.hypot(rel.r[0], rel.r[1]) < soi) {
+    if (dist(T0) <= soi) soiT = T0;
     else {
       let a = T0;
       let b = tCa;
       for (let i = 0; i < 50; i++) {
         const m = (a + b) / 2;
-        if (dist(m) > MARS_SOI_M) a = m;
+        if (dist(m) > soi) a = m;
         else b = m;
       }
       soiT = b;
@@ -120,21 +145,22 @@ export function predictArrival(
   return { closestT: tCa, signedB, vInfMS: u, soiT };
 }
 
-/** Aim error of a heliocentric approach (m): zero when the pass is clockwise at the entry aim. */
-export function cruiseMetric(s: KeplerState, T0: number): number | null {
-  const p = predictArrival(s, T0);
+/** Aim error of a heliocentric approach (m): zero when the pass is clockwise at the aim. */
+export function cruiseMetric(s: KeplerState, T0: number, target: Planet = 'mars'): number | null {
+  const p = predictArrival(s, T0, 420, target);
   if (!p) return null;
-  return p.signedB + targetImpactParameter(p.vInfMS);
+  return p.signedB + targetImpactParameter(p.vInfMS, target);
 }
 
-/** Aim error of a Mars-centred approach (m): signed periapsis minus the entry aim. */
-export function approachMetric(rel: KeplerState): number {
+/** Aim error of a planet-centred approach (m): signed periapsis minus the aim. */
+export function approachMetric(rel: KeplerState, target: Planet = 'mars'): number {
+  const mu = TARGET[target].mu;
   const v = Math.hypot(rel.v[0], rel.v[1]);
-  const energy = (v * v) / 2 - MARS_MU_M3S2 / Math.hypot(rel.r[0], rel.r[1]);
+  const energy = (v * v) / 2 - mu / Math.hypot(rel.r[0], rel.r[1]);
   const vInf = Math.sqrt(Math.max(1, 2 * energy));
-  const rp = periapsisRadius(rel.r, rel.v, MARS_MU_M3S2);
+  const rp = periapsisRadius(rel.r, rel.v, mu);
   const signed = angularMomentum(rel.r, rel.v) < 0 ? rp : -rp;
-  return signed - targetPeriapsisRadius(vInf);
+  return signed - targetPeriapsisRadius(vInf, target);
 }
 
 /**
@@ -184,8 +210,13 @@ export function solveImpulse(
   return null;
 }
 
-/** Time (s) from a Mars-centred state until it descends to `radius`, or null if it never does. */
-export function timeToRadius(rel: KeplerState, radius: number, maxS = 30 * DAY_S): number | null {
+/** Time (s) from a planet-centred state until it descends to `radius`, or null if it never does. */
+export function timeToRadius(
+  rel: KeplerState,
+  radius: number,
+  maxS = 30 * DAY_S,
+  mu = MARS_MU_M3S2,
+): number | null {
   const r0 = Math.hypot(rel.r[0], rel.r[1]);
   if (r0 <= radius) return 0;
   // Coarse steps to bracket the crossing, then bisection.
@@ -194,14 +225,14 @@ export function timeToRadius(rel: KeplerState, radius: number, maxS = 30 * DAY_S
   let prevT = 0;
   while (t < maxS) {
     t = Math.min(maxS, t + step);
-    const p = propagateKepler(rel, MARS_MU_M3S2, t);
+    const p = propagateKepler(rel, mu, t);
     const r = Math.hypot(p.r[0], p.r[1]);
     if (r <= radius) {
       let a = prevT;
       let b = t;
       for (let i = 0; i < 50; i++) {
         const m = (a + b) / 2;
-        const q = propagateKepler(rel, MARS_MU_M3S2, m);
+        const q = propagateKepler(rel, mu, m);
         if (Math.hypot(q.r[0], q.r[1]) > radius) a = m;
         else b = m;
       }

@@ -2,7 +2,7 @@ import { useGameStore } from '../../app/gameStore';
 import { flightRuntime } from '../../app/flightBinding';
 import type { FlightSnapshot } from '../../flight/flightRuntime';
 import { REFUEL } from '../../moon/lunarFlight';
-import { MARS_PHASE_LABELS } from '../../mars/marsFlight';
+import { marsPhaseLabel } from '../../mars/marsFlight';
 import { DAY_S } from '../../mars/solarSystem';
 import { formatPercent } from '../format';
 import { fmt, formatDuration } from '../flight/useFlight';
@@ -22,21 +22,36 @@ export function MarsPanel({ snap, showGoTo = true }: { snap: FlightSnapshot; sho
   const refuel = mars.refuel;
   const avail = mars.refuelAvailable;
   const flying = snap.phase === 'flight' && s.phase === 'flight';
+  const home = mars.leg === 'home';
   const status = mars.surface
     ? `On Mars (${mars.site.name})`
-    : mars.frame === 'mars'
-      ? 'Approaching Mars'
-      : mars.frame === 'sun'
-        ? 'Cruising to Mars'
-        : p.tmi
-          ? 'Leaving Earth'
-          : 'Earth parking orbit';
+    : home
+      ? mars.frame === 'mars'
+        ? p.tei
+          ? 'Leaving Mars'
+          : p.marsOrbit
+            ? 'In Mars orbit'
+            : 'Climbing to Mars orbit'
+        : mars.frame === 'sun'
+          ? 'Cruising home to Earth'
+          : 'Back at Earth'
+      : mars.frame === 'mars'
+        ? 'Approaching Mars'
+        : mars.frame === 'sun'
+          ? 'Cruising to Mars'
+          : p.tmi
+            ? 'Leaving Earth'
+            : 'Earth parking orbit';
   return (
     <div className="panel">
       <div className="panel-header">
         <h2>Mars</h2>
         <span className="badge">
-          {g.program === 'none' ? 'CARGO' : MARS_PHASE_LABELS[g.phase].toUpperCase()}
+          {g.program === 'none'
+            ? mars.plan.crewed
+              ? 'CREW'
+              : 'CARGO'
+            : marsPhaseLabel(g, mars.leg).toUpperCase()}
         </span>
       </div>
       <dl className="facts">
@@ -52,7 +67,7 @@ export function MarsPanel({ snap, showGoTo = true }: { snap: FlightSnapshot; sho
             </dd>
           </>
         )}
-        {mars.arrival && (
+        {mars.arrival && !home && (
           <>
             <dt>Arrival</dt>
             <dd>in {days(Math.max(0, mars.arrival.closestT - t))}</dd>
@@ -78,7 +93,7 @@ export function MarsPanel({ snap, showGoTo = true }: { snap: FlightSnapshot; sho
             </dd>
           </>
         )}
-        {mars.marsAltitudeM !== null && !mars.surface && (
+        {mars.marsAltitudeM !== null && !mars.surface && !home && (
           <>
             <dt>Mars altitude</dt>
             <dd>{km(mars.marsAltitudeM)}</dd>
@@ -89,7 +104,7 @@ export function MarsPanel({ snap, showGoTo = true }: { snap: FlightSnapshot; sho
         <dt>Landing site</dt>
         <dd>
           {mars.site.name}
-          {p.siteLocked ? ' (approach set)' : ''}
+          {mars.plan.crewed ? ' (the plant)' : p.siteLocked ? ' (approach set)' : ''}
         </dd>
       </dl>
       {mars.plan.refuelLeo && !p.tmi && (

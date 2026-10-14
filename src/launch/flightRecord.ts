@@ -87,6 +87,23 @@ export interface MarsSummary {
   readonly ice: number | null;
   /** Program day the ship touched down (for the base's production clock). */
   readonly landedDay: number | null;
+  /** Crewed round trips only: the way home. */
+  readonly returnTrip?: MarsReturnSummary;
+}
+
+/** The way home of a crewed Mars round trip. */
+export interface MarsReturnSummary {
+  /** Propellant pumped from the plant (kg) and the program day the line was closed. */
+  readonly plantDrawKg: number;
+  readonly plantDrawDay: number | null;
+  readonly liftedOff: boolean;
+  readonly marsOrbit: boolean;
+  readonly tei: boolean;
+  /** Days on the surface (landing to lift-off). */
+  readonly surfaceDays: number | null;
+  /** Days from leaving Mars to arriving back at Earth. */
+  readonly homeCruiseDays: number | null;
+  readonly earthArrived: boolean;
 }
 
 export type BoosterOutcome = 'caught' | 'landed' | 'lost' | 'expended' | 'not-attempted';

@@ -1,57 +1,112 @@
 import { EARTH_MU_M3S2, EARTH_RADIUS_M } from '../simulation/constants';
-import type { Vec2 } from '../flight/orbitMath';
+import { wrapAngle, type Vec2 } from '../flight/orbitMath';
 import { solveTransfer } from './kepler';
 import {
   DAY_S,
   FIRST_WINDOW_DAY,
+  HOHMANN_TOF_S,
   MARS_INTERFACE_M,
   MARS_MU_M3S2,
   MARS_RADIUS_M,
+  PLANETS,
   planetState,
   SUN_MU_M3S2,
   SYNODIC_S,
+  type Planet,
 } from './solarSystem';
 
 /*
- * Earth–Mars transfer planning with patched conics: a heliocentric transfer ellipse between the
- * planets' positions (solved for the departure time and a range of flight times), the hyperbolic
- * excess speeds it needs at both ends, and the burn from a low Earth parking orbit. Launch windows
- * are the departure days whose injection burn is within a margin of the best of the cycle.
- * Gameplay estimates for a circular, coplanar solar system.
+ * Earth–Mars transfer planning with patched conics, in either direction: a heliocentric transfer
+ * ellipse between the planets' positions (solved for the departure time and a range of flight
+ * times), the hyperbolic excess speeds it needs at both ends, and the injection burn from a low
+ * parking orbit around the departure planet. Windows are the departure days whose injection burn
+ * is within a margin of the best of the cycle. Gameplay estimates for a circular, coplanar solar
+ * system.
  */
 
 /** Parking orbit used for Mission Control's estimates (altitude, m). */
 export const PARKING_ALT_M = 300_000;
+/** Low Mars orbit the crew departs from (altitude, m). */
+export const MARS_PARKING_ALT_M = 200_000;
+/** Minimum-energy flight time between the planets (days). */
+export const HOHMANN_DAYS = HOHMANN_TOF_S / DAY_S;
 export const MIN_TOF_DAYS = 140;
 export const MAX_TOF_DAYS = 340;
 /** Faster arrivals than this would make entry too hot (game limit, m/s). */
 export const MAX_ARRIVAL_VINF_MS = 3_200;
+/** Faster returns than this would overheat the aerocapture at Earth (game limit, m/s). */
+export const MAX_RETURN_VINF_MS = 4_500;
 /** A window is open while the injection burn is within this of the cycle's best (m/s). */
 export const WINDOW_MARGIN_MS = 300;
+/** Earth's entry interface used for arrival speeds (altitude, m). */
+const EARTH_INTERFACE_M = 120_000;
+
+/** Direction of a transfer: out to Mars, or home to Earth. */
+export type Leg = 'out' | 'home';
+
+interface LegSpec {
+  readonly from: Planet;
+  readonly to: Planet;
+  readonly departMu: number;
+  readonly parkingR: number;
+  readonly arriveMu: number;
+  readonly interfaceR: number;
+  readonly maxArrivalVinf: number;
+}
+
+const LEGS: Record<Leg, LegSpec> = {
+  out: {
+    from: 'earth',
+    to: 'mars',
+    departMu: EARTH_MU_M3S2,
+    parkingR: EARTH_RADIUS_M + PARKING_ALT_M,
+    arriveMu: MARS_MU_M3S2,
+    interfaceR: MARS_RADIUS_M + MARS_INTERFACE_M,
+    maxArrivalVinf: MAX_ARRIVAL_VINF_MS,
+  },
+  home: {
+    from: 'mars',
+    to: 'earth',
+    departMu: MARS_MU_M3S2,
+    parkingR: MARS_RADIUS_M + MARS_PARKING_ALT_M,
+    arriveMu: EARTH_MU_M3S2,
+    interfaceR: EARTH_RADIUS_M + EARTH_INTERFACE_M,
+    maxArrivalVinf: MAX_RETURN_VINF_MS,
+  },
+};
+
+/** Default parking-orbit radius around a leg's departure planet. */
+export const parkingRadius = (leg: Leg): number => LEGS[leg].parkingR;
 
 export interface TransferOption {
   /** Departure program time (s). */
   readonly departT: number;
   readonly tofS: number;
   readonly arrivalT: number;
-  /** Hyperbolic excess velocity leaving Earth and arriving at Mars (heliocentric, m/s). */
+  /** Hyperbolic excess velocity leaving and arriving (heliocentric, m/s). */
   readonly vInfDep: Vec2;
   readonly vInfArr: Vec2;
   readonly vInfDepMS: number;
   readonly vInfArrMS: number;
-  /** Trans-Mars injection Δv from the parking orbit (impulsive estimate). */
+  /** Injection Δv from the departure planet's parking orbit (impulsive estimate). */
   readonly tmiDvMS: number;
-  /** Speed at the Mars entry interface. */
+  /** Speed at the arrival planet's entry interface. */
   readonly entrySpeedMS: number;
 }
 
-/** Injection burn from a circular orbit of radius `r` to leave Earth at `vInf` (m/s). */
-export function tmiDeltaV(vInf: number, r = EARTH_RADIUS_M + PARKING_ALT_M): number {
-  return Math.sqrt(vInf * vInf + (2 * EARTH_MU_M3S2) / r) - Math.sqrt(EARTH_MU_M3S2 / r);
+/** Injection burn from a circular orbit of radius `r` to leave a planet at `vInf` (m/s). */
+export function tmiDeltaV(
+  vInf: number,
+  r = EARTH_RADIUS_M + PARKING_ALT_M,
+  mu = EARTH_MU_M3S2,
+): number {
+  return Math.sqrt(vInf * vInf + (2 * mu) / r) - Math.sqrt(mu / r);
 }
 
-export function entrySpeed(vInfArr: number): number {
-  return Math.sqrt(vInfArr * vInfArr + (2 * MARS_MU_M3S2) / (MARS_RADIUS_M + MARS_INTERFACE_M));
+/** Speed at the entry interface for an arrival at `vInfArr` (Mars by default). */
+export function entrySpeed(vInfArr: number, leg: Leg = 'out'): number {
+  const l = LEGS[leg];
+  return Math.sqrt(vInfArr * vInfArr + (2 * l.arriveMu) / l.interfaceR);
 }
 
 const sub = (a: Vec2, b: Vec2): Vec2 => [a[0] - b[0], a[1] - b[1]];
@@ -60,11 +115,13 @@ const sub = (a: Vec2, b: Vec2): Vec2 => [a[0] - b[0], a[1] - b[1]];
 export function transferFor(
   departT: number,
   tofS: number,
-  parkingR = EARTH_RADIUS_M + PARKING_ALT_M,
+  parkingR?: number,
   guess?: Vec2,
+  leg: Leg = 'out',
 ): (TransferOption & { readonly v1: Vec2 }) | null {
-  const e = planetState('earth', departT);
-  const m = planetState('mars', departT + tofS);
+  const l = LEGS[leg];
+  const e = planetState(l.from, departT);
+  const m = planetState(l.to, departT + tofS);
   const sol = solveTransfer(e.r, m.r, tofS, SUN_MU_M3S2, guess);
   if (!sol) return null;
   const vInfDep = sub(sol.v1, e.v);
@@ -79,8 +136,8 @@ export function transferFor(
     vInfArr,
     vInfDepMS,
     vInfArrMS,
-    tmiDvMS: tmiDeltaV(vInfDepMS, parkingR),
-    entrySpeedMS: entrySpeed(vInfArrMS),
+    tmiDvMS: tmiDeltaV(vInfDepMS, parkingR ?? l.parkingR, l.departMu),
+    entrySpeedMS: entrySpeed(vInfArrMS, leg),
     v1: sol.v1,
   };
 }
@@ -91,14 +148,16 @@ export function transferFor(
  */
 export function bestTransfer(
   departT: number,
-  parkingR = EARTH_RADIUS_M + PARKING_ALT_M,
+  parkingR?: number,
+  leg: Leg = 'out',
 ): TransferOption | null {
+  const maxArr = LEGS[leg].maxArrivalVinf;
   let guess: Vec2 | undefined;
   const cache = new Map<number, (TransferOption & { v1: Vec2 }) | null>();
   const evalTof = (days: number) => {
     const key = Math.round(days * 1_000);
     if (cache.has(key)) return cache.get(key)!;
-    const t = transferFor(departT, days * DAY_S, parkingR, guess);
+    const t = transferFor(departT, days * DAY_S, parkingR, guess, leg);
     if (t) guess = t.v1;
     cache.set(key, t);
     return t;
@@ -106,7 +165,7 @@ export function bestTransfer(
   const cost = (days: number) => {
     const t = evalTof(days);
     if (!t) return Infinity;
-    const over = Math.max(0, t.vInfArrMS - MAX_ARRIVAL_VINF_MS);
+    const over = Math.max(0, t.vInfArrMS - maxArr);
     return t.tmiDvMS + over * 3;
   };
   // Coarse scan first (the cost can have flat or broken stretches far from the window).
@@ -153,7 +212,7 @@ export function bestTransfer(
 
 /** Injection-burn profile over one synodic cycle, sampled every 2 days around the best day. */
 interface WindowProfile {
-  /** Offset (days) of the best departure from FIRST_WINDOW_DAY. */
+  /** Offset (days) of the best departure from the leg's reference day. */
   readonly bestOffsetDays: number;
   readonly bestDvMS: number;
   /** Window half-widths (days) before and after the best day. */
@@ -161,14 +220,35 @@ interface WindowProfile {
   readonly openAfterDays: number;
 }
 
-let profileCache: WindowProfile | null = null;
+const profileCache: Partial<Record<Leg, WindowProfile>> = {};
 
-/** The (periodic) window profile; computed once. */
-export function windowProfile(): WindowProfile {
-  if (profileCache) return profileCache;
+/**
+ * Program day of a leg's first minimum-energy (Hohmann) departure: day FIRST_WINDOW_DAY for the
+ * way out, and the first return opportunity after it for the way home.
+ */
+export function referenceDay(leg: Leg): number {
+  if (leg === 'out') return FIRST_WINDOW_DAY;
+  const e = PLANETS.earth;
+  const m = PLANETS.mars;
+  // Earth must reach the point opposite Mars's departure one Hohmann flight time later.
+  const want = e.n * HOHMANN_TOF_S - Math.PI;
+  const rate = m.n - e.n;
+  const t0 = FIRST_WINDOW_DAY * DAY_S;
+  const now = m.angle0 - e.angle0 + rate * t0;
+  // The phase falls over time (Earth gains on Mars): time until it next equals `want`.
+  let d = wrapAngle(now - want);
+  if (d < 0) d += 2 * Math.PI;
+  return (t0 + d / -rate) / DAY_S;
+}
+
+/** The (periodic) window profile of a leg; computed once. */
+export function windowProfile(leg: Leg = 'out'): WindowProfile {
+  const cached = profileCache[leg];
+  if (cached) return cached;
+  const ref = referenceDay(leg);
   const samples: { off: number; dv: number }[] = [];
   for (let off = -90; off <= 90; off += 2) {
-    const t = bestTransfer((FIRST_WINDOW_DAY + off) * DAY_S);
+    const t = bestTransfer((ref + off) * DAY_S, undefined, leg);
     samples.push({ off, dv: t ? t.tmiDvMS : Infinity });
   }
   let best = samples[0]!;
@@ -181,13 +261,14 @@ export function windowProfile(): WindowProfile {
     before = Math.max(before, best.off - s.off);
     after = Math.max(after, s.off - best.off);
   }
-  profileCache = {
+  const profile: WindowProfile = {
     bestOffsetDays: best.off,
     bestDvMS: best.dv,
     openBeforeDays: before,
     openAfterDays: after,
   };
-  return profileCache;
+  profileCache[leg] = profile;
+  return profile;
 }
 
 export interface WindowStatus {
@@ -208,10 +289,10 @@ export interface WindowStatus {
 
 const SYNODIC_DAYS = SYNODIC_S / DAY_S;
 
-/** Window status for a program day. */
-export function windowStatus(day: number): WindowStatus {
-  const p = windowProfile();
-  const firstBest = FIRST_WINDOW_DAY + p.bestOffsetDays;
+/** Window status for a program day (launch windows out, or return windows home). */
+export function windowStatus(day: number, leg: Leg = 'out'): WindowStatus {
+  const p = windowProfile(leg);
+  const firstBest = referenceDay(leg) + p.bestOffsetDays;
   // The window that hasn't closed yet.
   let k = Math.ceil((day - firstBest - p.openAfterDays) / SYNODIC_DAYS);
   if (k < 0) k = 0;
@@ -226,7 +307,7 @@ export function windowStatus(day: number): WindowStatus {
     opensDay,
     closesDay,
     opensInDays: open ? 0 : Math.max(0, opensDay - day),
-    today: open ? bestTransfer(day * DAY_S) : null,
+    today: open ? bestTransfer(day * DAY_S, undefined, leg) : null,
     bestDvMS: p.bestDvMS,
   };
 }

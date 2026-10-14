@@ -12,7 +12,7 @@ import { fmt, formatDuration } from './useFlight';
 import { RENDEZVOUS_LABELS } from '../../station/rendezvous';
 import { TRANSFER_PHASE_LABELS } from '../../moon/lunarTransfer';
 import { ASCENT_LABELS, DESCENT_LABELS } from '../../moon/lunarLanding';
-import { MARS_PHASE_LABELS } from '../../mars/marsFlight';
+import { marsPhaseLabel } from '../../mars/marsFlight';
 import { MARS_DESCENT_LABELS } from '../../mars/marsEntry';
 
 const MODES: { id: AttitudeMode; label: string }[] = [
@@ -38,6 +38,29 @@ const LUNAR_PROGRAMS: ProgramId[] = [
 /** Mars missions: in Earth orbit, then (at Mars) entry and landing. */
 const MARS_EARTH_PROGRAMS: ProgramId[] = ['circularize', 'trans-mars'];
 const MARS_VOYAGE_PROGRAMS: ProgramId[] = ['mars-entry'];
+/** Crewed round trips: leaving Mars, then back at Earth. */
+const MARS_DEPART_PROGRAMS: ProgramId[] = ['mars-ascent', 'trans-earth-mars'];
+const MARS_HOME_PROGRAMS: ProgramId[] = [
+  'earth-aerocapture',
+  'circularize',
+  'deorbit',
+  'reentry',
+  'landing',
+];
+
+/** The programs that make sense for a Mars mission right now. */
+function marsPrograms(snap: FlightSnapshot, origin: string | undefined): ProgramId[] {
+  const home = snap.mars?.leg === 'home';
+  if (snap.phase === 'voyage')
+    return origin === 'mars'
+      ? home
+        ? MARS_DEPART_PROGRAMS
+        : MARS_VOYAGE_PROGRAMS
+      : home
+        ? ['earth-aerocapture']
+        : MARS_VOYAGE_PROGRAMS;
+  return home ? MARS_HOME_PROGRAMS : MARS_EARTH_PROGRAMS;
+}
 const LANDING_PROGRAMS: ProgramId[] = [
   'circularize',
   'translunar',
@@ -61,9 +84,7 @@ export function AutopilotPanel({ snap }: { snap: FlightSnapshot }) {
   const active = s.phase === 'flight' ? snap.program.program : 'none';
   const lunar = snap.lunar;
   const programs = mars
-    ? voyage
-      ? MARS_VOYAGE_PROGRAMS
-      : MARS_EARTH_PROGRAMS
+    ? marsPrograms(snap, s.origin)
     : lunar
       ? lunar.plan.landing
         ? LANDING_PROGRAMS
@@ -83,7 +104,7 @@ export function AutopilotPanel({ snap }: { snap: FlightSnapshot }) {
           {active === 'none' ? 'OFF' : 'ACTIVE'}
         </span>
       </div>
-      {!mars && (
+      {(!mars || (mars.leg === 'home' && !voyage)) && (
         <fieldset className="zone-picker" disabled={!flying}>
           <legend className="eyebrow">Landing zone</legend>
           {LANDING_ZONES.map((z) => (
@@ -219,17 +240,25 @@ function programStatus(snap: FlightSnapshot): string {
     }
     case 'trans-mars':
     case 'mars-cruise':
-    case 'mars-entry': {
+    case 'mars-entry':
+    case 'mars-ascent':
+    case 'trans-earth-mars':
+    case 'earth-aerocapture': {
       const m = snap.mars;
       const t = snap.state?.tS ?? 0;
       if (!m) return '';
       const g = m.guidance;
-      if (g.phase === 'wait' && g.tmi)
-        return `Burn of ${fmt(g.tmi.dvMS)} m/s in ${formatDuration(Math.max(0, g.tmi.burnStartT - t))}`;
+      const burn = m.leg === 'home' ? g.tei : g.tmi;
+      if (g.phase === 'wait' && burn)
+        return `Burn of ${fmt(burn.dvMS)} m/s in ${formatDuration(Math.max(0, burn.burnStartT - t))}`;
       if (g.phase === 'cruise' && g.mccT !== null)
         return `Cruising · course check in ${fmt((g.mccT - t) / 86_400, 1)} days`;
       if (g.phase === 'descent' && g.descent) return MARS_DESCENT_LABELS[g.descent.phase];
-      return MARS_PHASE_LABELS[g.phase];
+      if (p.program === 'earth-aerocapture')
+        return g.capture?.dipped || snap.phase === 'flight'
+          ? `Braking pass · bank ${fmt(g.capture?.bankDeg ?? 0)}°`
+          : 'Coasting toward the aerocapture corridor';
+      return marsPhaseLabel(g, m.leg);
     }
     default:
       return '';

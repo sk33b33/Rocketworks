@@ -9,9 +9,11 @@ import { FlightHelp } from '../flight/FlightHelp';
 import { ObjectivesPanel } from '../flight/ObjectivesPanel';
 import { VehiclePanel } from '../flight/VehiclePanel';
 import { useFlightKeys, useFlightSnapshot } from '../flight/useFlight';
+import { flownFromMars } from '../../flight/flightRuntime';
 import { MarsBasePanel } from './MarsBasePanel';
 import { MarsDescentPanel } from './MarsDescentPanel';
 import { MarsPanel } from './MarsPanel';
+import { MarsReturnPanel } from './MarsReturnPanel';
 import { MarsSitePicker } from './MarsSitePicker';
 import { MarsSurfacePanel } from './MarsSurfacePanel';
 
@@ -42,9 +44,10 @@ export function MarsHud() {
         <div className="panel empty-pad" role="status">
           <h2>No ship bound for Mars</h2>
           <p>
-            The Mars Cargo Lander unlocks after the Lunar Landing. Launch inside an Earth–Mars
-            window, refuel in Earth orbit and engage trans-Mars injection: the cruise, the arrival
-            and the landing are followed here.
+            The Mars Cargo Lander unlocks after the Lunar Landing; once its propellant plant is
+            running, the crewed Mars Expedition follows. Launch inside an Earth–Mars window, refuel
+            in Earth orbit and engage trans-Mars injection: the cruise, the arrival and the landing
+            are followed here.
           </p>
           <MarsBasePanel />
           <div className="actions">
@@ -62,17 +65,22 @@ export function MarsHud() {
     );
   }
 
-  const atEarth = snap.phase === 'flight';
+  const atEarth = !flownFromMars(snap);
+  const home = mars.leg === 'home';
   const nearMars = s.origin === 'mars' || !!mars.surface;
   const systemView = !nearMars || camera === 'system';
   const showDescent =
-    !!mars.geometry && s.origin === 'mars' && (mars.marsAltitudeM ?? Infinity) < 200_000;
+    !home && !!mars.geometry && s.origin === 'mars' && (mars.marsAltitudeM ?? Infinity) < 200_000;
   return (
     <div className="factory-hud launch-hud flight-hud">
       <div className="hud-col hud-left">
         {mars.surface ? (
           <section data-panel="surface">
             <MarsSurfacePanel snap={snap} />
+          </section>
+        ) : home ? (
+          <section data-panel="return">
+            <MarsReturnPanel snap={snap} />
           </section>
         ) : showDescent ? (
           <section data-panel="descent">
@@ -91,19 +99,31 @@ export function MarsHud() {
         <section data-panel="mars">
           <MarsPanel snap={snap} showGoTo={false} />
         </section>
-        {!mars.surface && (atEarth || manual || snap.program.program === 'mars-entry') && (
-          <section data-panel="autopilot">
-            <AutopilotPanel snap={snap} />
-          </section>
-        )}
+        {!mars.surface &&
+          (atEarth ||
+            manual ||
+            snap.program.program === 'mars-entry' ||
+            (home && s.origin === 'mars')) && (
+            <section data-panel="autopilot">
+              <AutopilotPanel snap={snap} />
+            </section>
+          )}
         <section data-panel="ship">
           <VehiclePanel snap={snap} />
         </section>
       </div>
-      {atEarth && (
+      {atEarth && !home && (
         <div className="flight-message" role="status">
           Still in Earth orbit: refuel, then engage trans-Mars injection (here or at Flight /
           Orbit).
+        </div>
+      )}
+      {atEarth && home && (
+        <div className="flight-message" role="status">
+          Back at Earth: the aerocapture, deorbit and landing are flown at Flight / Orbit.{' '}
+          <button type="button" className="primary" onClick={() => goTo('flight')}>
+            Go to Flight / Orbit
+          </button>
         </div>
       )}
       {!atEarth && snap.message && (snap.phase === 'voyage' || snap.phase === 'surface') && (

@@ -98,6 +98,8 @@ export function missionReport(
           lunarLogistics: p.tech.includes('lunar-logistics'),
         },
         calendarDay: programDay(p),
+        marsBase: p.marsBase ?? null,
+        plantBoosted: p.tech.includes('ice-mining'),
       }),
     };
   }

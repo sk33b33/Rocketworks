@@ -37,7 +37,10 @@ export type ProgramId =
   | 'aerocapture'
   | 'trans-mars'
   | 'mars-cruise'
-  | 'mars-entry';
+  | 'mars-entry'
+  | 'mars-ascent'
+  | 'trans-earth-mars'
+  | 'earth-aerocapture';
 
 export const BELLY_AOA_DEG = 65;
 export const DEORBIT_PERIAPSIS_M = 30_000;

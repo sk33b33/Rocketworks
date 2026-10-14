@@ -92,8 +92,8 @@ describe('mission catalog', () => {
   it('has unique ids, valid payload references and offers a no-payload option', () => {
     expect(new Set(MISSIONS.map((m) => m.id)).size).toBe(MISSIONS.length);
     for (const m of MISSIONS) {
-      // Mars cargo flights exist to carry the propellant plant.
-      if (m.mars) expect(m.payloadIds).toEqual([m.mars.plantPayloadId]);
+      // Mars flights carry the propellant plant (cargo) or the crew's supplies (round trip).
+      if (m.mars) expect(m.payloadIds).toEqual([m.mars.plantPayloadId ?? m.mars.suppliesPayloadId]);
       else expect(m.payloadIds).toContain('none');
       for (const p of m.payloadIds)
         expect(

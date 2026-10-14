@@ -1,5 +1,5 @@
 import { FLYBY_RULES, LANDING_RULES, type LunarMissionRules } from '../moon/lunarRules';
-import { PLANT_CARGO_KG } from '../mars/marsRules';
+import { MARS_SUPPLIES_KG, PLANT_CARGO_KG } from '../mars/marsRules';
 
 /*
  * Mission and payload catalog. Destinations are fictionalized; Δv requirements, durations and
@@ -48,7 +48,14 @@ export interface MissionDefinition {
   /** Moon missions: the goal and the Δv legs flown after reaching orbit. */
   readonly lunar?: LunarMissionRules;
   /** Mars missions: flown in launch windows; the cargo that sets up the propellant plant. */
-  readonly mars?: { readonly plantPayloadId: string };
+  readonly mars?: {
+    /** The payload a cargo flight carries (selected by default). */
+    readonly plantPayloadId?: string;
+    /** Crewed round trip: lands at the plant, refuels there and flies home. */
+    readonly crewed?: boolean;
+    /** The payload a crewed trip carries (selected by default). */
+    readonly suppliesPayloadId?: string;
+  };
 }
 
 export interface PayloadDefinition {
@@ -58,6 +65,8 @@ export interface PayloadDefinition {
   readonly massKg: number;
   /** Needs a Cargo Bay Module; otherwise it rides in the ship structure or cabin. */
   readonly requiresBay: boolean;
+  /** Crew-days of life support it adds (consumables and recycling kit). */
+  readonly lifeSupportCrewDays?: number;
 }
 
 export const PAYLOADS: readonly PayloadDefinition[] = [
@@ -111,6 +120,15 @@ export const PAYLOADS: readonly PayloadDefinition[] = [
       'Solar arrays, an ice drill and a fuel-making plant, lowered to the Martian surface from the cargo bay.',
     massKg: PLANT_CARGO_KG,
     requiresBay: true,
+  },
+  {
+    id: 'mars-supplies',
+    name: 'Mars expedition supplies',
+    description:
+      'Food, a closed-loop water and air recycling kit and EVA spares for a crew of up to four on a two-and-a-half-year trip.',
+    massKg: MARS_SUPPLIES_KG,
+    requiresBay: false,
+    lifeSupportCrewDays: 4_000,
   },
 ];
 
@@ -317,6 +335,43 @@ export const MISSIONS: readonly MissionDefinition[] = [
     rewardCredits: 120_000,
     unlock: { kind: 'after', missionIds: ['lunar-landing'] },
     mars: { plantPayloadId: 'mars-plant' },
+  },
+  {
+    id: 'mars-crewed',
+    name: 'Mars Expedition',
+    destination: 'mars-surface',
+    destinationLabel: 'Mars surface and home',
+    summary: 'Fly a crew to the propellant plant on Mars, refuel there and bring them home.',
+    briefing:
+      'Launch inside an Earth–Mars window and cruise to Mars as the cargo ship did, but land next to the propellant plant. The crew connects a propellant line and fills the tanks while they explore. Stay until the Mars–Earth return window opens (more than a year later), lift off to Mars orbit and inject toward Earth. At Earth an aerocapture pass slows the ship into orbit before a normal deorbit and landing. The whole trip takes about two and a half years.',
+    objectives: [
+      'Refuel in Earth orbit and inject toward Mars inside the window',
+      'Land within 2 km of the propellant plant',
+      'Surface operations and refuelling from the plant',
+      'Lift off inside the return window and fly home',
+      'Aerocapture at Earth, re-entry and landing',
+    ],
+    abortCriteria: [
+      'Landing more than 2 km from the plant',
+      'Plant stock below what the trip home needs',
+    ],
+    durationDays: 960,
+    // Just orbit (with a small reserve): tankers and the plant fill the tanks for the rest.
+    requiredDeltaVMs: 9_300,
+    requirements: {
+      minCrew: 2,
+      maxCrew: 4,
+      dockingAdapter: false,
+      rcs: 'critical',
+      antenna: 'critical',
+      reentry: true,
+    },
+    payloadIds: ['mars-supplies'],
+    baseRisk: 0.8,
+    rewardRp: 12,
+    rewardCredits: 250_000,
+    unlock: { kind: 'after', missionIds: ['mars-cargo'] },
+    mars: { crewed: true, suppliesPayloadId: 'mars-supplies' },
   },
 ];
 

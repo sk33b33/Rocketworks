@@ -33,7 +33,7 @@ export function awardMilestones(
   if (!achieved.length) return { progression, text: '' };
   const text = achieved
     .map((m) => {
-      const rewards = [`+${m.rewardRp} RP`];
+      const rewards = m.rewardRp ? [`+${m.rewardRp} RP`] : [];
       if (m.rewardCredits) rewards.push(`+${m.rewardCredits.toLocaleString('en-US')} cr budget`);
       return ` 🏆 Milestone "${m.title}" (${rewards.join(', ')}).`;
     })

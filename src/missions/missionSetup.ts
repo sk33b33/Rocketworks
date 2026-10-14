@@ -76,7 +76,7 @@ export function selectMission(
       missionId,
       crewIds: setup.crewIds.slice(0, mission.requirements.maxCrew),
       payloadId: mission.mars
-        ? mission.mars.plantPayloadId
+        ? (mission.mars.plantPayloadId ?? mission.mars.suppliesPayloadId ?? 'none')
         : mission.payloadIds.includes(setup.payloadId)
           ? setup.payloadId
           : 'none',

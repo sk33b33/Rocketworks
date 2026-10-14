@@ -3,6 +3,7 @@ import { TANKER_FLIGHT_CREDITS } from '../../moon/lunarRules';
 import { programDay } from '../../progression/research';
 import { DAY_S } from '../../mars/solarSystem';
 import { formatCredits } from '../format';
+import type { MarsRoundTripPlan } from '../../missions/missionReadiness';
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 
@@ -102,11 +103,64 @@ export function MarsPlanSection() {
           </tbody>
         </table>
       )}
+      {report.mars.roundTrip && <RoundTripCard trip={report.mars.roundTrip} />}
       <p className="small-text muted">
         Refuelling costs {formatCredits(report.cost.refuelCredits)} for this mission (included in
         the mission cost). The landing leg covers the hardest site (thin air at high elevation). Δv
         figures are estimates for a simplified model.
       </p>
     </fieldset>
+  );
+}
+
+/** Crewed round trips: the stay on Mars, the plant's stock and the legs home. */
+function RoundTripCard({ trip }: { trip: MarsRoundTripPlan }) {
+  const enough = trip.stockKg >= trip.neededKg;
+  return (
+    <div className="section-gap">
+      <div className="eyebrow">The way home</div>
+      <dl className="facts">
+        <dt>Arrive at Mars</dt>
+        <dd>day {fmt(trip.arrivalDay)}</dd>
+        <dt>Return window</dt>
+        <dd>
+          days {fmt(Math.ceil(trip.returnOpensDay))}–{fmt(Math.floor(trip.returnClosesDay))} · about{' '}
+          {fmt(trip.stayDays)} days on Mars
+        </dd>
+        <dt>Home</dt>
+        <dd>about day {fmt(trip.homeDay)}</dd>
+        <dt>Propellant plant</dt>
+        <dd className={trip.base ? (enough ? 'tone-ok' : 'tone-warn') : 'tone-bad'}>
+          {trip.base
+            ? `${trip.base.siteName}: ${fmt(trip.stockKg / 1000)} t by the window · ${fmt(trip.neededKg / 1000)} t needed`
+            : 'None running yet'}
+        </dd>
+      </dl>
+      <table className="leg-table">
+        <caption className="sr-only">Δv per leg home, on tanks filled at the plant</caption>
+        <thead>
+          <tr>
+            <th scope="col">Leg home</th>
+            <th scope="col">Available</th>
+            <th scope="col">Needed</th>
+          </tr>
+        </thead>
+        <tbody>
+          {trip.legs.map((c) => (
+            <tr key={c.id} className={c.ok ? 'tone-ok' : 'tone-bad'}>
+              <td>
+                {c.ok ? '✓' : '✕'} {c.label}
+              </td>
+              <td>{fmt(c.availableMS)} m/s</td>
+              <td>{fmt(c.requiredDvMS)} m/s</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="small-text muted">
+        Legs home assume full tanks from the plant. The crew lands within 2 km of the plant to run a
+        propellant line, and waits on the surface (or in orbit) for the return window.
+      </p>
+    </div>
   );
 }

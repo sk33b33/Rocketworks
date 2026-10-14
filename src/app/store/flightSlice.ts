@@ -1,3 +1,4 @@
+import { drawFromPlant } from '../../mars/marsRules';
 import { MAX_FLIGHT_RECORDS } from '../../persistence/saveGame';
 import {
   budgetCredits,
@@ -107,6 +108,18 @@ export function createFlightActions(set: SetState, get: GetState): FlightActions
           },
         };
       }
+      // A crewed trip drew propellant from the plant: its stock goes down.
+      const trip = m?.returnTrip;
+      if (trip && trip.plantDrawKg > 0 && trip.plantDrawDay !== null && progression.marsBase)
+        progression = {
+          ...progression,
+          marsBase: drawFromPlant(
+            progression.marsBase,
+            trip.plantDrawDay,
+            trip.plantDrawKg,
+            progression.tech.includes('ice-mining'),
+          ),
+        };
       const bp = s.blueprints.find((b) => b.id === record.designId);
       const fleetOutcome =
         record.result === 'scrubbed'

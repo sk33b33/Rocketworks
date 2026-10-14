@@ -88,7 +88,14 @@ export function ProgramPanel() {
               <span>
                 <strong>{m.title}</strong> · {m.description}{' '}
                 <span className="muted">
-                  (+{m.rewardRp} RP{m.rewardCredits ? `, +${formatCredits(m.rewardCredits)}` : ''})
+                  (
+                  {[
+                    m.rewardRp ? `+${m.rewardRp} RP` : '',
+                    m.rewardCredits ? `+${formatCredits(m.rewardCredits)}` : '',
+                  ]
+                    .filter(Boolean)
+                    .join(', ')}
+                  )
                 </span>
                 <span className="sr-only">{done ? ' (achieved)' : ' (not yet)'}</span>
               </span>

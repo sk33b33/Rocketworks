@@ -76,7 +76,14 @@ export function handoffContext(
       ? {
           launchDay: programDay(state.progression),
           refuelLeo: mission.refuel.leo,
-          plant: mission.payloadId === def.mars.plantPayloadId,
+          plant: !!def.mars.plantPayloadId && mission.payloadId === def.mars.plantPayloadId,
+          ...(def.mars.crewed
+            ? {
+                crewed: true,
+                base: state.progression.marsBase ?? null,
+                boosted: state.progression.tech.includes('ice-mining'),
+              }
+            : {}),
         }
       : undefined,
   );

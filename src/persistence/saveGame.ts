@@ -19,6 +19,7 @@ import type {
   LandingSummary,
   LunarLandingOutcome,
   LunarSummary,
+  MarsReturnSummary,
   MarsSummary,
 } from '../launch/flightRecord';
 import type { FleetVehicle } from '../fleet/fleet';
@@ -403,6 +404,22 @@ function parseMars(raw: unknown): MarsSummary | null {
     plantRunning: raw.plantRunning === true,
     ice: numOrNull(raw.ice),
     landedDay: numOrNull(raw.landedDay),
+    ...(isRecord(raw.returnTrip) ? { returnTrip: parseReturnTrip(raw.returnTrip) } : {}),
+  };
+}
+
+/** The way home of a crewed Mars round trip (Stage 11+). */
+function parseReturnTrip(raw: Record<string, unknown>): MarsReturnSummary {
+  const numOrNull = (v: unknown) => (isNum(v) ? v : null);
+  return {
+    plantDrawKg: isNum(raw.plantDrawKg) && raw.plantDrawKg >= 0 ? raw.plantDrawKg : 0,
+    plantDrawDay: numOrNull(raw.plantDrawDay),
+    liftedOff: raw.liftedOff === true,
+    marsOrbit: raw.marsOrbit === true,
+    tei: raw.tei === true,
+    surfaceDays: numOrNull(raw.surfaceDays),
+    homeCruiseDays: numOrNull(raw.homeCruiseDays),
+    earthArrived: raw.earthArrived === true,
   };
 }
 
@@ -410,7 +427,13 @@ function parseMars(raw: unknown): MarsSummary | null {
 function parseMarsBase(raw: unknown): MarsBase | null {
   if (!isRecord(raw)) return null;
   return isString(raw.siteId) && isString(raw.siteName) && isNum(raw.sinceDay) && isNum(raw.ice)
-    ? { siteId: raw.siteId, siteName: raw.siteName, sinceDay: raw.sinceDay, ice: raw.ice }
+    ? {
+        siteId: raw.siteId,
+        siteName: raw.siteName,
+        sinceDay: raw.sinceDay,
+        ice: raw.ice,
+        ...(isNum(raw.carriedKg) && raw.carriedKg > 0 ? { carriedKg: raw.carriedKg } : {}),
+      }
     : null;
 }
 

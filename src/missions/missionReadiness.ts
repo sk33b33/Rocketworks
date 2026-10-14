@@ -8,8 +8,15 @@ import {
   type LegCheck,
   type LogisticsTech,
 } from '../moon/lunarRules';
-import { checkMarsLegs, type MarsLegCheck } from '../mars/marsRules';
-import { windowStatus, type WindowStatus } from '../mars/marsTransfer';
+import {
+  checkMarsLegs,
+  checkMarsReturnLegs,
+  plantStockKg,
+  type MarsBase,
+  type MarsLegCheck,
+} from '../mars/marsRules';
+import { bestTransfer, HOHMANN_DAYS, windowStatus, type WindowStatus } from '../mars/marsTransfer';
+import { DAY_S } from '../mars/solarSystem';
 import type { ReadinessReport } from '../rocket/readiness/readiness';
 import type { RocketBlueprint } from '../rocket/model/types';
 import { generateConditions, type LaunchConditions } from './conditions';
@@ -98,7 +105,12 @@ export interface MissionReport {
   /** Moon missions: Δv per leg after reaching orbit (null otherwise). */
   readonly lunarLegs: LegCheck[] | null;
   /** Mars missions: the launch window today and the Δv legs (null otherwise). */
-  readonly mars: { readonly window: WindowStatus; readonly legs: MarsLegCheck[] | null } | null;
+  readonly mars: {
+    readonly window: WindowStatus;
+    readonly legs: MarsLegCheck[] | null;
+    /** Crewed round trips: the stay on Mars and the way home. */
+    readonly roundTrip: MarsRoundTripPlan | null;
+  } | null;
   readonly carriedMassKg: number;
   readonly lifeSupport: { requiredCrewDays: number; capacityCrewDays: number };
   readonly conditions: LaunchConditions;
@@ -122,6 +134,22 @@ export interface MissionCost {
   readonly ship: FleetVehicle | null;
 }
 
+/** Mission Control's forecast for a crewed round trip, from a departure today. */
+export interface MarsRoundTripPlan {
+  readonly base: MarsBase | null;
+  readonly arrivalDay: number;
+  /** The return window after arrival (and its best departure). */
+  readonly returnOpensDay: number;
+  readonly returnClosesDay: number;
+  readonly stayDays: number;
+  /** Plant stock when the return window opens, and what the tanks need for the way home. */
+  readonly stockKg: number;
+  readonly neededKg: number;
+  /** Legs home on full tanks (the plant can't fill them past its stock). */
+  readonly legs: MarsLegCheck[];
+  readonly homeDay: number;
+}
+
 export interface MissionContext {
   readonly setup: MissionSetup;
   /** The design named by the setup, if it still exists. */
@@ -138,6 +166,9 @@ export interface MissionContext {
   readonly logistics?: LogisticsTech;
   /** Program calendar day (Mars launch windows). */
   readonly calendarDay?: number;
+  /** The propellant plant on Mars, and whether better drills are researched. */
+  readonly marsBase?: MarsBase | null;
+  readonly plantBoosted?: boolean;
 }
 
 /** Crew-days of life support per part. Game values. */
@@ -149,6 +180,81 @@ export const LIFE_SUPPORT_CREW_DAYS: Readonly<Record<string, number>> = {
 export const DELTA_V_MARGIN_WARN = 0.05;
 
 const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
+
+/**
+ * The round trip from a departure today: arrival, the stay until the next return window, the
+ * plant's stock by then against the propellant the way home needs, and the legs home.
+ */
+function marsRoundTrip(
+  ctx: MissionContext,
+  window: WindowStatus,
+  deltaV: ReturnType<typeof estimateDeltaV> | null,
+  add: (issue: MissionIssue) => void,
+): MarsRoundTripPlan | null {
+  const base = ctx.marsBase ?? null;
+  if (!base) {
+    add({
+      id: 'mars-no-plant',
+      area: 'payload',
+      severity: 'critical',
+      title: 'No propellant plant on Mars',
+      detail:
+        'The crew refuels from a plant on the surface for the trip home, and none is running yet.',
+      fix: 'Fly the Mars Cargo Lander with the propellant plant first.',
+    });
+  }
+  const day = ctx.calendarDay ?? 0;
+  const departDay = window.open ? day : window.bestDay;
+  const tofDays = window.today ? window.today.tofS / DAY_S : HOHMANN_DAYS;
+  const arrivalDay = departDay + tofDays;
+  // The crew needs a few days on the surface before the earliest lift-off.
+  const ret = windowStatus(arrivalDay + 5, 'home');
+  const homeTransfer = bestTransfer(ret.bestDay * DAY_S, undefined, 'home');
+  const teiDv = homeTransfer?.tmiDvMS ?? ret.bestDvMS;
+  const homeDay = ret.bestDay + (homeTransfer ? homeTransfer.tofS / DAY_S : HOHMANN_DAYS);
+  if (!deltaV) return null;
+  const dry = deltaV.ship.finalMassKg;
+  const capacity = deltaV.ship.initialMassKg - dry;
+  const ve = deltaV.ship.ispS * 9.80665;
+  const legs = checkMarsReturnLegs(teiDv, capacity, dry, deltaV.ship.ispS);
+  const totalDv = legs.ascent.requiredDvMS + legs.transfer.requiredDvMS + legs.earth.requiredDvMS;
+  const neededKg = Math.min(capacity, dry * (Math.exp(totalDv / ve) - 1));
+  const stockKg = base ? plantStockKg(base, ret.opensDay, !!ctx.plantBoosted) : 0;
+  for (const c of [legs.ascent, legs.transfer, legs.earth]) {
+    if (c.ok) continue;
+    add({
+      id: `mars-dv-${c.id}`,
+      area: 'propulsion',
+      severity: 'critical',
+      title: `Not enough Δv on the way home: ${c.label.toLowerCase()}`,
+      detail: `With full tanks on Mars the ship has about ${fmt(c.availableMS)} m/s for this leg; ${fmt(c.requiredDvMS)} m/s needed.`,
+      fix: 'Lighten the ship, add ship tanks or use better vacuum engines.',
+      action: { kind: 'go-factory', tab: 'readiness' },
+      actionLabel: 'Open Factory',
+    });
+  }
+  if (base && stockKg < neededKg) {
+    add({
+      id: 'mars-plant-stock',
+      area: 'payload',
+      severity: 'warning',
+      title: `The plant may run short (${fmt(stockKg / 1000)} t of ${fmt(neededKg / 1000)} t)`,
+      detail: `By the return window (day ${fmt(ret.opensDay)}) the plant at ${base.siteName} will hold about ${fmt(stockKg / 1000)} t; the way home needs about ${fmt(neededKg / 1000)} t. Propellant left in the tanks after landing helps.`,
+      fix: 'Launch in a later window (the plant keeps producing), or research Ice Mining Drills.',
+    });
+  }
+  return {
+    base,
+    arrivalDay,
+    returnOpensDay: ret.opensDay,
+    returnClosesDay: ret.closesDay,
+    stayDays: ret.bestDay - arrivalDay,
+    stockKg,
+    neededKg,
+    legs: [legs.ascent, legs.transfer, legs.earth],
+    homeDay,
+  };
+}
 
 export function evaluateMission(ctx: MissionContext): MissionReport {
   const mission = findMission(ctx.setup.missionId) ?? findMission('test-flight')!;
@@ -504,7 +610,8 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
         });
       }
     }
-    mars = { window, legs };
+    const roundTrip = mission.mars.crewed ? marsRoundTrip(ctx, window, deltaV, add) : null;
+    mars = { window, legs, roundTrip };
   }
 
   // ---- Crew ----
@@ -613,7 +720,8 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
 
   // ---- Life support ----
   const capacity = bp
-    ? Object.entries(LIFE_SUPPORT_CREW_DAYS).reduce((s, [id, days]) => s + count(id) * days, 0)
+    ? Object.entries(LIFE_SUPPORT_CREW_DAYS).reduce((s, [id, days]) => s + count(id) * days, 0) +
+      (payload.lifeSupportCrewDays ?? 0)
     : 0;
   const requiredCrewDays = crewed ? crew.length * mission.durationDays : 0;
   if (crewed && crew.length > 0 && requiredCrewDays > capacity) {
