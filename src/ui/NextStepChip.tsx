@@ -21,7 +21,7 @@ export function NextStepChip() {
       ? 'station'
       : flight.phase === 'surface' || (flight.phase === 'flight' && flight.state?.ref === 'moon')
         ? 'moon'
-        : flight.phase === 'flight'
+        : flight.phase === 'flight' || flight.phase === 'voyage'
           ? 'flight'
           : null;
   const step = nextStep({

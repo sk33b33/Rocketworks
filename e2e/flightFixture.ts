@@ -130,3 +130,70 @@ export function cruisingMarsSave(launchDay: number): { json: string; clock: stri
   };
   return { json: encodeJson(record), clock: formatTMinus(runtime.live.tS) };
 }
+
+/**
+ * A crewed Mars Expedition standing next to the propellant plant at Delta Hollow, made by the
+ * game's runtime: flown out from orbit, landed, with the surface tasks under way.
+ */
+export function crewOnMarsSave(launchDay: number): { json: string; clock: string } {
+  const bp = createCompleteStarterDesign(NOW);
+  const vehicle = deriveFlightVehicle(bp, 8_000);
+  const lc: LaunchContext = {
+    outcome: {
+      id: 'e2e-crew',
+      at: NOW,
+      missionId: 'mars-crewed',
+      missionName: 'Mars Expedition (e2e)',
+      designId: bp.id,
+      designName: bp.name,
+      crewed: true,
+    },
+    blueprint: bp,
+    designRevision: bp.revision,
+    crewed: true,
+    crewNames: ['Mara Okafor', 'Tomas Lindqvist'],
+    config: {
+      vehicle,
+      target: { kind: 'orbit', altitudeM: 150_000 },
+      failures: [],
+      boosterReserveKg: vehicle.booster.propellantKg * RESERVE_FRACTION.platform,
+    },
+  };
+  const rt = new FlightRuntime(
+    () => undefined,
+    () => NOW,
+  );
+  rt.start(
+    flightContextFromLaunch(lc, simulateAscent(lc.config, SIM_DT_S), null, undefined, undefined, {
+      launchDay,
+      refuelLeo: true,
+      plant: false,
+      crewed: true,
+      base: { siteId: 'delta-hollow', siteName: 'Delta Hollow', sinceDay: 505, ice: 0.6 },
+    }),
+  );
+  const run = (n: number, until: () => boolean) => {
+    for (let i = 0; i < n && !until(); i++) {
+      if (rt.current.warp < rt.current.maxWarp) rt.setWarp(rt.current.maxWarp);
+      rt.update(0.1);
+    }
+  };
+  run(50_000, () => rt.current.program.program === 'none' && rt.current.progress.orbit);
+  rt.refuel();
+  run(50_000, () => !!rt.current.progress.mars?.refuelLeo);
+  rt.engage('trans-mars');
+  run(400_000, () => rt.current.phase === 'voyage');
+  run(800_000, () => rt.current.phase !== 'voyage');
+  run(100_000, () => !!rt.current.mars?.plant?.available.ok);
+  if (rt.current.phase !== 'surface') throw new Error('fixture crew did not land on Mars');
+  const runtime = rt.snapshot()!;
+  const record: FlightSaveRecord = {
+    version: 1,
+    kind: 'flight',
+    savedAt: NOW,
+    missionId: 'mars-crewed',
+    outcomeId: lc.outcome.id,
+    runtime,
+  };
+  return { json: encodeJson(record), clock: formatTMinus(runtime.live.tS) };
+}

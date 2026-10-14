@@ -95,7 +95,11 @@ function CrewReturn({ snap }: { snap: FlightSnapshot }) {
   if (!s || !spec) return null;
   const cap = spec.stage.propellantKg;
   const legs = returnLegsNow(mars, spec, s.propKg);
-  const fuelled = legs.earth.ok;
+  const needDv = legs.ascent.requiredDvMS + legs.transfer.requiredDvMS + legs.earth.requiredDvMS;
+  const haveDv = shipDeltaV(spec, s.propKg);
+  // The allowances carry reserves: a few percent short still usually makes it home.
+  const fuelled = haveDv >= needDv * 0.97;
+  const tight = fuelled && !legs.earth.ok;
   const lift = mars.liftOff ?? { ok: false };
   return (
     <>
@@ -183,10 +187,12 @@ function CrewReturn({ snap }: { snap: FlightSnapshot }) {
       </div>
       <p className="small-text muted">
         {!fuelled
-          ? `Not enough propellant for the way home yet: about ${fmt(legs.ascent.requiredDvMS + legs.transfer.requiredDvMS + legs.earth.requiredDvMS)} m/s needed (ascent, the burn home and the Earth arrival).`
-          : w?.open
-            ? 'Fuelled for the way home. The ascent program flies the climb to Mars orbit.'
-            : 'Fuelled. You can lift off now and wait in Mars orbit, or wait here for the window.'}
+          ? `Not enough propellant for the way home yet: about ${fmt(needDv)} m/s needed with reserves (ascent, the burn home and the Earth arrival); ${fmt(haveDv)} m/s on board.`
+          : tight
+            ? `Fuelled, with thin reserves: ${fmt(haveDv)} m/s on board, ${fmt(needDv)} m/s planned with reserves. Departing nearer the best day of the window (day ${fmt(Math.round(w?.bestDay ?? 0))}) costs less.`
+            : w?.open
+              ? 'Fuelled for the way home. The ascent program flies the climb to Mars orbit.'
+              : 'Fuelled. You can lift off now and wait in Mars orbit, or wait here for the window.'}
       </p>
     </>
   );

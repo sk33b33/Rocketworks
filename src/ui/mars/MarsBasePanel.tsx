@@ -14,10 +14,10 @@ export function MarsBasePanel() {
     <div className="mars-base">
       <div className="eyebrow">Mars base</div>
       <p className="small-text">
-        Propellant plant at {base.siteName} since day {fmt(base.sinceDay)}: about{' '}
+        Propellant plant at {base.siteName}: about{' '}
         {fmt(plantRateKgPerDay(base.ice, boosted) / 1000, 1)} t a day,{' '}
-        {fmt(plantStockKg(base, day, boosted) / 1000)} t stored so far. It is waiting for the first
-        crewed ship (a later stage).
+        {fmt(plantStockKg(base, day, boosted) / 1000)} t in storage on day {fmt(day)}. A crewed Mars
+        Expedition lands next to it and refuels there for the trip home.
       </p>
     </div>
   );

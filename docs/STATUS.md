@@ -1,7 +1,7 @@
 # Project Status
 
 ## Current stage
-**Stage 10: Mars cargo missions.** Complete and waiting for review.
+**Stage 11: Crewed Mars round trip.** Complete and waiting for review.
 
 ## Completed
 - **Stage 0–2:** foundation; Rocket Factory with modular assembly; validation, certification, design library, progression.
@@ -168,6 +168,34 @@
   - **Saves:** save format v8 (calendar and Mars base; v7 → v8 migration). Flight autosave and resume cover the cruise, approach, entry and the Mars surface.
   - Flight-model helpers (`mainEngineThrust`, `aeroAcceleration`, `applyHeating`) were extracted unchanged so the Mars model can reuse them. A lunar-flight fingerprint confirmed that the results are identical.
 
+- **Stage 11 (crewed Mars round trip):**
+  - **Mission:** the *Mars Expedition* (`mars-crewed`) unlocks after the Mars Cargo Lander.
+    - It flies 2–4 crew and carries 8 t of *Mars expedition supplies*: consumables and a recycling kit, worth 4,000 crew-days of life support.
+    - The trip takes about 960 days and pays 12 RP and 250,000 cr.
+    - Mission Control needs a running propellant plant. Its Manifest forecasts the way home from a departure in today's window: arrival day, the return window and stay on Mars, the plant's stock by then against the propellant needed, and the Δv legs home on refilled tanks.
+  - **Two-way transfers** (`src/mars/marsTransfer.ts`): the transfer solver, injection planner (`planInjection`) and cruise navigation work in both directions.
+    - Mars–Earth return windows repeat every synodic period. The first opens around day 897, with the best day near 953.
+    - The burn home from a 200 km Mars orbit is about 2.1–2.4 km/s. Earth entry is about 11.5 km/s.
+  - **On Mars:**
+    - The crew lands next to the plant (site fixed).
+    - Crew tasks run on the surface: safing, egress, a plant inspection EVA, connecting the propellant line, and a geology traverse.
+    - *Refuel from the plant* pumps up to 100 t a day, limited by the plant's stock and production. The line can only be connected within 2 km of the plant.
+    - *Wait for the window* skips ahead to the return window, and the pumping and tasks run on through the skip.
+  - **The way home:**
+    - *Lift off* engages the new *Mars ascent* program (`src/mars/marsAscent.ts`), which climbs to a ~200 km orbit for about 4.2 km/s.
+    - *Trans-Earth injection* is offered inside the return window. The cruise home makes the same course corrections, aimed at the aerocapture corridor.
+    - Inside Earth's sphere of influence an analytic approach applies two corrections. About 400 km up, the normal Earth flight takes over (Flight / Orbit). The lunar return's aerocapture guidance flies the pass, then circularize, deorbit and landing as usual.
+  - **Outcome and progression:**
+    - The debrief credits the trip when the crew lands safely after every Mars goal.
+    - Ending on Mars or in space counts as aborted, with the crew assumed rescued. A crash or breakup is fatal.
+    - The plant's stock goes down by what the crew drew (`drawFromPlant`; saves keep the carried stock).
+    - New milestones: *Footprints in red dust* and *Home from Mars* (credits only, so research points stay below the tech tree's total).
+  - **UI:**
+    - Mars location: the way-home panel, crewed surface controls (plant line, return window, lift-off), and autopilot programs for each leg. A *Go to Flight / Orbit* prompt appears back at Earth.
+    - Mission Control: the round-trip forecast card.
+    - Long durations display in days.
+  - **Saves:** flight saves carry the plant line and the return leg. Progression keeps the plant's carried stock as an optional field, so the save version stays 8.
+
 ## Assumptions (documented, reversible)
 - Flight physics is a simplified planar gameplay model: one orbital plane (the equator), no Earth rotation, an exponential atmosphere, lumped aerodynamics, and Sutton–Graves heating with gameplay heat capacities. The UI and footnotes say so; it is not a flight simulator.
 - Out-of-plane steering isn't simulated. Yaw is visual only, and bank only reduces in-plane lift (enough to steer re-entry range).
@@ -202,10 +230,24 @@
   - The landing Δv allowance (1,900 m/s) and the course-correction reserve (150 m/s) are conservative game figures.
   - The propellant plant's output, storage and surface-task durations are game values. The plant has no use yet beyond progression (a future crewed return would draw on it).
   - The program calendar starts at 0 with the first flight. Older saves take their flight count as the day.
+- Crewed round trips:
+  - The supplies payload stands in for consumables, recycling and a surface habitat. Life support is a crew-day budget, not simulated.
+  - The plant's pumping rate, the 2 km reach and the crew task durations are game values.
+  - Mission Control's legs home carry reserves: 4,300 m/s for the ascent, 150 m/s for corrections and 500 m/s at Earth. Flights usually need a little less, so the surface panel calls a shortfall within 3% "thin reserves" rather than blocking lift-off.
+  - The ship carries the supplies' mass all the way home (simplification). Departing on the window's best day costs less than departing at its opening.
+  - The Earth approach is analytic down to 400 km, then the normal Earth flight takes over. Earth's rotation and the Moon are ignored, as for other Earth flights.
 
 ## Checks (last run)
 - `npm run typecheck` (app and e2e), `npm run lint`, `npm run build`: pass.
-- `npm test`: 233 tests pass across 22 files. New in Stage 10 (`tests/mars.test.ts`, plus game-state, save, mission and location updates):
+- `npm test`: 249 tests pass across 23 files. New in Stage 11 (`tests/marsReturn.test.ts`, plus store, mission and save updates):
+  - return windows after the first arrival, once per synodic period; the burn home and Earth entry speed;
+  - plant pumping limited by the pump, stock and room; the stock carried over after a draw; the legs home on what the tanks hold;
+  - the ascent from every site to a safe orbit within the allowance;
+  - a full credited round trip in the runtime: out, land at the plant, pump, wait for the window, ascent, departure burn, cruise home, the Earth approach at Flight / Orbit, aerocapture and landing;
+  - exact resume while pumping on the surface, cruising home and approaching Earth;
+  - the 2 km plant reach; ending on Mars counted as aborted with the crew safe; crashes after lift-off counted as fatal; the objective list;
+  - Mission Control: the plant requirement, GO with the way-home forecast, and the low-stock warning; the store drawing down the plant and awarding the new milestones; save parsing of the carried stock.
+- Stage 10: 233 tests across 22 files. New in Stage 10 (`tests/mars.test.ts`, plus game-state, save, mission and location updates):
   - solar-system motion, transfer solutions and window timing; Kepler propagation against fine numeric integration;
   - Δv legs, plant output and storage, and surface-task gating;
   - assisted entry and landing at a low site (Boreal Flats) and a high one (Redstone Plateau); tip-over and crash outcomes;
@@ -217,7 +259,14 @@
   - `tests/flightSave.test.ts`: Infinity-safe encoding; damaged and foreign saves are rejected without throwing; flight and ascent records round-trip; exact resume of a rendezvous, docked proximity operations, a lunar transfer and a lunar surface stay;
   - `tests/nextStep.test.ts`: the next-step hint for each point in the program;
   - v6 → v7 save migration.
-- `npm run e2e`: 7 Playwright tests pass in headless Chromium (about 8 min with software WebGL), including the new Mars cruise resume test (`e2e/mars.e2e.ts`): a seeded cruise resumes paused at the Mars location with the same clock, and the chosen site and a later time survive another reload.
+- `npm run e2e`: E2E_RESULT
+- Headless Chromium smoke test, Stage 11 (manual script, not committed), with no console errors:
+  - With the plant at Delta Hollow on day 960, the Mars Expedition is committed through the UI (2 crew, ocean platform) after *Wait 24 days for the window*. The Manifest shows the way-home forecast.
+  - Refuel in orbit, then trans-Mars injection, the cruise and an assisted landing rated A, 118 m from the plant.
+  - After the hook-up EVA: *Refuel from the plant*, then *Wait for the window* (434 days; tanks full, 44 t left in the plant).
+  - *Lift off* reached a 230 × 180 km orbit. *Trans-Earth injection* took 2,393 m/s, and the cruise home 293 days.
+  - Back at Earth, the Mars location offered *Go to Flight / Orbit*, where aerocapture, circularize and deorbit landed the ship on the pad (rated B).
+  - Debrief: mission success, credited, crew safe, "home after 991 days, 434 of them on Mars". The plant's stock went down in the progression.
 - Headless Chromium smoke test, Stage 10 (manual script, not committed), with no console errors:
   - Commit the Mars Cargo Lander with a cargo-bay design after waiting for the window, then launch, continue to orbit, refuel and run *Trans-Mars injection*.
   - The cruise and map views work; the approach correction is flown.
@@ -298,6 +347,11 @@
   - The Mars surface has no dust storms, no weather and no day/night cycle.
   - Entry heating uses the Earth shield budget model with Mars density; entries at the nominal angle never come near the limit.
   - When standing on the surface, the vehicle panel shows a meaningless angle of attack (cosmetic). The notice can overlap the debrief briefly.
+- Crewed round trips:
+  - There's no abort-to-orbit from a failed ascent, no Mars orbit rendezvous, and no manual planning of the burn home.
+  - The surface stay is time-skipped: there's no EVA gameplay, habitat building or dust storms.
+  - Only one plant is supported, and later expeditions share it.
+  - Life support is a crew-day budget, not a simulation.
 
 ## Next action
-Review Stage 10. Suggested next: a crewed Mars round trip that refuels from the propellant plant (Mars ascent, trans-Earth injection, Earth entry), or other options: a contracts/economy layer, photo mode, EVA, audio, or a manoeuvre planner. Pick the next focus before starting.
+Review Stage 11. The roadmap's progression (factory → orbit → station → Moon → Mars and back) is now complete. Candidates for the next stage: a contracts/economy layer that gives repeat flights a purpose, photo mode and replays, EVA on the Moon or Mars, audio, or a manoeuvre planner. Pick the next focus before starting.

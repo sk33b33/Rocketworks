@@ -86,6 +86,13 @@ Current progress is tracked in `docs/STATUS.md`.
 - Before arrival, pick a landing site at the **Mars** location (ice ratings set the plant's output), then engage *Mars entry and landing*. Take over below 500 m for a manual landing bonus.
 - Warp through the surface tasks, then *Complete the mission*. The plant keeps producing propellant on the program calendar. The interplanetary model is simplified (circular coplanar orbits, patched conics).
 
+**Taking a crew to Mars and back (Stage 11):**
+- With the plant running, the *Mars Expedition* unlocks. It carries 2–4 crew and their supplies; Mission Control's Manifest forecasts the stay, the plant's stock and the legs home.
+- Fly out as before. The crew lands next to the plant at the Mars location.
+- After the surface tasks connect the propellant line, press *Refuel from the plant*. Then *Wait for the window* to skip to the Mars–Earth return window; the tanks fill while you wait.
+- *Lift off*: the *Mars ascent* program climbs to orbit. Inside the window, engage *Trans-Earth injection*, then warp through the cruise home.
+- Back inside Earth's sphere of influence, go to Flight / Orbit. *Aerocapture at Earth* flies the braking pass, then circularize, *Deorbit to target* and land. The trip takes about two and a half years of program time.
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:

@@ -71,5 +71,7 @@ export function formatDuration(s: number): string {
   const sec = t % 60;
   const mm = String(m).padStart(2, '0');
   const ss = String(sec).padStart(2, '0');
+  // Interplanetary flights read better in days.
+  if (h >= 48) return `${Math.floor(h / 24)}d ${String(h % 24).padStart(2, '0')}:${mm}:${ss}`;
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }

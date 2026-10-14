@@ -22,9 +22,9 @@ export const PLANT_TRANSFER_KG_PER_DAY = 100_000;
 /** A ship must land this close to the plant to connect a propellant line (m). */
 export const PLANT_REACH_M = 2_000;
 /** Ascent from the surface to low Mars orbit, with margin (m/s). */
-export const MARS_ASCENT_DV_MS = 4_400;
+export const MARS_ASCENT_DV_MS = 4_300;
 /** Back at Earth: raising perigee after aerocapture, deorbit and the landing burn (m/s). */
-export const EARTH_RETURN_DV_MS = 700;
+export const EARTH_RETURN_DV_MS = 500;
 
 export interface MarsLegCheck {
   readonly id: 'transfer' | 'landing' | 'ascent' | 'tei' | 'earth';

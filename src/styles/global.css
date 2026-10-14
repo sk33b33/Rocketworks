@@ -1423,6 +1423,10 @@ fieldset.stacked label {
   pointer-events: none;
   text-align: center;
 }
+.flight-message button {
+  pointer-events: auto;
+  margin-left: 6px;
+}
 .inset-legend {
   text-align: center;
   margin: 4px 0 0;

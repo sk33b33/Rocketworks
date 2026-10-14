@@ -1,3 +1,4 @@
+import { plantStockKg } from '../src/mars/marsRules';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { navigate } from '../src/app/gameState';
 import { getAvailability } from '../src/app/locations';
@@ -347,6 +348,59 @@ describe('game store: flights', () => {
       sinceDay: 504,
       ice: 1,
     });
+  });
+
+  it('draws down the plant when a crew refuels from it, and awards the Mars crew milestones', () => {
+    const base = { siteId: 'delta-hollow', siteName: 'Delta Hollow', sinceDay: 505, ice: 0.6 };
+    useGameStore.setState({
+      progression: { ...st().progression, calendarDay: 1_020, marsBase: base },
+    });
+    st().recordFlight(
+      record({
+        missionId: 'mars-crewed',
+        missionName: 'Mars Expedition',
+        durationS: 957 * 86_400,
+        credited: true,
+        crewSafe: true,
+        mars: {
+          launchDay: 1_020,
+          departed: true,
+          cruiseDays: 254,
+          corrections: 4,
+          correctionDvMS: 31,
+          entrySpeedMS: 5_600,
+          landing: {
+            siteId: 'delta-hollow',
+            siteName: 'Delta Hollow',
+            outcome: 'landed',
+            grade: 'A',
+            manual: false,
+            missM: 118,
+          },
+          surfaceDone: true,
+          plantRunning: false,
+          ice: 0.6,
+          landedDay: 1_280,
+          returnTrip: {
+            plantDrawKg: 500_000,
+            plantDrawDay: 1_300,
+            liftedOff: true,
+            marsOrbit: true,
+            tei: true,
+            surfaceDays: 397,
+            homeCruiseDays: 294,
+            earthArrived: true,
+          },
+        },
+      }),
+    );
+    const after = st().progression.marsBase!;
+    expect(after.sinceDay).toBe(1_300);
+    expect(after.carriedKg).toBe(plantStockKg(base, 1_300) - 500_000);
+    expect(st().progression.calendarDay).toBe(1_020 + 957);
+    expect(st().progression.milestones).toEqual(
+      expect.arrayContaining(['crew-on-mars', 'home-from-mars']),
+    );
   });
 
   it('keeps the commitment after a scrub and does not credit failures', () => {
