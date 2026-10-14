@@ -148,6 +148,12 @@ export function ProximityControls({ view }: { view: ProximityView }) {
           </button>
         )}
       </div>
+      {docked && !view.canUndock && (
+        <p className="small-text muted">Undock unlocks when every task is complete.</p>
+      )}
+      {!docked && !view.canDepart && (
+        <p className="small-text muted">Depart unlocks beyond 300 m from the station.</p>
+      )}
     </div>
   );
 }

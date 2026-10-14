@@ -57,6 +57,12 @@ kbd {
   border-radius: 3px;
   color: var(--muted);
 }
+button.primary kbd,
+button.danger kbd {
+  color: inherit;
+  border-color: currentColor;
+  opacity: 0.75;
+}
 .sr-only {
   position: absolute;
   width: 1px;

@@ -48,9 +48,9 @@ export function ApproachPanel({ view }: { view: ProximityView }) {
         <dt>Range to port</dt>
         <dd>{dist(toPort)}</dd>
         <dt>Closing speed</dt>
-        <dd className={m.inKeepOut && m.closingMS > limit ? 'tone-bad' : undefined}>
+        <dd className={!docked && m.inKeepOut && m.closingMS > limit ? 'tone-bad' : undefined}>
           {fmt(m.closingMS, 2)} m/s
-          {m.inKeepOut && <span className="muted"> (max {fmt(limit, 2)})</span>}
+          {m.inKeepOut && !docked && <span className="muted"> (max {fmt(limit, 2)})</span>}
         </dd>
         <dt>Lateral offset</dt>
         <dd>{dist(m.lateralM)}</dd>
@@ -65,8 +65,12 @@ export function ApproachPanel({ view }: { view: ProximityView }) {
           {fmt(m.angleErrDeg, 1)}° · {fmt(m.rollErrDeg, 1)}°
         </dd>
         <dt>Corridor (≤ {CORRIDOR_HALF_ANGLE_DEG}°)</dt>
-        <dd className={m.inCorridor ? 'tone-ok' : m.inKeepOut ? 'tone-bad' : undefined}>
-          {m.alongM > 0 ? `${fmt(m.corridorDeg, 1)}°` : 'behind port'}
+        <dd
+          className={
+            docked ? undefined : m.inCorridor ? 'tone-ok' : m.inKeepOut ? 'tone-bad' : undefined
+          }
+        >
+          {docked ? 'docked' : m.alongM > 0 ? `${fmt(m.corridorDeg, 1)}°` : 'behind port'}
         </dd>
         <dt>RCS Δv left</dt>
         <dd className={s.rcsLeftMS < 5 ? 'tone-warn' : undefined}>
