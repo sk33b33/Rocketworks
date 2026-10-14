@@ -1,7 +1,7 @@
 # Project Status
 
 ## Current stage
-**Stage 7: Orbital station rendezvous and docking.** Complete and waiting for review.
+**Stage 8: Moon missions.** Complete and waiting for review.
 
 ## Completed
 - **Stage 0–2:** foundation; Rocket Factory with modular assembly; validation, certification, design library, progression.
@@ -96,6 +96,39 @@
   - **Progression:** a new *First docking* milestone (+1 RP). The Moon stays locked.
   - **Save:** flight records carry the docking summary, parsed with validation. The format stays v5; older records simply have none.
 
+- **Stage 8:**
+  - **Earth–Moon model** (`src/moon/moonOrbit.ts`, `propagate.ts`):
+    - The Moon moves on a circular orbit in the game's single orbital plane and turns synchronously (the same side faces Earth).
+    - Gravity on Moon missions is the restricted three-body model: Earth, the Moon's pull and the indirect term (no "patched conics"), so arrival and the flyby bend smoothly.
+    - Inside the Moon's sphere of influence (about 66,000 km) attitude and telemetry refer to the Moon. The switch keeps the nose pointed the same way.
+    - Coasting uses an adaptive step (a fraction of the local dynamical time), and time warp goes up to 10,000× in deep space (1,000× near Earth or the Moon, less near burns).
+    - A fast allocation-free propagator predicts paths for the guidance and the map with the same integrator the flight uses.
+  - **Assisted transfer guidance** (`lunarTransfer.ts`), new autopilot programs:
+    - *Trans-lunar injection*: plans the burn from the parking orbit by scanning departure times with numerical predictions (about 3.1 km/s, arriving in about 2.7 days), then flies it and makes up to two mid-course corrections (a few m/s each).
+    - *Lunar orbit insertion*: a retrograde burn centred on closest approach (lands in about a 200 × 110 km orbit), engaged automatically on arrival for landing missions.
+    - *Return to Earth*: plans trans-Earth injection from lunar orbit (or coasts home on the flyby's free return) with corrections toward an aerocapture perigee.
+    - *Aerocapture*: one braking pass through the upper atmosphere at about 11 km/s, banking lift up or down (bisection on predicted exit apogee) into a ~300 km orbit, then the regular Circularize program. The usual Deorbit to target, re-entry and landing programs bring the ship home.
+  - **Refuelling** (`lunarRules.ts`, `lunarFlight.ts`):
+    - Mission Control's Manifest has a Refuelling section: tanker flights in low Earth orbit (5 × 9,000 cr for the reference ship) and a top-up from a fictional pre-positioned depot in lunar orbit (60,000 cr).
+    - Readiness checks the Δv of each leg after orbit (flyby trip 3,650 m/s; landing: outbound 4,250 m/s and surface + home 5,150 m/s) against the refuelling bought; refuelling is included in the mission cost and budget.
+    - In flight, *Refuel in orbit* (about 6 h) and *Top up at the lunar depot* (about 3 h) are timed operations with time warp.
+    - New tech: *Heavy Tankers* (fewer tanker flights) and *Lunar Logistics* (cheaper depot top-ups).
+  - **Landing sites** (`lunarSites.ts`): four fictional near-side sites (Sea of Calm, Aurora Highlands, Halcyon Crater Rim, Lantern Ridge) with deterministic terrain: undulations, crater fields and boulder cells. Hazard ratings match the terrain: 8%, 27%, 72% and 21% of the ground within 500 m of the target is steeper than 9°.
+  - **Descent and landing** (`lunarLanding.ts`):
+    - A small descent-orbit burn lowers the low point to 15 km ahead of the site.
+    - The braking burn lights when stopping at the high gate (3.5 km up and short of the target) needs about 60% of the available thrust, flown with explicit (polynomial) guidance.
+    - The approach runs on high-mounted landing thrusters (below 3 km; fine throttle because the main engines can't hover in lunar gravity) and steers to the flattest spot within 400 m (hazard avoidance). Then a terminal descent at ~1.5 m/s.
+    - Take over at any time (button or W/S/Shift/Ctrl); flying the last 500 m without the program counts as a manual landing.
+    - Touchdown limits: ≤ 3 m/s down (≤ 8 m/s is a hard landing with damage), ≤ 2 m/s sideways, tilt plus ground slope ≤ 12°. Beyond those the ship tips over (lost; crew assumed rescued) or crashes. Landings are rated S–D.
+  - **Surface and ascent:** timed surface tasks (safing gates a site survey, geology samples, and setting up experiments or unloading the surface science package), then *Lift off* under an assisted ascent back to lunar orbit (also usable to abort a descent).
+  - **Mission rules:** the Lunar Flyby is now playable and credited (refuel, inject, fly by, aerocapture, land); the Lunar Landing unlocks after it. New lunar objectives, debrief lines, a lunar summary on flight records, and milestones *Around the Moon* (+2 RP), *Boots on the Moon* (+3 RP, +50,000 cr) and *Pinpoint touchdown* (manual lunar landing rated A or better, +1 RP, +25,000 cr).
+  - **Moon location:**
+    - A procedural Moon (original texture: maria, craters, rays) with colour-coded site markers, Earth in the sky at its true angular size, and a high-detail terrain patch with instanced boulders at the chosen site (from the same terrain the physics uses).
+    - Cameras: chase, a landing-site ground camera, and a wide Moon view. Landing-thruster dust near the ground.
+    - The HUD has the landing-site picker with a terrain profile, descent telemetry with a touchdown-window checklist and a profile of the ground ahead, and the surface panel.
+  - **Flight / Orbit:** the Moon is drawn in the chase view, and the map frames the Earth–Moon system with the predicted path, the Moon and its orbit (or the lunar orbit near the Moon). The orbit panel switches to lunar figures near the Moon, and a Moon panel shows the trip status, closest approach or return perigee, the next course check and refuelling.
+  - **Save format v6:** mission plans carry refuelling choices (v5 → v6 migration), and flight records carry the lunar summary (parsed with validation).
+
 ## Assumptions (documented, reversible)
 - Flight physics is a simplified planar gameplay model: one orbital plane (the equator), no Earth rotation, an exponential atmosphere, lumped aerodynamics, and Sutton–Graves heating with gameplay heat capacities. The UI and footnotes say so; it is not a flight simulator.
 - Out-of-plane steering isn't simulated. Yaw is visual only, and bank only reduces in-plane lift (enough to steer re-entry range).
@@ -114,10 +147,27 @@
 - The station shares the ship's orbital plane (no plane-change problem). Proximity motion uses the linearised Clohessy–Wiltshire equations, accurate near the station, and docking limits, RCS budget and task durations are game values.
 - Rendezvous uses the main engines from orbit until the hold point; RCS takes over only for proximity operations, and RCS propellant is a separate budget, not drawn from main tanks.
 - Proximity operations aren't saved mid-flight, like the rest of the orbital flight.
+- The Moon shares the single orbital plane: no inclination or plane changes; landing sites lie on the Moon's equator in that plane. The Moon's orbit is circular.
+- Moon gravity uses the restricted three-body model on Moon missions only; other missions keep pure Earth gravity (the difference in low orbit is negligible).
+- Refuelling is abstracted: tanker rendezvous and the lunar depot are timed operations, not flown. The depot is fictional and assumed stocked by earlier uncrewed tankers.
+- The reference ship can't fly a lunar landing and return on one tank (about 7.4 km/s of Δv against about 9 km/s needed after orbit), hence the second top-up at the depot; this is a game balance choice, not a statement about real architectures.
+- Landing thrusters are a gameplay simplification (a fixed 4 m/s² capacity with fine throttle below 3 km above the Moon), drawing on the main tanks at the main engines' Isp.
+- Lunar terrain is only modelled in detail near the chosen site (±40 km); elsewhere the Moon is a smooth sphere. Slopes include boulders under the legs. Terrain heights are relative to the mean radius.
+- The Earth return uses aerocapture into orbit, then a normal deorbit to a landing zone, so the ship can be recovered; heating and the shield budget are game values.
+- Lunar transfer guidance, insertion, descent and ascent are simplified gameplay guidance tuned for this model, not flight software. Δv figures are estimates.
 
 ## Checks (last run)
 - `npm run typecheck`, `npm run lint`, `npm run build`: pass.
-- `npm test`: 190 tests pass across 18 files. New in Stage 7 (`tests/station.test.ts`):
+- `npm test`: 208 tests pass across 19 files. New in Stage 8 (`tests/moon.test.ts`, plus mission, save and progression updates):
+  - the Moon's orbit and gravity; synchronous rotation of surface points; a stable low lunar orbit at the coasting step; the sphere-of-influence switch keeping the nose fixed; the propagator matching single coast steps; time to periapsis for ellipses and hyperbolas;
+  - lunar touchdown outcomes: gentle, tipped on a slope, tipped by sideways speed, crash, hard landing with damage;
+  - trans-lunar planning reaching the Moon within the transfer window;
+  - refuelling only when bought and in a suitable orbit; Moon programs unavailable outside their conditions;
+  - a credited Lunar Flyby end to end in the flight runtime (refuel, injection, free return, aerocapture, deorbit and landing);
+  - a credited Lunar Landing end to end (refuel, transfer, insertion, depot, assisted descent with hazard avoidance, surface tasks, lift-off, return, landing), and a scripted manual landing credited as manual;
+  - Δv legs against refuelling, refuel pricing, objectives and credit rules; site terrain determinism and hazard ranking; surface task gating;
+  - Mission Control lunar Δv-leg issues; v5 → v6 migration and lunar record parsing.
+- Stage 7 tests (`tests/station.test.ts`):
   - station-frame conversion round trip; Clohessy–Wiltshire motion matching two-body motion near the station; the CW targeting solution;
   - the assisted dock from the hold point inside the capture window; bounce when misaligned; collision when too fast;
   - corridor and keep-out violations; docked-task gating and undocking;
@@ -133,7 +183,8 @@
   - launch runtime replay → debrief (suborbital) and → hand-off with the result (orbital); expend skips the replay;
   - store recording: fleet, milestones, released assignments;
   - v4→v5 save migration and fleet/recovery parsing.
-- Headless Chromium smoke test, Stage 7 (manual script, not committed), with no console errors:
+- Headless Chromium smoke test, Stage 8 (manual script, not committed): STAGE8_SMOKE
+- Headless Chromium smoke test, Stage 7, with no console errors:
   - The Orbital Station location shows its empty state before a mission; the station mission is committed with the reference design, platform recovery and 2 crew.
   - Launch → orbit (318 × 268 km) → *Rendezvous with station*: waited for the window, burned, coasted up and closed on the hold point; *Begin proximity operations* switched to the Orbital Station location.
   - Docking camera and reticle; W thrusts forward; the assist (G) flew the corridor and docked at 0.06 m/s, 0.13 m off, rated A, with 0 violations, bounces or collisions and about 20 m/s of RCS left.
@@ -165,6 +216,9 @@
 - The rendezvous is assisted only: there are no manual phasing burns or a planning tool for them.
 - The station has a single (forward) docking port and doesn't rotate; the ship's model isn't animated for RCS puffs.
 - Crew transfer and cargo tasks are timed progress bars, not interactive activities.
+- Moon missions: no manual trajectory planning tools (the transfer, corrections, insertion and the burn home are assisted only); no EVA (the roadmap lists it as a later optional feature); no Moon rotation-dependent lighting changes on the surface.
+- Hazard avoidance and manual landings are along the ground track only (the 2D model has no cross-track motion); the 3D terrain shows cross-track variation for looks.
+- In headless browsers the deep-space coast is fast, but 10× phases (burns, descent, re-entry) take a few real minutes.
 
 ## Next action
-Review Stage 7. When approved, begin **Stage 8: Moon missions**: an Earth–Moon transfer as a time-compressed phase, lunar orbit, landing site selection and descent, surface objectives and the return to Earth.
+Review Stage 8. Stage 9 (expansion and polish) is open-ended in the roadmap: choose its focus (e.g. polish, performance and accessibility; Mars; contracts; photo mode) before starting.

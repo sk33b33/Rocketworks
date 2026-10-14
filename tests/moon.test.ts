@@ -470,7 +470,7 @@ describe('lunar landing', () => {
 describe('lunar sites', () => {
   it('builds deterministic terrain whose hazards match the site rating', () => {
     const calm = new SiteTerrain(findLunarSite('sea-of-calm')!);
-    const rim = new SiteTerrain(findLunarSite('kestrel-rim')!);
+    const rim = new SiteTerrain(findLunarSite('halcyon-rim')!);
     expect(calm.heightAt(123)).toBe(new SiteTerrain(findLunarSite('sea-of-calm')!).heightAt(123));
     const steep = (t: SiteTerrain) => {
       let n = 0;

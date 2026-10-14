@@ -64,6 +64,14 @@ Current progress is tracked in `docs/STATUS.md`.
 - Stay inside the approach corridor and below the closing-speed limit. Contact that is too fast or misaligned bounces off or damages the hull.
 - Once docked, warp through the tasks (leak check, science, crew handover, cargo), *Undock*, back off beyond 300 m, *Depart*, and deorbit as usual. The relative-motion model is simplified (Clohessy–Wiltshire, single orbital plane).
 
+**Going to the Moon (Stage 8):**
+- The station mission unlocks the *Lunar Flyby*; the flyby unlocks the *Lunar Landing* (it needs a docking adapter for the depot).
+- In Mission Control's Manifest, keep *Refuelling* ticked: tankers in Earth orbit (and, for the landing, a top-up at a fictional lunar depot). The Δv table shows each leg against what the ship will have.
+- In orbit, switch the autopilot off and press *Refuel in orbit* in the Moon panel (warp through ~6 h). Then engage *Trans-lunar injection*: it plans the burn, flies it and corrects course. The coast to the Moon takes about 2.7 days; deep-space warp goes up to 10,000×. The map (M) frames the Earth–Moon system.
+- Flyby: the free return brings the ship home; *Aerocapture* engages near Earth, then circularize and *Deorbit to target* as usual.
+- Landing: lunar orbit insertion engages on arrival. At the **Moon** location, top up at the depot, pick a landing site (hazard ratings and a terrain profile), and engage *Lunar landing*. Take over above 500 m (button or W/S pitch, Shift/Ctrl throttle; landing thrusters below 3 km, ~40% hovers) for a manual landing. Cameras: 1 chase, 2 landing site, 3 Moon.
+- Touch down at ≤ 3 m/s with ≤ 2 m/s sideways and tilt plus slope ≤ 12°, or the ship tips over. Run the surface tasks, *Lift off*, then *Return to Earth*. The Earth–Moon physics is a simplified planar model.
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:

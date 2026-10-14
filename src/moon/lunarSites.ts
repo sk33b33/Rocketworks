@@ -49,8 +49,8 @@ export const LUNAR_SITES: readonly LunarSite[] = [
     seed: 23,
   },
   {
-    id: 'kestrel-rim',
-    name: 'Kestrel Crater Rim',
+    id: 'halcyon-rim',
+    name: 'Halcyon Crater Rim',
     description:
       'The terraced rim of a young crater: ancient deep rock exposed, but steep and blocky.',
     seleno: 0.55,
