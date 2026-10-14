@@ -92,6 +92,10 @@ export function missionReport(
         fleet,
         budgetCredits: programSummary(p).budgetCredits,
         rapidReuse: p.tech.includes('rapid-reuse'),
+        logistics: {
+          heavyTankers: p.tech.includes('heavy-tankers'),
+          lunarLogistics: p.tech.includes('lunar-logistics'),
+        },
       }),
     };
   }

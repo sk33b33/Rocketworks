@@ -21,14 +21,25 @@ export const TANKER_FLIGHT_CREDITS = 9_000;
 /** Cost of the lunar depot top-up (its tankers flew earlier, uncrewed). */
 export const DEPOT_TOPUP_CREDITS = 60_000;
 
-export function tankerFlights(shipCapacityKg: number): number {
-  return Math.max(1, Math.ceil(shipCapacityKg / TANKER_CAPACITY_KG));
+/** Researched logistics: bigger tankers and cheaper depot top-ups. */
+export interface LogisticsTech {
+  readonly heavyTankers?: boolean;
+  readonly lunarLogistics?: boolean;
 }
 
-export function refuelCost(choice: RefuelChoice, shipCapacityKg: number): number {
+export function tankerFlights(shipCapacityKg: number, tech: LogisticsTech = {}): number {
+  const per = TANKER_CAPACITY_KG * (tech.heavyTankers ? 1.5 : 1);
+  return Math.max(1, Math.ceil(shipCapacityKg / per));
+}
+
+export function refuelCost(
+  choice: RefuelChoice,
+  shipCapacityKg: number,
+  tech: LogisticsTech = {},
+): number {
   return (
-    (choice.leo ? tankerFlights(shipCapacityKg) * TANKER_FLIGHT_CREDITS : 0) +
-    (choice.depot ? DEPOT_TOPUP_CREDITS : 0)
+    (choice.leo ? tankerFlights(shipCapacityKg, tech) * TANKER_FLIGHT_CREDITS : 0) +
+    (choice.depot ? Math.round(DEPOT_TOPUP_CREDITS * (tech.lunarLogistics ? 0.6 : 1)) : 0)
   );
 }
 

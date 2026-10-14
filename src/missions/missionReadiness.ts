@@ -1,7 +1,13 @@
 import { calculateRocketStats } from '../rocket/stats/calculateRocketStats';
 import { certificationStatus } from '../rocket/readiness/certification';
 import { estimateDeltaV, ORBIT_DELTA_V_MS, type DeltaVEstimate } from '../rocket/readiness/deltaV';
-import { checkLegs, refuelCost, tankerFlights, type LegCheck } from '../moon/lunarRules';
+import {
+  checkLegs,
+  refuelCost,
+  tankerFlights,
+  type LegCheck,
+  type LogisticsTech,
+} from '../moon/lunarRules';
 import type { ReadinessReport } from '../rocket/readiness/readiness';
 import type { RocketBlueprint } from '../rocket/model/types';
 import { generateConditions, type LaunchConditions } from './conditions';
@@ -123,6 +129,8 @@ export interface MissionContext {
   readonly budgetCredits?: number;
   /** "Rapid Reuse" researched (cheaper reflights). */
   readonly rapidReuse?: boolean;
+  /** Researched refuelling logistics (Moon missions). */
+  readonly logistics?: LogisticsTech;
 }
 
 /** Crew-days of life support per part. Game values. */
@@ -359,11 +367,12 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
   const shipNew = bp ? stageCost(bp, 'ship') : 0;
   const deltaV = bp ? estimateDeltaV(bp, carriedMassKg, RESERVE_FRACTION[recovery]) : null;
   const shipCapacityKg = deltaV ? deltaV.ship.initialMassKg - deltaV.ship.finalMassKg : 0;
-  const refuelCredits = mission.lunar && bp ? refuelCost(ctx.setup.refuel, shipCapacityKg) : 0;
+  const refuelCredits =
+    mission.lunar && bp ? refuelCost(ctx.setup.refuel, shipCapacityKg, ctx.logistics) : 0;
   const cost: MissionCost = {
     newBuildCredits: boosterNew + shipNew,
     refuelCredits,
-    tankerFlights: tankerFlights(shipCapacityKg),
+    tankerFlights: tankerFlights(shipCapacityKg, ctx.logistics),
     missionCredits:
       stageFlightCost(boosterNew, boosterVehicle, ctx.rapidReuse) +
       stageFlightCost(shipNew, shipVehicle, ctx.rapidReuse) +

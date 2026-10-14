@@ -79,6 +79,21 @@ export const TECH_TREE: readonly TechNode[] = [
     requires: ['rapid-reuse'],
     budgetBonusCredits: 75_000,
   },
+  {
+    id: 'heavy-tankers',
+    name: 'Heavy Tankers',
+    description:
+      'Stretched tanker ships: orbital refuelling needs fewer tanker flights (+50% each).',
+    costRp: 3,
+    requires: [],
+  },
+  {
+    id: 'lunar-logistics',
+    name: 'Lunar Logistics',
+    description: 'Regular depot resupply: the lunar depot top-up costs 40% less.',
+    costRp: 3,
+    requires: ['heavy-tankers'],
+  },
 ];
 
 export const INITIAL_PROGRESSION: ProgressionState = {
