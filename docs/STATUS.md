@@ -1,7 +1,7 @@
 # Project Status
 
 ## Current stage
-**Stage 6: Reusable booster and ship landing.** Complete and waiting for review.
+**Stage 7: Orbital station rendezvous and docking.** Complete and waiting for review.
 
 ## Completed
 - **Stage 0–2:** foundation; Rocket Factory with modular assembly; validation, certification, design library, progression.
@@ -60,6 +60,41 @@
     - Ship flaps trim with angle of attack and bank in the Flight scene, and its legs deploy for the final approach.
   - **Save format v5:** fleet, recovery and hardware on flight records, and recovery and fleet choices in the mission plan, with a v4→v5 migration and per-entry validation.
   - **Ship landing fix:** a light ship can't throttle below one engine at minimum thrust, so the landing program now pulses the engine instead of hovering until it runs dry.
+- **Stage 7:**
+  - **The station** (`src/station/stationOrbit.ts`): a fictional crewed outpost in a circular 400 km orbit in the same plane as the flight model.
+    - Its position is set when the ship first reaches orbit, so the transfer window opens within about one orbit.
+    - Helpers convert between the inertial frame and the station's local frame (LVLH: radial, along-track, cross-track).
+  - **Assisted rendezvous** (`rendezvous.ts`), a new *Rendezvous with station* autopilot program:
+    - Waits for the phase angle, then a Hohmann-style transfer burn up to the station's altitude.
+    - Closes in with Clohessy–Wiltshire targeting to a hold point 2 km ahead, re-planned every minute.
+    - Holds there; proximity operations become available inside 3.5 km and below 3 m/s relative.
+    - The Flight HUD shows a *Station* panel (range, relative speed, time to the burn) and the station's position on the map and orbit inset.
+  - **Proximity operations** (`proximity.ts`, `proximitySession.ts`), simulated in 3D in the station frame with the Clohessy–Wiltshire equations at fixed steps:
+    - RCS translation (0.12 m/s², a 40 m/s budget) and rotation; attitude hold and port alignment.
+    - An approach corridor (12° cone) and a 200 m keep-out sphere with a range-dependent closing-speed limit. Leaving the corridor or closing too fast inside it counts as a violation and warns.
+    - **Docking outcome comes from the physics:**
+      - Capture needs 0.02–0.35 m/s closing, ≤ 0.3 m offset, ≤ 4° angle, ≤ 5° roll and ≤ 0.1 m/s lateral speed.
+      - Outside that window, contact at up to 0.8 m/s bounces off. Faster contact (or hitting the structure) is a collision that damages the hull.
+      - Docks are graded S–D on how centred, slow and aligned the contact was.
+    - **Docking assist** (G): flies to the corridor, aligns, and approaches at a safe closing speed. Any translation key takes over.
+      - A dock counts as manual if the assist wasn't used in the last 30 m.
+    - **Abort** (B) backs off to a safe point 340 m out and holds.
+    - Time warp is limited to 10× in free flight near the station, and up to 1000× while docked.
+  - **Docked tasks:** a hatch leak check (30 min) gates a science run (4 h), crew handover (3 h, with crew aboard) and a cargo transfer (2 h, with cargo).
+    - *Undock* is enabled once all tasks are complete. Undocking pushes the ship gently out along the port axis.
+    - *Depart* is enabled beyond 300 m and hands back to Flight / Orbit for the deorbit and landing.
+  - **Mission rules** (`flightOutcome.ts`):
+    - The *Station Crew Rotation* mission needs a docking adapter on the ship.
+    - Its objectives are reach orbit, rendezvous, dock, tasks done, and land safely.
+    - It's credited only with a completed docking and tasks, and the debrief shows a docking line (grade, manual, bounces, collisions, violations).
+  - **Orbital Station location:**
+    - A new 3D scene with the procedural station: modules, nodes, truss, solar wings, radiators, a docking target and blinking navigation lights.
+    - The ship is shown in the station frame (floating origin), with Earth below.
+    - Cameras: chase (1), docking camera with reticle (2), and a station view (3).
+    - The HUD has an approach panel (range, closing speed, offsets, angles, corridor/keep-out state) and RCS pad controls for touch and mouse.
+    - The location is unlocked by the orbital shakedown, and shows an explanatory empty state when no ship is nearby.
+  - **Progression:** a new *First docking* milestone (+1 RP). The Moon stays locked.
+  - **Save:** flight records carry the docking summary, parsed with validation. The format stays v5; older records simply have none.
 
 ## Assumptions (documented, reversible)
 - Flight physics is a simplified planar gameplay model: one orbital plane (the equator), no Earth rotation, an exponential atmosphere, lumped aerodynamics, and Sutton–Graves heating with gameplay heat capacities. The UI and footnotes say so; it is not a flight simulator.
@@ -76,10 +111,19 @@
 - The recovery is a replay from staging that runs after the ascent, not a parallel simulation. Skipping it simulates the assisted result.
 - The platform repositions per flight to the booster's natural landing point; the ship's ocean platform zone ("Kestrel") is a separate, fixed zone.
 - Wear, reflight pricing and rating thresholds are game values.
+- The station shares the ship's orbital plane (no plane-change problem). Proximity motion uses the linearised Clohessy–Wiltshire equations, accurate near the station, and docking limits, RCS budget and task durations are game values.
+- Rendezvous uses the main engines from orbit until the hold point; RCS takes over only for proximity operations, and RCS propellant is a separate budget, not drawn from main tanks.
+- Proximity operations aren't saved mid-flight, like the rest of the orbital flight.
 
 ## Checks (last run)
 - `npm run typecheck`, `npm run lint`, `npm run build`: pass.
-- `npm test`: 181 tests pass across 17 files. New this stage (`tests/recovery.test.ts`, plus save and launch updates):
+- `npm test`: 190 tests pass across 18 files. New in Stage 7 (`tests/station.test.ts`):
+  - station-frame conversion round trip; Clohessy–Wiltshire motion matching two-body motion near the station; the CW targeting solution;
+  - the assisted dock from the hold point inside the capture window; bounce when misaligned; collision when too fast;
+  - corridor and keep-out violations; docked-task gating and undocking;
+  - a full end-to-end station mission in the flight runtime (orbit → rendezvous → dock → tasks → undock → depart → deorbit → landing, credited);
+  - station objectives and credit only with a completed docking.
+- Stage 6 tests (`tests/recovery.test.ts`, plus save and launch updates):
   - recovery hardware rules and defaults; the staging reserve; per-stage design signatures;
   - assisted tower catch inside the capture window; platform landing at the stationed deck;
   - loss without landing propellant; manual takeover; manual credit only for a fully manual burn;
@@ -89,7 +133,8 @@
   - launch runtime replay → debrief (suborbital) and → hand-off with the result (orbital); expend skips the replay;
   - store recording: fleet, milestones, released assignments;
   - v4→v5 save migration and fleet/recovery parsing.
-- Headless Chromium smoke test (manual script, not committed), with no console errors:
+- Headless Chromium smoke test, Stage 7 (manual script, not committed): in progress; results will be recorded here.
+- Headless Chromium smoke test, Stage 6, with no console errors:
   - **Flight 1** (test flight, tower catch, assisted):
     - Replay: separation → flip → boostback → coast → glide → landing burn.
     - Caught 0.0 m off centre at 1.6 m/s, rated S. The arms close on the booster and lower it onto the mount.
@@ -111,6 +156,9 @@
 - The Earth texture is procedural and low-resolution (1024×512); near the ground a flat local surface tile stands in for terrain.
 - Ctrl is the throttle-down key; browsers reserve some Ctrl combinations (e.g. Ctrl+W), so use the X cutoff or the buttons if in doubt.
 - There's no free-fly camera, and the map view shows the predicted path but no manoeuvre planning nodes.
+- The rendezvous is assisted only: there are no manual phasing burns or a planning tool for them.
+- The station has a single (forward) docking port and doesn't rotate; the ship's model isn't animated for RCS puffs.
+- Crew transfer and cargo tasks are timed progress bars, not interactive activities.
 
 ## Next action
-Review Stage 6. When approved, begin **Stage 7: ISS-like orbital station**: a fictional station in orbit, rendezvous planning, approach and docking, and the Orbital Station location.
+Review Stage 7. When approved, begin **Stage 8: Moon missions**: an Earth–Moon transfer as a time-compressed phase, lunar orbit, landing site selection and descent, surface objectives and the return to Earth.

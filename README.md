@@ -56,6 +56,14 @@ Current progress is tracked in `docs/STATUS.md`.
 - After the ascent, the booster's return replays from staging. Watch it with the **Landing** camera (4), *Skip replay* to simulate it, or choose *Fly the landing myself* below 9 km (Shift/Ctrl throttle, A/D tilt) for a precision rating and a bonus milestone.
 - Landings are rated S–D. Recovered vehicles wear with use: refurbish them in the Manifest's fleet list, or scrap them.
 
+**Visiting the orbital station (Stage 7):**
+- Fly the Crewed Orbital Shakedown first. That unlocks *Station Crew Rotation* and the **Orbital Station** location. The ship needs a docking adapter (Factory).
+- In orbit, engage *Rendezvous with station*. The autopilot waits for the transfer window, burns, and closes to a hold point 2 km ahead of the station (warp is safe).
+- *Begin proximity operations* switches to the Orbital Station location. Fly with RCS: W/S forward/back, A/D left/right, R/F up/down, arrows pitch/yaw, Q/E roll, T attitude hold, Y align to the port. Or use the on-screen pad.
+- G toggles the docking assist and B aborts to a safe distance. Cameras: 1 chase, 2 docking camera with reticle, 3 station view.
+- Stay inside the approach corridor and below the closing-speed limit. Contact that is too fast or misaligned bounces off or damages the hull.
+- Once docked, warp through the tasks (leak check, science, crew handover, cargo), *Undock*, back off beyond 300 m, *Depart*, and deorbit as usual. The relative-motion model is simplified (Clohessy–Wiltshire, single orbital plane).
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:
