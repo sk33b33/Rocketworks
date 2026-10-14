@@ -3,6 +3,7 @@ import type { LocationId } from '../app/locations';
 import type { SceneFactories } from './GameScene';
 import { RenderLoop } from './RenderLoop';
 import { SceneManager } from './SceneManager';
+import { PerfStats, perfProbe } from './PerfStats';
 
 export interface RuntimeCallbacks {
   onFirstFrame: () => void;
@@ -17,6 +18,7 @@ export class GameRuntime {
   private readonly resizeObserver: ResizeObserver;
   private disposed = false;
   private framesRendered = 0;
+  readonly stats = new PerfStats();
 
   constructor(
     private readonly container: HTMLElement,
@@ -46,6 +48,7 @@ export class GameRuntime {
     this.renderer.domElement.addEventListener('webglcontextlost', this.onContextLost);
     document.addEventListener('visibilitychange', this.onVisibility);
     this.resize();
+    perfProbe.stats = this.stats;
   }
 
   start(): void {
@@ -64,15 +67,19 @@ export class GameRuntime {
     this.renderer.domElement.removeEventListener('webglcontextlost', this.onContextLost);
     document.removeEventListener('visibilitychange', this.onVisibility);
     this.scenes.dispose();
+    if (perfProbe.stats === this.stats) perfProbe.stats = null;
     this.renderer.dispose();
     this.renderer.domElement.remove();
   }
 
   private frame(deltaSeconds: number): void {
+    const t0 = performance.now();
     this.scenes.update(deltaSeconds);
     const active = this.scenes.activeScene;
     if (!active) return;
+    const t1 = performance.now();
     this.renderer.render(active.scene, active.camera);
+    this.stats.record(deltaSeconds, t1 - t0, performance.now() - t1, this.renderer.info, active.id);
     if (this.framesRendered++ === 0) this.callbacks.onFirstFrame();
   }
 

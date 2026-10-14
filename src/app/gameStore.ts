@@ -111,6 +111,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   flightCamera: 'chase',
   stationCamera: 'chase',
   moonCamera: 'chase',
+  showPerf: typeof location !== 'undefined' && new URLSearchParams(location.search).has('perf'),
   history: { past: [], future: [] },
   ...initialData(),
 
@@ -136,6 +137,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setReduceMotion: (reduceMotion) => set({ ui: { ...get().ui, reduceMotion } }),
   setUiScale: (uiScale) => set({ ui: { ...get().ui, uiScale } }),
   setOverviewSeen: (overviewSeen) => set({ ui: { ...get().ui, overviewSeen } }),
+  setShowPerf: (showPerf) => set({ showPerf }),
   setVehicleTab: (vehicleTab) => set({ vehicleTab }),
   requestCamera: (kind, instanceId) =>
     set({ cameraRequest: { seq: ++cameraSeq, kind, ...(instanceId ? { instanceId } : {}) } }),

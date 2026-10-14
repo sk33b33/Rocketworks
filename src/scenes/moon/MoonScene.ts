@@ -14,6 +14,8 @@ import { MoonBody } from './MoonBody';
 
 /** Same sun direction as the Flight scene (inertial frame). */
 const SUN_DIR = new THREE.Vector3(0.55, 0.6, 0.58).normalize();
+const AXIS_Y = new THREE.Vector3(0, 1, 0);
+const AXIS_Z = new THREE.Vector3(0, 0, 1);
 /** Earth is drawn as a backdrop at this distance (true angular size). */
 const EARTH_BACKDROP_M = 6_000_000;
 
@@ -48,6 +50,9 @@ export class MoonScene implements GameScene {
   private readonly up = new THREE.Vector3();
   private readonly fwd = new THREE.Vector3();
   private readonly tmp = new THREE.Vector3();
+  private readonly tmp2 = new THREE.Vector3();
+  private readonly back = new THREE.Vector3();
+  private readonly focus = new THREE.Vector3();
 
   constructor(private readonly controller: MoonController) {}
 
@@ -212,7 +217,7 @@ export class MoonScene implements GameScene {
     if (dust.visible && geo) {
       this.up.set(f.up[0], f.up[1], 0);
       dust.position.copy(this.up).multiplyScalar(-geo.radarM + 0.3);
-      dust.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), this.up);
+      dust.quaternion.setFromUnitVectors(AXIS_Y, this.up);
       dust.scale.setScalar(1 + (45 - geo.radarM) / 30 + autoMotion(Math.sin(this.time * 9) * 0.05));
     }
     this.stars!.position.copy(this.camera.position);
@@ -236,9 +241,9 @@ export class MoonScene implements GameScene {
       const dist = MOON_RADIUS_M * 4.2 * this.zoom;
       const out = this.tmp.copy(this.centre).multiplyScalar(-1).normalize();
       const dir = out
-        .applyAxisAngle(new THREE.Vector3(0, 0, 1), this.yaw * 0.5 + autoMotion(this.time * 0.01))
+        .applyAxisAngle(AXIS_Z, this.yaw * 0.5 + autoMotion(this.time * 0.01))
         .multiplyScalar(Math.cos(this.pitch))
-        .add(new THREE.Vector3(0, 0, Math.sin(this.pitch)))
+        .add(this.tmp2.set(0, 0, Math.sin(this.pitch)))
         .normalize();
       cam.position.copy(this.centre).addScaledVector(dir, dist);
       cam.up.set(0, 0, 1);
@@ -271,17 +276,16 @@ export class MoonScene implements GameScene {
     // Chase: behind along the ground track and above.
     const vRel = this.tmp.set(s.v[0], s.v[1], 0);
     const mState = moonState(lunar.env.moon, s.tS);
-    if (s.ref === 'moon') vRel.sub(new THREE.Vector3(mState.v[0], mState.v[1], 0));
-    const horiz = vRel.clone().addScaledVector(this.up, -vRel.dot(this.up));
+    if (s.ref === 'moon') vRel.sub(this.tmp2.set(mState.v[0], mState.v[1], 0));
+    const horiz = vRel.addScaledVector(this.up, -vRel.dot(this.up));
     if (horiz.length() > 0.5) this.fwd.copy(horiz.normalize());
     else this.fwd.set(frameUp[1], -frameUp[0], 0);
-    const side = new THREE.Vector3(0, 0, 1);
-    const back = this.fwd
-      .clone()
+    const back = this.back
+      .copy(this.fwd)
       .multiplyScalar(-Math.cos(this.yaw))
-      .addScaledVector(side, Math.sin(this.yaw));
+      .addScaledVector(AXIS_Z, Math.sin(this.yaw));
     const dist = 2.2 * shipLen * this.zoom + 30;
-    const focus = new THREE.Vector3().addScaledVector(this.up, shipLen * 0.45);
+    const focus = this.focus.set(0, 0, 0).addScaledVector(this.up, shipLen * 0.45);
     cam.position
       .copy(focus)
       .addScaledVector(back, dist * Math.cos(this.pitch))

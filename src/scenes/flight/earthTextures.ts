@@ -74,6 +74,21 @@ export function landHeight(d: readonly [number, number, number]): number {
   return h;
 }
 
+/**
+ * Generated canvases are memoized for the whole session: several scenes show Earth (and the
+ * Moon), and generating the pixels is the expensive part. Each scene still wraps the canvas in
+ * its own texture, so per-scene disposal stays independent.
+ */
+const canvasMemo = new Map<string, HTMLCanvasElement>();
+export function memoCanvas(key: string, make: () => HTMLCanvasElement): HTMLCanvasElement {
+  let c = canvasMemo.get(key);
+  if (!c) {
+    c = make();
+    canvasMemo.set(key, c);
+  }
+  return c;
+}
+
 function paint(
   width: number,
   height: number,
@@ -107,7 +122,15 @@ const rgba = (r: number, g: number, b: number, a = 255) =>
   (Math.round(a) & 255);
 
 export function createEarthTexture(width = 1024, height = 512): THREE.CanvasTexture {
-  const canvas = paint(width, height, (u, v) => {
+  const canvas = memoCanvas(`earth:${width}x${height}`, () => paintEarth(width, height));
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function paintEarth(width: number, height: number): HTMLCanvasElement {
+  return paint(width, height, (u, v) => {
     const d = texelDirection(u, v);
     const h = landHeight(d);
     const lat = Math.abs(Math.asin(d[2]));
@@ -129,20 +152,20 @@ export function createEarthTexture(width = 1024, height = 512): THREE.CanvasText
     const b = 48 + 40 * dry + 30 * high;
     return mixIce(r, g, b);
   });
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
 }
 
 export function createCloudTexture(width = 1024, height = 512): THREE.CanvasTexture {
-  const canvas = paint(width, height, (u, v) => {
+  const canvas = memoCanvas(`clouds:${width}x${height}`, () => paintClouds(width, height));
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function paintClouds(width: number, height: number): HTMLCanvasElement {
+  return paint(width, height, (u, v) => {
     const d = texelDirection(u, v);
     const n = fbm(d[0] * 3 + 21, d[1] * 3 + 5, d[2] * 6 + 9, 99, 5);
     const a = Math.max(0, Math.min(1, (n - 0.5) * 3.2));
     return rgba(255, 255, 255, a * 230);
   });
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
 }

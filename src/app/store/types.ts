@@ -57,6 +57,8 @@ export interface GameData {
   /** Orbital Station camera mode (not persisted). */
   stationCamera: StationCameraMode;
   moonCamera: MoonCameraMode;
+  /** Performance readout (session only, not saved). */
+  showPerf: boolean;
   /** Flight history (persisted, newest last). */
   flights: readonly FlightRecord[];
   /** Recovered boosters and ships (persisted). */
@@ -129,6 +131,7 @@ export interface UiActions {
   setReduceMotion(on: boolean): void;
   setUiScale(scale: number): void;
   setOverviewSeen(seen: boolean): void;
+  setShowPerf(on: boolean): void;
   setVehicleTab(tab: VehicleTab): void;
   requestCamera(kind: CameraRequest['kind'], instanceId?: string): void;
   runFixAction(action: FixAction): void;

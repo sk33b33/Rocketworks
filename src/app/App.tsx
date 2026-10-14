@@ -9,12 +9,14 @@ import { LocationSelector } from '../ui/LocationSelector';
 import { SettingsMenu } from '../ui/SettingsMenu';
 import { NextStepChip } from '../ui/NextStepChip';
 import { ProgramOverview } from '../ui/ProgramOverview';
+import { PerfOverlay } from '../ui/PerfOverlay';
 import { NoticeBar } from '../ui/NoticeBar';
 import { Viewport } from '../ui/Viewport';
 import { useGameStore } from './gameStore';
 
 export function App() {
   const location = useGameStore((s) => s.currentLocation);
+  const showPerf = useGameStore((s) => s.showPerf);
   return (
     <div className="app">
       <header className="topbar">
@@ -35,6 +37,7 @@ export function App() {
         </ErrorBoundary>
         <NoticeBar />
         <ProgramOverview />
+        {showPerf && <PerfOverlay />}
       </main>
     </div>
   );

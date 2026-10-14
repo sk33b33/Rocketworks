@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { fbm, texelDirection } from '../flight/earthTextures';
+import { fbm, memoCanvas, texelDirection } from '../flight/earthTextures';
 
 /*
  * Procedural Moon surface (original art, no third-party imagery): grey highlands, darker maria
@@ -16,6 +16,14 @@ function hash(n: number): number {
 }
 
 export function createMoonTexture(width = 1024, height = 512): THREE.CanvasTexture {
+  const canvas = memoCanvas(`moon:${width}x${height}`, () => paintMoon(width, height));
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = 4;
+  return tex;
+}
+
+function paintMoon(width: number, height: number): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
@@ -80,10 +88,7 @@ export function createMoonTexture(width = 1024, height = 512): THREE.CanvasTextu
       ctx.restore();
     }
   }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  tex.anisotropy = 4;
-  return tex;
+  return canvas;
 }
 
 /** Ground texture for the close-up terrain patch: fine regolith speckle, tiled. */

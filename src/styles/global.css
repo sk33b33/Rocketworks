@@ -1700,3 +1700,21 @@ fieldset.stacked label {
     display: none;
   }
 }
+
+.perf-overlay {
+  position: absolute;
+  left: 50%;
+  top: 8px;
+  transform: translateX(-50%);
+  z-index: 45;
+  display: flex;
+  gap: 12px;
+  padding: 4px 10px;
+  font:
+    12px ui-monospace,
+    monospace;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  pointer-events: none;
+}

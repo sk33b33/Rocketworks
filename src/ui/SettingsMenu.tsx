@@ -10,6 +10,8 @@ export function SettingsMenu() {
   const setUiScale = useGameStore((s) => s.setUiScale);
   const setRandomFailures = useGameStore((s) => s.setRandomFailures);
   const setOverviewSeen = useGameStore((s) => s.setOverviewSeen);
+  const showPerf = useGameStore((s) => s.showPerf);
+  const setShowPerf = useGameStore((s) => s.setShowPerf);
   const root = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -80,6 +82,14 @@ export function SettingsMenu() {
             Random flight failures
           </label>
           <p className="small-text muted">Mission risk can cause engine-outs or vehicle loss.</p>
+          <label className="inline-check">
+            <input
+              type="checkbox"
+              checked={showPerf}
+              onChange={(e) => setShowPerf(e.target.checked)}
+            />
+            Show performance stats
+          </label>
           <div className="actions section-gap">
             <button
               type="button"
