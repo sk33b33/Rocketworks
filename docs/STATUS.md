@@ -1,7 +1,7 @@
 # Project Status
 
 ## Current stage
-**Stage 11: Crewed Mars round trip.** Complete and waiting for review.
+**Stage 12: Contracts and the treasury.** Complete and waiting for review.
 
 ## Completed
 - **Stage 0–2:** foundation; Rocket Factory with modular assembly; validation, certification, design library, progression.
@@ -196,6 +196,36 @@
     - Long durations display in days.
   - **Saves:** flight saves carry the plant line and the return leg. Progression keeps the plant's carried stock as an optional field, so the save version stays 8.
 
+- **Stage 12 (contracts and the treasury):**
+  - **Treasury** (`src/economy/treasury.ts`): the program now has a cash balance. New programs start with 400,000 cr.
+    - Committing a flight prices it (hardware or reflight, refurbishment, tankers), and the price is paid when the flight is recorded. A scrub costs nothing.
+    - First-time story rewards, milestone credits and contract payouts come in, and the program office adds 15,000 cr every 30 program days.
+    - Mission Control refuses to commit a flight the treasury can't cover, and shows the balance before and after the flight. An empty treasury never ends the game.
+    - The old "budget" stays as the per-design cost cap.
+  - **Contract board** (`src/economy/contracts.ts`, Mission Control → *Contracts*):
+    - Four offers per 30-day period, seeded from the period, so they're the same on every reload.
+    - Each kind is offered once its story mission has been flown:
+      - *satellite deployments* to 300–1,200 km (6–12 t);
+      - *station resupply*;
+      - *lunar depot cargo*;
+      - *Mars tanker runs* (these also need the plant).
+    - Each offer has a client, payout, deadline and a reputation stake. Premium clients need reputation 40 or 60.
+    - One contract at a time. Accepting it sets up the flight in Mission Control; cancelling costs half the reputation penalty.
+  - **Rules:** reputation (0–100, starting at 20) raises payouts by up to 1.5×.
+    - Terms met before the deadline: paid, reputation up.
+    - Late, failed, or expired with no flight: nothing paid, reputation down.
+    - Story missions still pay only once; repeat flights earn through contracts.
+  - **Contract flights** reuse existing flights through four hidden contract missions:
+    - **Satellites:**
+      - The new *Raise orbit* autopilot program raises the apoapsis to the requested altitude, then circularizes up there.
+      - *Release the satellite* in the Contract panel works only within ±50 km on both apsides. The ship gets lighter by the satellite's mass.
+      - The ship can then come home to stay in the fleet.
+    - **Resupply:** the station flow with an optional crew. It pays once the docked tasks are done.
+    - **Lunar depot cargo:** refuel in Earth orbit, fly to lunar orbit, and *Unload at the lunar depot*, which delivers the pallet and sells no propellant. Then fly home.
+    - **Mars tanker:** the cargo-lander flow, landing at the plant. The ship unloads its 60 t cargo tanks plus its leftover propellant into the plant, whose stock goes up.
+  - **Judging:** the flight outcome judges each contract (`judgeContract`) and records it in the flight record. The debrief shows whether the terms were met, and the notice shows the payment and the flight cost.
+  - **Saves:** save format v9. The v8 → v9 migration gives existing programs 400,000 cr plus 150,000 cr per mission already flown, and a little reputation. The board, the active contract and the contract history are parsed with validation.
+
 ## Assumptions (documented, reversible)
 - Flight physics is a simplified planar gameplay model: one orbital plane (the equator), no Earth rotation, an exponential atmosphere, lumped aerodynamics, and Sutton–Graves heating with gameplay heat capacities. The UI and footnotes say so; it is not a flight simulator.
 - Out-of-plane steering isn't simulated. Yaw is visual only, and bank only reduces in-plane lift (enough to steer re-entry range).
@@ -230,6 +260,11 @@
   - The landing Δv allowance (1,900 m/s) and the course-correction reserve (150 m/s) are conservative game figures.
   - The propellant plant's output, storage and surface-task durations are game values. The plant has no use yet beyond progression (a future crewed return would draw on it).
   - The program calendar starts at 0 with the first flight. Older saves take their flight count as the day.
+- Economy:
+  - All money values, grants, payouts and reputation effects are game values chosen for pacing, not real launch economics.
+  - The client tolerance for satellite orbits (±50 km) suits the assisted *Raise orbit* program, which lands within about 40 km of the target.
+  - A depot delivery run sells no propellant, so the ship comes home light enough for the aerocapture. A full depot top-up left the ship too heavy for it in testing.
+  - Contracts are judged on the day the flight ends. A contract flight scrubbed on the pad keeps the contract.
 - Crewed round trips:
   - The supplies payload stands in for consumables, recycling and a surface habitat. Life support is a crew-day budget, not simulated.
   - The plant's pumping rate, the 2 km reach and the crew task durations are game values.
@@ -239,7 +274,16 @@
 
 ## Checks (last run)
 - `npm run typecheck` (app and e2e), `npm run lint`, `npm run build`: pass.
-- `npm test`: 249 tests pass across 23 files. New in Stage 11 (`tests/marsReturn.test.ts`, plus store, mission and save updates):
+- `npm test`: 267 tests pass across 24 files. New in Stage 12 (`tests/contracts.test.ts`, plus save, mission and catalog updates):
+  - grants per period; the Δv to raise an orbit;
+  - board unlocks per story mission (and the plant for tankers); deterministic boards with sensible terms; reputation raising payouts; refresh each period without the active contract; one contract at a time; premium clients; cancelling;
+  - settling: paid in time, late, failed, another contract's result ignored; expiry with grants when the calendar moves;
+  - judging each kind; a tanker delivery raising the plant's stock;
+  - Mission Control: GO with the contract and money (the Δv includes the climb); a missing contract and a short treasury;
+  - the store: accepting from the board, charging the flight, paying the contract, story rewards into the treasury, contracts expiring while waiting;
+  - runtime: a satellite contract (raise orbit, release in tolerance, lighter ship, landing, met) and a lunar depot run (unload without propellant, home, met);
+  - v8 → v9 migration; save round trip of the board and the active contract, dropping damaged offers.
+- Stage 11: 249 tests across 23 files. New in Stage 11 (`tests/marsReturn.test.ts`, plus store, mission and save updates):
   - return windows after the first arrival, once per synodic period; the burn home and Earth entry speed;
   - plant pumping limited by the pump, stock and room; the stock carried over after a draw; the legs home on what the tanks hold;
   - the ascent from every site to a safe orbit within the allowance;
@@ -259,7 +303,13 @@
   - `tests/flightSave.test.ts`: Infinity-safe encoding; damaged and foreign saves are rejected without throwing; flight and ascent records round-trip; exact resume of a rendezvous, docked proximity operations, a lunar transfer and a lunar surface stay;
   - `tests/nextStep.test.ts`: the next-step hint for each point in the program;
   - v6 → v7 save migration.
-- `npm run e2e`: 8 Playwright tests pass in headless Chromium (about 9 min with software WebGL). New in Stage 11: a crewed ship resumes on the Mars surface at the same clock, opens the propellant line, waits for the return window with full tanks, and lifts off with the ascent program.
+- `npm run e2e`: 9 Playwright tests pass in headless Chromium (about 7.5 min with software WebGL). New in Stage 12: a contract accepted from the board sets up Mission Control, survives a reload, and cancelling it costs reputation. The Mars cruise resume test now waits for the paused clock before reading it; at 100,000× the displayed clock could lag the saved state by one frame.
+- Headless Chromium smoke test, Stage 12 (manual script, not committed), with no console errors:
+  - The Program tab shows the treasury (400,000 cr, reputation 20). The Contracts board offered four satellite deployments, one of them premium (locked at reputation 20).
+  - Accepted *Deploy a navigation satellite to a 800 km orbit* (145,000 cr). The Manifest showed the cost (130,700 cr), the treasury after the flight and the contract pay. Committed on a cargo-bay design.
+  - In orbit, the Contract panel refused the release at 316 × 266 km. *Raise orbit* climbed to 836 × 770 km, then *Release the satellite*, deorbit, and the ship landed on the pad.
+  - Debrief: mission success, contract terms met. Notice: contract paid +145,000 cr, flight cost 130,700 cr. Treasury 414,300 cr, reputation 25, with the contract in the board's history.
+- Stage 11: `npm run e2e`: 8 Playwright tests pass in headless Chromium (about 9 min with software WebGL). New in Stage 11: a crewed ship resumes on the Mars surface at the same clock, opens the propellant line, waits for the return window with full tanks, and lifts off with the ascent program.
 - Headless Chromium smoke test, Stage 11 (manual script, not committed), with no console errors:
   - With the plant at Delta Hollow on day 960, the Mars Expedition is committed through the UI (2 crew, ocean platform) after *Wait 24 days for the window*. The Manifest shows the way-home forecast.
   - Refuel in orbit, then trans-Mars injection, the cruise and an assisted landing rated A, 118 m from the plant.
@@ -347,6 +397,11 @@
   - The Mars surface has no dust storms, no weather and no day/night cycle.
   - Entry heating uses the Earth shield budget model with Mars density; entries at the nominal angle never come near the limit.
   - When standing on the surface, the vehicle panel shows a meaningless angle of attack (cosmetic). The notice can overlap the debrief briefly.
+- Economy:
+  - Four contract kinds only; there are no multi-flight contracts, constellations or penalties beyond reputation.
+  - Payouts are not yet balanced against long Mars waits: the program grant accumulates over 780-day windows.
+  - The board offers four contracts a month regardless of how many the player can fly.
+  - The satellite is not drawn after release; the station panel still shows on contract flights in orbit (as on every orbital flight).
 - Crewed round trips:
   - There's no abort-to-orbit from a failed ascent, no Mars orbit rendezvous, and no manual planning of the burn home.
   - The surface stay is time-skipped: there's no EVA gameplay, habitat building or dust storms.
@@ -354,4 +409,4 @@
   - Life support is a crew-day budget, not a simulation.
 
 ## Next action
-Review Stage 11. The roadmap's progression (factory → orbit → station → Moon → Mars and back) is now complete. Candidates for the next stage: a contracts/economy layer that gives repeat flights a purpose, photo mode and replays, EVA on the Moon or Mars, audio, or a manoeuvre planner. Pick the next focus before starting.
+Review Stage 12. Candidates for the next stage: photo mode and replays, EVA on the Moon or Mars, audio, a manoeuvre planner, or an economy balance and polish pass (contract variety, payout tuning, drawing released satellites). Pick the next focus before starting.

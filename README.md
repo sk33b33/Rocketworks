@@ -95,6 +95,12 @@ Current progress is tracked in `docs/STATUS.md`.
 - *Lift off*: the *Mars ascent* program climbs to orbit. Inside the window, engage *Trans-Earth injection*, then warp through the cruise home.
 - Back inside Earth's sphere of influence, go to Flight / Orbit. *Aerocapture at Earth* flies the braking pass, then circularize, *Deorbit to target* and land. The trip takes about two and a half years of program time.
 
+**Contracts and the treasury (Stage 12):**
+- The program has a treasury: each flight is paid for when it flies (Mission Control's Manifest shows the cost and the balance after). First-time missions, milestones and contracts pay in, and a grant arrives every 30 program days.
+- Mission Control → *Contracts* lists offers from fictional clients, with a payout, deadline and reputation stake. New offers come every 30 days; premium clients need a good reputation.
+- *Accept* an offer to set up the flight. Satellite deployments: reach orbit, engage *Raise orbit*, then *Release the satellite* in the Contract panel once inside the tolerance. Station resupply, lunar depot cargo and Mars tanker runs fly like their story missions.
+- Meet the terms before the deadline to get paid. Late or failed contracts pay nothing and cost reputation. Reusing recovered hardware keeps more of the payout.
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:

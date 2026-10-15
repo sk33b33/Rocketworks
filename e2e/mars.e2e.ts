@@ -58,6 +58,8 @@ test('a Mars cruise survives reloads and resumes paused at the Mars location', a
   await page.locator('[aria-label="Time warp"]').getByRole('button', { name: '100k×' }).click();
   await expect.poll(() => clockTime(page)).not.toBe(fixture.clock);
   await page.getByRole('button', { name: /^Pause/ }).click();
+  // Read the clock only once the paused view has rendered (at 100,000× it moves hours a frame).
+  await expect(page.locator('.mission-clock').first()).toContainText('PAUSED');
   const later = await clockTime(page);
   await page.reload();
   await expect(page.locator('.notice')).toContainText('Flight resumed');
