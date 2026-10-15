@@ -40,7 +40,8 @@ export type ProgramId =
   | 'mars-entry'
   | 'mars-ascent'
   | 'trans-earth-mars'
-  | 'earth-aerocapture';
+  | 'earth-aerocapture'
+  | 'raise-orbit';
 
 export const BELLY_AOA_DEG = 65;
 export const DEORBIT_PERIAPSIS_M = 30_000;
@@ -90,6 +91,8 @@ export interface ProgramState {
   /** Re-entry bank currently commanded by guidance. */
   readonly bankDeg?: number;
   readonly lastEccentricity?: number;
+  /** Raise orbit: the circular orbit altitude to reach (m). */
+  readonly targetAltM?: number;
 }
 
 export const IDLE_PROGRAM: ProgramState = {
@@ -209,6 +212,32 @@ export function runProgram(
           throttle: burning ? 1 : 0,
         },
         next: { ...ps, burning, lastEccentricity: el.eccentricity },
+      };
+    }
+    case 'raise-orbit': {
+      // Burn prograde until the apoapsis reaches the target, then circularize up there.
+      const target = ps.targetAltM ?? el.apoapsisAltM;
+      if (el.status === 'orbit' && el.apoapsisAltM >= target - 300)
+        return {
+          mode: 'prograde',
+          controls: { targetPitchDeg: flightPathAngleDeg(s.r, s.v), bankDeg: 0, throttle: 0 },
+          next: { ...IDLE_PROGRAM, program: 'circularize' },
+          message: `Apoapsis at ${Math.round(el.apoapsisAltM / 1000)} km: circularizing there.`,
+        };
+      // From a near-circular orbit any point will do; otherwise wait for periapsis.
+      const atPeri =
+        el.eccentricity < 0.01 ||
+        Math.abs(el.verticalSpeedMS) < 25 ||
+        f.altitudeM <= el.periapsisAltM + 2_000;
+      const burning = ps.burning || atPeri;
+      // Ease off near the target so the apoapsis doesn't overshoot.
+      const throttle = burning
+        ? Math.max(0.2, Math.min(1, (target - el.apoapsisAltM) / 40_000))
+        : 0;
+      return {
+        mode: 'prograde',
+        controls: { targetPitchDeg: flightPathAngleDeg(s.r, s.v), bankDeg: 0, throttle },
+        next: { ...ps, burning },
       };
     }
     case 'deorbit': {

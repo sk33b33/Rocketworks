@@ -1,5 +1,11 @@
-import { FLYBY_RULES, LANDING_RULES, type LunarMissionRules } from '../moon/lunarRules';
-import { MARS_SUPPLIES_KG, PLANT_CARGO_KG } from '../mars/marsRules';
+import type { ContractKind } from '../economy/contracts';
+import {
+  DEPOT_RULES,
+  FLYBY_RULES,
+  LANDING_RULES,
+  type LunarMissionRules,
+} from '../moon/lunarRules';
+import { MARS_SUPPLIES_KG, PLANT_CARGO_KG, TANKER_CARGO_KG } from '../mars/marsRules';
 
 /*
  * Mission and payload catalog. Destinations are fictionalized; Δv requirements, durations and
@@ -12,7 +18,9 @@ export type Destination =
 export type MissionUnlock =
   | { readonly kind: 'start' }
   | { readonly kind: 'after'; readonly missionIds: readonly string[] }
-  | { readonly kind: 'later-stage'; readonly reason: string };
+  | { readonly kind: 'later-stage'; readonly reason: string }
+  /** Flown only under a contract accepted from the board. */
+  | { readonly kind: 'contract' };
 
 export interface MissionRequirements {
   /** Crew range; 0/0 means uncrewed. */
@@ -55,7 +63,11 @@ export interface MissionDefinition {
     readonly crewed?: boolean;
     /** The payload a crewed trip carries (selected by default). */
     readonly suppliesPayloadId?: string;
+    /** Contract tanker run: lands at the plant and hands over its propellant. */
+    readonly tanker?: boolean;
   };
+  /** Contract missions: the kind of contract this mission flies (hidden from the story list). */
+  readonly contract?: ContractKind;
 }
 
 export interface PayloadDefinition {
@@ -129,6 +141,35 @@ export const PAYLOADS: readonly PayloadDefinition[] = [
     massKg: MARS_SUPPLIES_KG,
     requiresBay: false,
     lifeSupportCrewDays: 4_000,
+  },
+  {
+    id: 'weather-sat',
+    name: 'Weather satellite',
+    description: 'A fictional polar-weather imager, released from the cargo bay in its orbit.',
+    massKg: 6_000,
+    requiresBay: true,
+  },
+  {
+    id: 'nav-sat',
+    name: 'Navigation satellite',
+    description: 'A fictional navigation-constellation satellite, released in its orbit.',
+    massKg: 9_000,
+    requiresBay: true,
+  },
+  {
+    id: 'depot-cargo',
+    name: 'Depot cargo pallet',
+    description: 'Spares, propellant pumps and consumables for the lunar-orbit depot.',
+    massKg: 10_000,
+    requiresBay: true,
+  },
+  {
+    id: 'tanker-cargo',
+    name: 'Propellant cargo tanks',
+    description:
+      'Extra tanks of propellant for the Mars plant, unloaded with whatever is left in the ship.',
+    massKg: TANKER_CARGO_KG,
+    requiresBay: true,
   },
 ];
 
@@ -373,7 +414,138 @@ export const MISSIONS: readonly MissionDefinition[] = [
     unlock: { kind: 'after', missionIds: ['mars-cargo'] },
     mars: { crewed: true, suppliesPayloadId: 'mars-supplies' },
   },
+  // ---- contract missions (flown only under a contract from the board) ----
+  {
+    id: 'contract-satellite',
+    name: 'Satellite Deployment',
+    destination: 'leo',
+    destinationLabel: 'Requested orbit',
+    summary: "Carry a client's satellite to the orbit they asked for and release it.",
+    briefing:
+      'Reach the parking orbit, then raise the orbit to the requested altitude (the Raise orbit program does it for you) and release the satellite while both apsides are inside the tolerance. Bring the ship home afterwards to keep it in the fleet.',
+    objectives: [
+      'Reach orbit',
+      'Raise the orbit to the requested altitude',
+      'Release the satellite inside the tolerance',
+      'Deorbit and land the ship',
+    ],
+    abortCriteria: ['Orbit outside the tolerance at release', 'Payload bay door fault'],
+    durationDays: 2,
+    requiredDeltaVMs: 9_750,
+    requirements: {
+      minCrew: 0,
+      maxCrew: 4,
+      dockingAdapter: false,
+      rcs: 'warning',
+      antenna: 'critical',
+      reentry: true,
+    },
+    payloadIds: ['weather-sat', 'nav-sat', 'comms-sat'],
+    baseRisk: 0.3,
+    rewardRp: 0,
+    rewardCredits: 0,
+    unlock: { kind: 'contract' },
+    contract: 'satellite',
+  },
+  {
+    id: 'contract-resupply',
+    name: 'Station Resupply Run',
+    destination: 'station',
+    destinationLabel: 'Orbital station',
+    summary: 'Deliver a resupply module to the orbital station on a contract.',
+    briefing:
+      'Rendezvous and dock with the station as on the crew rotation, unload the resupply module, undock and come home. The contract pays once the docked tasks are done.',
+    objectives: [
+      'Rendezvous and dock with the station',
+      'Unload the resupply module',
+      'Undock and return',
+    ],
+    abortCriteria: ['Closing speed above corridor limits inside 200 m'],
+    durationDays: 4,
+    requiredDeltaVMs: 9_900,
+    requirements: {
+      minCrew: 0,
+      maxCrew: 4,
+      dockingAdapter: true,
+      rcs: 'critical',
+      antenna: 'critical',
+      reentry: true,
+    },
+    payloadIds: ['station-supplies'],
+    baseRisk: 0.35,
+    rewardRp: 0,
+    rewardCredits: 0,
+    unlock: { kind: 'contract' },
+    contract: 'resupply',
+  },
+  {
+    id: 'contract-lunar-depot',
+    name: 'Lunar Depot Cargo Run',
+    destination: 'lunar-orbit',
+    destinationLabel: 'Lunar-orbit depot',
+    summary: 'Fly a cargo pallet to the lunar-orbit depot and come home.',
+    briefing:
+      'Refuel in low Earth orbit, fly to lunar orbit and dock at the depot: the pallet is unloaded and the depot tops up your tanks for the trip home. Aerocapture at Earth, then deorbit and land.',
+    objectives: [
+      'Refuel in Earth orbit and fly to lunar orbit',
+      'Dock at the depot and unload the pallet',
+      'Fly home and land',
+    ],
+    abortCriteria: ['Lunar orbit insertion under-burn'],
+    durationDays: 10,
+    requiredDeltaVMs: 9_750,
+    requirements: {
+      minCrew: 0,
+      maxCrew: 4,
+      dockingAdapter: true,
+      rcs: 'critical',
+      antenna: 'critical',
+      reentry: true,
+    },
+    payloadIds: ['depot-cargo'],
+    baseRisk: 0.5,
+    rewardRp: 0,
+    rewardCredits: 0,
+    unlock: { kind: 'contract' },
+    lunar: DEPOT_RULES,
+    contract: 'lunar-depot',
+  },
+  {
+    id: 'contract-mars-tanker',
+    name: 'Mars Tanker Run',
+    destination: 'mars-surface',
+    destinationLabel: 'The Mars plant',
+    summary: 'Land a tanker next to the Mars plant and hand over its propellant.',
+    briefing:
+      'Launch inside an Earth–Mars window, refuel in Earth orbit and fly to Mars like the cargo lander, but land next to the propellant plant. The ship unloads its cargo tanks and the propellant left in its own tanks into the plant, and stays on Mars.',
+    objectives: [
+      'Inject toward Mars inside the window',
+      'Land within 2 km of the plant',
+      'Unload the propellant into the plant',
+    ],
+    abortCriteria: ['Injection outside the launch window'],
+    durationDays: 280,
+    requiredDeltaVMs: 9_300,
+    requirements: {
+      minCrew: 0,
+      maxCrew: 0,
+      dockingAdapter: false,
+      rcs: 'critical',
+      antenna: 'critical',
+      reentry: true,
+    },
+    payloadIds: ['tanker-cargo'],
+    baseRisk: 0.65,
+    rewardRp: 0,
+    rewardCredits: 0,
+    unlock: { kind: 'contract' },
+    mars: { tanker: true },
+    contract: 'mars-tanker',
+  },
 ];
+
+/** The story missions (contract missions are flown from the contract board). */
+export const STORY_MISSIONS: readonly MissionDefinition[] = MISSIONS.filter((m) => !m.contract);
 
 export function findMission(id: string): MissionDefinition | undefined {
   return MISSIONS.find((m) => m.id === id);
@@ -392,6 +564,11 @@ export function missionAvailability(
   const u = mission.unlock;
   if (u.kind === 'start') return { available: true };
   if (u.kind === 'later-stage') return { available: false, reason: u.reason };
+  if (u.kind === 'contract')
+    return {
+      available: false,
+      reason: 'Flown under a contract: accept one on the contract board.',
+    };
   const missing = u.missionIds.filter((id) => !completedMissionIds.includes(id));
   if (!missing.length) return { available: true };
   return {

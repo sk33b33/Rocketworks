@@ -486,7 +486,7 @@ describe('Mars saves', () => {
     });
     expect(r.ok).toBe(true);
     if (!r.ok) return;
-    expect(r.data.saveVersion).toBe(8);
+    expect(r.data.saveVersion).toBe(9);
     expect(r.data.progression).toMatchObject({ calendarDay: 3, marsBase: null });
   });
 });

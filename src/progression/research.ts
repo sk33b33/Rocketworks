@@ -7,6 +7,7 @@ import { PARTS } from '../rocket/catalog/parts';
 import { findMission, MISSIONS } from '../missions/missionCatalog';
 import { MILESTONES } from './milestones';
 import type { MarsBase } from '../mars/marsRules';
+import { initialEconomy, type EconomyState } from '../economy/contracts';
 
 export interface ProgressionState {
   readonly milestones: readonly string[];
@@ -17,10 +18,15 @@ export interface ProgressionState {
   readonly calendarDay?: number;
   /** The propellant plant left on Mars by a cargo landing. */
   readonly marsBase?: MarsBase | null;
+  /** Treasury, reputation and contracts (Stage 12+). */
+  readonly economy?: EconomyState;
 }
 
 /** The program's current day. */
 export const programDay = (p: ProgressionState): number => p.calendarDay ?? 0;
+
+/** The program's economy (a fresh one for progressions that predate it). */
+export const economyOf = (p: ProgressionState): EconomyState => p.economy ?? initialEconomy();
 
 export interface TechNode {
   readonly id: string;

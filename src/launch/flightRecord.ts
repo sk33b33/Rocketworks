@@ -1,3 +1,4 @@
+import type { ContractFlightResult } from '../economy/contracts';
 import type { AscentState, AscentTarget } from '../simulation/ascent/ascentModel';
 import { isSuccess } from '../simulation/ascent/ascentModel';
 import type { Grade } from '../recovery/rating';
@@ -41,6 +42,8 @@ export interface FlightRecord {
   readonly mars?: MarsSummary;
   /** Fleet vehicles that flew (null = new build). */
   readonly hardware?: { readonly boosterId: string | null; readonly shipId: string | null };
+  /** Contract flights: whether the contract's terms were met (Stage 12+). */
+  readonly contract?: ContractFlightResult;
 }
 
 export type LunarLandingOutcome = 'landed' | 'tipped' | 'crashed';
@@ -89,6 +92,8 @@ export interface MarsSummary {
   readonly landedDay: number | null;
   /** Crewed round trips only: the way home. */
   readonly returnTrip?: MarsReturnSummary;
+  /** Contract tanker runs: propellant unloaded into the plant (kg). */
+  readonly deliveredKg?: number;
 }
 
 /** The way home of a crewed Mars round trip. */

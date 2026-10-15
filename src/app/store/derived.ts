@@ -1,5 +1,6 @@
 import {
   budgetCredits,
+  economyOf,
   programDay,
   researchAvailable,
   researchEarned,
@@ -100,6 +101,8 @@ export function missionReport(
         calendarDay: programDay(p),
         marsBase: p.marsBase ?? null,
         plantBoosted: p.tech.includes('ice-mining'),
+        treasury: economyOf(p).treasury,
+        contract: economyOf(p).active,
       }),
     };
   }

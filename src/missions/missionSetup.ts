@@ -1,4 +1,5 @@
 import type { RecoveryTarget } from '../recovery/recoveryPlan';
+import { CONTRACT_MISSION, type ContractKind } from '../economy/contracts';
 import { defaultRefuel, type RefuelChoice } from '../moon/lunarRules';
 import { CREW_ROSTER, findCrew } from './crew';
 import { initialConditionsSeed, nextWindowSeed } from './conditions';
@@ -19,6 +20,10 @@ export interface MissionCommit {
   readonly designId: string;
   readonly revision: number;
   readonly at: string;
+  /** What the flight costs (cr), paid from the treasury when it flies. */
+  readonly cost?: number;
+  /** The contract this flight is for. */
+  readonly contractId?: string;
 }
 
 export interface MissionSetup {
@@ -164,4 +169,22 @@ export function setRefuel(
   return setup.refuel[kind] === on
     ? setup
     : { ...setup, refuel: { ...setup.refuel, [kind]: on }, commit: null };
+}
+
+/** Sets up Mission Control for an accepted contract: its mission, payload and default refuelling. */
+export function setupForContract(
+  setup: MissionSetup,
+  contract: { readonly kind: ContractKind; readonly payloadId: string },
+): MissionSetup {
+  const mission = findMission(CONTRACT_MISSION[contract.kind])!;
+  return {
+    ...setup,
+    missionId: mission.id,
+    crewIds: setup.crewIds.slice(0, mission.requirements.maxCrew),
+    payloadId: contract.payloadId,
+    conditionsSeed: initialConditionsSeed(mission.id),
+    waits: 0,
+    commit: null,
+    refuel: missionRefuelDefault(mission),
+  };
 }

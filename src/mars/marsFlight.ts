@@ -50,6 +50,7 @@ import {
   marsSurfaceProgress,
   marsSurfaceTasks,
   PLANT_REACH_M,
+  TANKER_CARGO_KG,
   plantRateKgPerDay,
   plantStockKg,
   plantTransferKg,
@@ -104,6 +105,8 @@ export interface MarsMissionPlan {
   readonly base?: MarsBase | null;
   /** Better drills (research): the plant makes more propellant. */
   readonly boosted?: boolean;
+  /** Contract tanker run: lands at the plant and unloads its cargo and leftover propellant. */
+  readonly tanker?: boolean;
 }
 
 export type MarsProgramId =
@@ -235,6 +238,8 @@ export interface MarsProgress {
   readonly earthArrivedT: number | null;
   /** Handed back to the normal Earth flight for the aerocapture pass. */
   readonly earthHandover: boolean;
+  /** Tanker runs: propellant unloaded into the plant (kg). */
+  readonly deliveredKg?: number;
 }
 
 export const NO_MARS_PROGRESS: MarsProgress = {
@@ -412,8 +417,9 @@ export class MarsFlight {
   private plantOp: PlantOp | null = null;
 
   constructor(readonly plan: MarsMissionPlan) {
-    // A crewed round trip lands next to the plant.
-    const base = plan.crewed && plan.base ? findMarsSite(plan.base.siteId) : undefined;
+    // A crewed round trip (or a tanker) lands next to the plant.
+    const base =
+      (plan.crewed || plan.tanker) && plan.base ? findMarsSite(plan.base.siteId) : undefined;
     this.siteNow = base ?? findMarsSite(DEFAULT_MARS_SITE_ID) ?? MARS_SITES[0]!;
     this.terrainNow = marsTerrain(this.siteNow);
   }
@@ -492,7 +498,7 @@ export class MarsFlight {
   }
 
   get canChangeSite(): boolean {
-    return !this.crewed && !this.p.siteLocked && !this.p.landing;
+    return !this.crewed && !this.plan.tanker && !this.p.siteLocked && !this.p.landing;
   }
 
   setSite(id: string): boolean {
@@ -1319,7 +1325,7 @@ export class MarsFlight {
     if (outcome !== 'landed') return false;
     this.surface = {
       startT: s.tS,
-      tasks: marsSurfaceTasks(this.siteNow, this.plan.plant, this.crewed),
+      tasks: marsSurfaceTasks(this.siteNow, this.plan.plant, this.crewed, !!this.plan.tanker),
     };
     this.surfaceElapsed = 0;
     return true;
@@ -1343,11 +1349,15 @@ export class MarsFlight {
       this.p = { ...this.p, surfaceDone: true };
       note = this.crewed
         ? 'Surface tasks complete. Fill the tanks from the plant, then lift off for the return window.'
-        : this.plan.plant
-          ? 'The propellant plant is running. Complete the mission to hand it over to ground control.'
-          : 'Cargo delivered. Complete the mission to hand over to ground control.';
+        : this.plan.tanker
+          ? this.unload(s)
+          : this.plan.plant
+            ? 'The propellant plant is running. Complete the mission to hand it over to ground control.'
+            : 'Cargo delivered. Complete the mission to hand over to ground control.';
     }
     let state: FlightState = { ...s, tS: t };
+    // The tanker's own tanks were pumped into the plant.
+    if (this.plan.tanker && (this.p.deliveredKg ?? 0) > 0) state = { ...state, propKg: 0 };
     const op = this.plantOp;
     if (op) {
       const cap = spec.stage.propellantKg;
@@ -1359,6 +1369,18 @@ export class MarsFlight {
       } else state = { ...state, propKg: op.fromKg + moved };
     }
     return { state, note };
+  }
+
+  /** Tanker runs: hands the cargo and leftover propellant to the plant, if in reach. */
+  private unload(s: FlightState): string {
+    const miss = this.p.landing?.missM ?? Infinity;
+    if (!this.plan.base || miss > PLANT_REACH_M) {
+      this.p = { ...this.p, deliveredKg: 0 };
+      return `Landed ${(miss / 1000).toFixed(1)} km from the plant: too far to pump the propellant across.`;
+    }
+    const kg = TANKER_CARGO_KG + Math.max(0, s.propKg);
+    this.p = { ...this.p, deliveredKg: kg };
+    return `${Math.round(kg / 1000)} t of propellant pumped into the plant. Complete the mission to hand over.`;
   }
 
   // ---- the propellant plant (crewed round trips) ----
@@ -1479,6 +1501,7 @@ export class MarsFlight {
       plantRunning: this.plan.plant && p.surfaceDone,
       ice: p.landing?.outcome === 'landed' ? this.siteNow.ice : null,
       landedDay: day(p.landedT),
+      ...(this.plan.tanker ? { deliveredKg: p.deliveredKg ?? 0 } : {}),
       ...(this.crewed
         ? {
             returnTrip: {

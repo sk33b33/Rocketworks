@@ -55,6 +55,7 @@ import { EARTH_RADIUS_M } from '../simulation/constants';
 import { BELLY_AOA_DEG } from './autopilot';
 import { marsFlightPathDeg, marsSlewRate } from '../mars/marsModel';
 import { DAY_S } from '../mars/solarSystem';
+import type { FlightContract } from '../economy/contracts';
 import {
   isLunarProgram,
   LunarFlight,
@@ -136,6 +137,8 @@ export interface FlightContext {
   readonly lunar?: LunarMissionPlan;
   /** Mars missions: launch day, refuelling and cargo. */
   readonly mars?: MarsMissionPlan;
+  /** Contract flights: the client's terms (satellite target orbit, payload). */
+  readonly contract?: FlightContract;
 }
 
 export type ManualKey =
@@ -481,6 +484,7 @@ export class FlightRuntime {
       },
       this.lunarCheck(s),
       this.marsCheck(s),
+      this.raiseTarget(),
     );
     if (!check.ok) {
       this.message = check.reason ?? null;
@@ -493,7 +497,13 @@ export class FlightRuntime {
       this.publish();
       return { ok: false, reason: this.message };
     }
-    this.ps = program === 'none' ? IDLE_PROGRAM : { ...IDLE_PROGRAM, program };
+    const target = this.raiseTarget();
+    this.ps =
+      program === 'none'
+        ? IDLE_PROGRAM
+        : program === 'raise-orbit' && target !== null
+          ? { ...IDLE_PROGRAM, program, targetAltM: target }
+          : { ...IDLE_PROGRAM, program };
     if (isLunarProgram(program)) this.lunar?.startProgram(program);
     else this.lunar?.stopProgram();
     if (isMarsProgram(program)) this.mars?.startProgram(program, s);
@@ -638,10 +648,73 @@ export class FlightRuntime {
     this.message = r.ok
       ? this.lunar.refuelling?.kind === 'leo'
         ? 'Tankers on the way: refuelling in orbit (about 6 hours; time warp is available).'
-        : 'Docking at the lunar depot: topping up (about 3 hours; time warp is available).'
+        : this.lunar.plan.depotDelivery
+          ? 'Docking at the lunar depot: unloading the pallet (about 3 hours; time warp is available).'
+          : 'Docking at the lunar depot: topping up (about 3 hours; time warp is available).'
       : (r.reason ?? null);
     this.publish();
     return r;
+  }
+
+  // ---- contracts ----
+
+  /** Satellite contracts: the requested orbit altitude (m), until the satellite is released. */
+  private raiseTarget(): number | null {
+    const c = this.state.context?.contract;
+    return c?.kind === 'satellite' && c.targetAltKm !== null && !this.progress.release
+      ? c.targetAltKm * 1000
+      : null;
+  }
+
+  /** Whether the contract satellite can be released now (in the requested orbit). */
+  releaseAvailability(): { ok: boolean; reason?: string } {
+    const c = this.state.context?.contract;
+    const s = this.live;
+    if (c?.kind !== 'satellite' || c.targetAltKm === null)
+      return { ok: false, reason: 'No satellite to release on this flight.' };
+    if (this.progress.release) return { ok: false, reason: 'The satellite is already released.' };
+    if (!s || this.state.phase !== 'flight' || s.phase !== 'flight')
+      return { ok: false, reason: 'Only in orbit.' };
+    const el = orbitalElements(s.r, s.v);
+    if (el.status !== 'orbit') return { ok: false, reason: 'Reach a stable orbit first.' };
+    const tol = c.toleranceKm;
+    const apo = el.apoapsisAltM / 1000;
+    const peri = el.periapsisAltM / 1000;
+    if (Math.abs(apo - c.targetAltKm) > tol || Math.abs(peri - c.targetAltKm) > tol)
+      return {
+        ok: false,
+        reason: `The client wants ${c.targetAltKm} ± ${tol} km; the orbit is ${Math.round(apo)} × ${Math.round(peri)} km.`,
+      };
+    return { ok: true };
+  }
+
+  /** Releases the contract satellite: the ship gets lighter and the delivery is logged. */
+  releasePayload(): { ok: boolean; reason?: string } {
+    const a = this.releaseAvailability();
+    const ctx = this.state.context;
+    const s = this.live;
+    if (!a.ok || !ctx?.contract || !s) {
+      this.message = a.reason ?? null;
+      this.publish();
+      return a.ok ? { ok: false, reason: 'Not in flight.' } : a;
+    }
+    const el = orbitalElements(s.r, s.v);
+    const c = ctx.contract;
+    this.progress = {
+      ...this.progress,
+      release: { apoKm: el.apoapsisAltM / 1000, periKm: el.periapsisAltM / 1000, ok: true },
+    };
+    const stage = ctx.spec.stage;
+    const spec = {
+      ...ctx.spec,
+      stage: { ...stage, dryMassKg: Math.max(1, stage.dryMassKg - c.payloadKg) },
+    };
+    const text = `Satellite released for ${c.client} at ${Math.round(el.apoapsisAltM / 1000)} × ${Math.round(el.periapsisAltM / 1000)} km.`;
+    this.live = { ...s, events: [...s.events, { tS: s.tS, kind: 'success', text }] };
+    this.message = `${text} Bring the ship home to keep it in the fleet.`;
+    this.state = { ...this.state, context: { ...ctx, spec } };
+    this.publish();
+    return { ok: true };
   }
 
   // ---- Mars ----
@@ -1362,6 +1435,7 @@ export class FlightRuntime {
         hardware: st.context.hardware,
         manualLanding: this.manualDescent && !this.assistedDescent,
         ...(this.mars ? { mars: this.mars.summary() } : {}),
+        ...(st.context.contract ? { contract: st.context.contract } : {}),
       },
       this.live,
       this.progress,
@@ -1473,6 +1547,7 @@ export const PROGRAM_LABELS: Record<ProgramId, string> = {
   landing: 'Landing burn',
   ...LUNAR_PROGRAM_LABELS,
   ...MARS_PROGRAM_LABELS,
+  'raise-orbit': 'Raise orbit',
 };
 
 /** Whether a program can be engaged now, with a player-readable reason if not. Pure. */
@@ -1500,6 +1575,8 @@ export function programAvailability(
     landing?: boolean;
   } | null = null,
   mars: ((program: MarsProgramId) => { ok: boolean; reason?: string }) | null = null,
+  /** Contract satellite deployments: the requested orbit (m). */
+  raiseTargetAltM: number | null = null,
 ): { ok: boolean; reason?: string } {
   if (s.phase !== 'flight') return { ok: false, reason: 'The ship is down.' };
   if (program === 'none') return { ok: true };
@@ -1554,5 +1631,16 @@ export function programAvailability(
       if (alt > 30_000) return { ok: false, reason: 'Landing guidance takes over below 30 km.' };
       if (noProp) return { ok: false, reason: 'No propellant left for a landing burn.' };
       return { ok: true };
+    case 'raise-orbit':
+      if (raiseTargetAltM === null)
+        return { ok: false, reason: 'Only on satellite contracts (to the requested orbit).' };
+      if (noProp) return { ok: false, reason: 'No propellant left for a burn.' };
+      if (!p.orbit || el.status !== 'orbit')
+        return { ok: false, reason: 'Reach a stable orbit first.' };
+      if (el.apoapsisAltM >= raiseTargetAltM - 300 && el.periapsisAltM >= raiseTargetAltM - 25_000)
+        return { ok: false, reason: 'Already at the requested orbit.' };
+      return { ok: true };
+    default:
+      return { ok: false, reason: 'Not available here.' };
   }
 }

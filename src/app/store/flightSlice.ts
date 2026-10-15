@@ -1,8 +1,11 @@
-import { drawFromPlant } from '../../mars/marsRules';
+import { addToPlant, drawFromPlant } from '../../mars/marsRules';
+import { CONTRACT_MISSION, settleContract } from '../../economy/contracts';
+import { advanceProgram, expiredText } from './economy';
 import { MAX_FLIGHT_RECORDS } from '../../persistence/saveGame';
 import {
   budgetCredits,
   completeMission,
+  economyOf,
   programDay,
   researchAvailable,
 } from '../../progression/research';
@@ -79,23 +82,50 @@ export function createFlightActions(set: SetState, get: GetState): FlightActions
       if (s.flights.some((f) => f.id === record.id)) return; // idempotent
       const flights = [...s.flights, record].slice(-MAX_FLIGHT_RECORDS);
       let progression = s.progression;
+      const capBefore = budgetCredits(progression);
+      const def = findMission(record.missionId);
+      const flown = record.result !== 'scrubbed';
       let reward = '';
-      if (record.credited) {
+      // Contract missions pay through their contract, not as story missions.
+      if (record.credited && !def?.contract) {
         const r = completeMission(progression, record.missionId);
         if (r.ok && r.firstTime) {
           const rp = researchAvailable(r.progression) - researchAvailable(progression);
           const cr = budgetCredits(r.progression) - budgetCredits(progression);
-          reward = ` Reward: +${rp} RP, +${cr.toLocaleString('en-US')} cr budget.`;
+          reward = ` Reward: +${rp} RP, +${cr.toLocaleString('en-US')} cr.`;
           const unlocked = findMission(record.missionId)?.name;
           if (unlocked) reward += ` "${unlocked}" complete.`;
         }
         if (r.ok) progression = r.progression;
       }
-      if (record.result !== 'scrubbed') {
-        // Time passes for the whole program: at least a day per flight, or the flight's length.
-        const days = Math.max(1, Math.ceil((record.durationS ?? 0) / 86_400));
-        progression = { ...progression, calendarDay: programDay(progression) + days };
+      // Time passes for the whole program: at least a day per flight, or the flight's length.
+      const endDay = flown
+        ? programDay(progression) + Math.max(1, Math.ceil((record.durationS ?? 0) / 86_400))
+        : programDay(progression);
+      // The flight's contract is settled on the day it ended.
+      let economy = economyOf(progression);
+      let contractText = '';
+      const active = economy.active;
+      if (
+        flown &&
+        active &&
+        (record.contract?.contractId === active.id ||
+          record.missionId === CONTRACT_MISSION[active.kind])
+      ) {
+        const settled = settleContract(economy, record.contract ?? null, endDay);
+        economy = settled.economy;
+        const o = settled.outcome;
+        if (o)
+          contractText =
+            o.result === 'paid'
+              ? ` Contract paid: +${o.payout.toLocaleString('en-US')} cr from ${o.client}.`
+              : o.result === 'late'
+                ? ` Contract delivered late: ${o.client} pays nothing (reputation down).`
+                : ` Contract failed: ${o.client} pays nothing (reputation down).`;
       }
+      progression = { ...progression, economy };
+      const advanced = advanceProgram(progression, endDay);
+      progression = advanced.progression;
       const m = record.mars;
       if (m?.plantRunning && m.landing && m.landedDay !== null) {
         progression = {
@@ -120,6 +150,18 @@ export function createFlightActions(set: SetState, get: GetState): FlightActions
             progression.tech.includes('ice-mining'),
           ),
         };
+      // A tanker unloaded into it: the stock goes up.
+      const delivered = record.contract?.deliveredKg ?? 0;
+      if (delivered > 0 && progression.marsBase)
+        progression = {
+          ...progression,
+          marsBase: addToPlant(
+            progression.marsBase,
+            m?.landedDay ?? endDay,
+            delivered,
+            progression.tech.includes('ice-mining'),
+          ),
+        };
       const bp = s.blueprints.find((b) => b.id === record.designId);
       const fleetOutcome =
         record.result === 'scrubbed'
@@ -127,6 +169,16 @@ export function createFlightActions(set: SetState, get: GetState): FlightActions
           : applyFleetOutcome(s.fleet, record, bp);
       const milestones = awardMilestones(progression, s.blueprints, flights);
       progression = milestones.progression;
+      // Money: the flight's cost (priced at commitment) is paid now; first-time mission rewards
+      // and milestone credits come in.
+      const cost = flown ? (s.mission.commit?.cost ?? 0) : 0;
+      const income = Math.max(0, budgetCredits(progression) - capBefore);
+      const econ = economyOf(progression);
+      progression = {
+        ...progression,
+        economy: { ...econ, treasury: econ.treasury + income - cost },
+      };
+      const costText = cost ? ` Flight cost ${cost.toLocaleString('en-US')} cr.` : '';
       // A flown (or failed) attempt uses up the commitment and the assigned hardware; a scrub
       // keeps both for another try.
       const mission =
@@ -146,7 +198,7 @@ export function createFlightActions(set: SetState, get: GetState): FlightActions
         fleet: fleetOutcome.fleet,
         notice: makeNotice(
           tone,
-          `${record.missionName}: ${record.summary}${reward}${fleetOutcome.text}${milestones.text}`,
+          `${record.missionName}: ${record.summary}${reward}${contractText}${costText}${fleetOutcome.text}${milestones.text}${expiredText(advanced.expired)}`,
         ),
       });
     },

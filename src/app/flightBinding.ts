@@ -9,8 +9,9 @@ import type { MoonController } from '../scenes/moon/moonController';
 import type { MarsController } from '../scenes/mars/marsController';
 import { useGameStore } from './gameStore';
 import { launchRuntime } from './launchBinding';
-import { findMission } from '../missions/missionCatalog';
-import { programDay } from '../progression/research';
+import { findMission, findPayload } from '../missions/missionCatalog';
+import { economyOf, programDay } from '../progression/research';
+import type { ContractKind } from '../economy/contracts';
 
 /** The single orbital-flight runtime; its outcome closes the launch session and is recorded. */
 export const flightRuntime = new FlightRuntime((record) => {
@@ -26,6 +27,7 @@ export function flightContextFromLaunch(
   station?: { crew: number; cargo: boolean },
   lunar?: FlightContext['lunar'],
   mars?: FlightContext['mars'],
+  contract?: FlightContext['contract'],
 ): FlightContext {
   const { r, v } = ascentToInertial(ascent);
   return {
@@ -41,6 +43,7 @@ export function flightContextFromLaunch(
     ...(station ? { station } : {}),
     ...(lunar ? { lunar } : {}),
     ...(mars ? { mars } : {}),
+    ...(contract ? { contract } : {}),
     ascent: {
       maxAltitudeM: ascent.maxAltitudeM,
       maxSpeedMS: ascent.maxSpeedMS,
@@ -71,7 +74,14 @@ export function handoffContext(
       crew: launch.crewNames.length,
       cargo: mission.payloadId === 'station-supplies' || mission.payloadId === 'surface-science',
     },
-    rules ? { goal: rules.goal, landing: rules.landing, refuel: mission.refuel } : undefined,
+    rules
+      ? {
+          goal: rules.goal,
+          landing: rules.landing,
+          refuel: mission.refuel,
+          ...(def?.contract === 'lunar-depot' ? { depotDelivery: true } : {}),
+        }
+      : undefined,
     def?.mars
       ? {
           launchDay: programDay(state.progression),
@@ -84,9 +94,29 @@ export function handoffContext(
                 boosted: state.progression.tech.includes('ice-mining'),
               }
             : {}),
+          ...(def.mars.tanker ? { tanker: true, base: state.progression.marsBase ?? null } : {}),
         }
       : undefined,
+    contractFor(def?.contract, mission.payloadId),
   );
+}
+
+/** The accepted contract as the flight sees it (contract missions only). */
+function contractFor(
+  kind: ContractKind | undefined,
+  payloadId: string,
+): FlightContext['contract'] | undefined {
+  const c = economyOf(useGameStore.getState().progression).active;
+  if (!kind || !c || c.kind !== kind) return undefined;
+  return {
+    id: c.id,
+    kind: c.kind,
+    title: c.title,
+    client: c.client,
+    targetAltKm: c.targetAltKm,
+    toleranceKm: c.toleranceKm,
+    payloadKg: findPayload(payloadId)?.massKg ?? 0,
+  };
 }
 
 /** True when a launch is waiting to hand its ship to the flight runtime. */

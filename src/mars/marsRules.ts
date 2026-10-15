@@ -15,6 +15,8 @@ export const PLANT_BASE_KG_PER_DAY = 1_200;
 export const PLANT_CAPACITY_KG = 1_200_000;
 /** Mass of the propellant plant cargo (it rides in the ship as payload). */
 export const PLANT_CARGO_KG = 40_000;
+/** Propellant a contract tanker carries in its cargo tanks (kg). */
+export const TANKER_CARGO_KG = 60_000;
 /** Supplies a crew takes to Mars and back (consumables and recycling kit). */
 export const MARS_SUPPLIES_KG = 8_000;
 /** How fast the plant can pump propellant into a ship (kg per day). */
@@ -111,6 +113,15 @@ export function drawFromPlant(
   };
 }
 
+/** The plant after a tanker unloaded `kg` into it on program day `day`. */
+export function addToPlant(base: MarsBase, day: number, kg: number, boosted = false): MarsBase {
+  return {
+    ...base,
+    sinceDay: day,
+    carriedKg: Math.min(PLANT_CAPACITY_KG, plantStockKg(base, day, boosted) + Math.max(0, kg)),
+  };
+}
+
 /**
  * Propellant pumped into a ship `elapsedS` after the line opened: limited by the pump rate, the
  * plant's stock when it started plus what it makes meanwhile, and the room in the tanks.
@@ -175,7 +186,22 @@ export interface MarsTask {
 const HOUR = 3_600;
 const DAY = 86_400;
 
-export function marsSurfaceTasks(site: MarsSite, plant: boolean, crewed = false): MarsTask[] {
+export function marsSurfaceTasks(
+  site: MarsSite,
+  plant: boolean,
+  crewed = false,
+  tanker = false,
+): MarsTask[] {
+  if (tanker)
+    return [
+      { id: 'safing', label: 'Post-landing checks and safing', durationS: 2 * HOUR },
+      {
+        id: 'unload',
+        label: 'Connect to the plant and pump the propellant across',
+        durationS: DAY,
+        after: 'safing',
+      },
+    ];
   if (crewed)
     return [
       { id: 'safing', label: 'Post-landing checks and safing', durationS: 2 * HOUR },

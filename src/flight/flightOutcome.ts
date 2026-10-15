@@ -13,6 +13,7 @@ import { findZoneAt, isLand, missDistanceM, type LandingZone } from './landingZo
 import { localFrame } from './orbitMath';
 import type { LunarProgress } from '../moon/lunarFlight';
 import type { MarsProgress } from '../mars/marsFlight';
+import type { ContractFlightResult, FlightContract } from '../economy/contracts';
 
 /*
  * Objectives and outcome evaluation for the orbital part of a flight. Pure: the runtime tracks
@@ -43,6 +44,8 @@ export type ObjectiveId =
   | 'mars-ascent'
   | 'tei'
   | 'mars-return'
+  | 'sat-release'
+  | 'mars-unload'
   | 'deorbit'
   | 'reentry'
   | 'landing';
@@ -64,6 +67,8 @@ export interface FlightProgress {
   readonly lunar?: LunarProgress;
   /** Mars missions: the voyage and landing. */
   readonly mars?: MarsProgress;
+  /** Satellite contracts: the release (apsides in km, inside the client's tolerance). */
+  readonly release?: { readonly apoKm: number; readonly periKm: number; readonly ok: boolean };
 }
 
 export interface DockingSummary {
@@ -108,6 +113,8 @@ export const OBJECTIVE_LABELS: Record<ObjectiveId, string> = {
   'mars-ascent': 'Lift off and reach Mars orbit',
   tei: 'Trans-Earth injection in the return window',
   'mars-return': 'Cruise home to Earth',
+  'sat-release': 'Raise the orbit and release the satellite',
+  'mars-unload': 'Unload the propellant into the plant',
   deorbit: 'Deorbit burn (periapsis into the atmosphere)',
   reentry: 'Survive re-entry',
   landing: 'Land or splash down safely',
@@ -164,6 +171,10 @@ export function objectiveDone(id: ObjectiveId, p: FlightProgress, s: FlightState
       return !!p.mars?.tei;
     case 'mars-return':
       return p.mars?.earthArrivedT !== null && p.mars?.earthArrivedT !== undefined;
+    case 'sat-release':
+      return !!p.release?.ok;
+    case 'mars-unload':
+      return (p.mars?.deliveredKg ?? 0) > 0;
     case 'deorbit':
       return p.deorbit;
     case 'reentry':
@@ -196,6 +207,8 @@ export interface FlightOutcomeContext {
   readonly manualLanding?: boolean;
   /** Mars missions: the voyage and landing summary. */
   readonly mars?: MarsSummary;
+  /** Contract flights: the client's terms. */
+  readonly contract?: FlightContract;
 }
 
 /** Landing limits used for the ship's precision rating. */
@@ -216,6 +229,10 @@ export const CREDITABLE_IN_FLIGHT = new Set([
   'lunar-landing',
   'mars-cargo',
   'mars-crewed',
+  'contract-satellite',
+  'contract-resupply',
+  'contract-lunar-depot',
+  'contract-mars-tanker',
 ]);
 
 /** The objective checklist for a mission's orbital flight. */
@@ -231,6 +248,14 @@ export function objectivesFor(
       return ['orbit', ...leo, 'tli', 'flyby', 'earth-return', 'deorbit', 'reentry', 'landing'];
     case 'mars-cargo':
       return ['orbit', ...leo, 'tmi', 'mars-arrival', 'mars-landing', 'mars-surface'];
+    case 'contract-satellite':
+      return ['orbit', 'sat-release', 'deorbit', 'reentry', 'landing'];
+    case 'contract-resupply':
+      return ['orbit', 'rendezvous', 'dock', 'tasks', 'deorbit', 'reentry', 'landing'];
+    case 'contract-lunar-depot':
+      return ['orbit', ...leo, 'tli', 'lunar-orbit', 'depot', 'earth-return', 'reentry', 'landing'];
+    case 'contract-mars-tanker':
+      return ['orbit', ...leo, 'tmi', 'mars-arrival', 'mars-landing', 'mars-unload'];
     case 'mars-crewed':
       return [
         'orbit',
@@ -277,6 +302,14 @@ export function orbitalGoalsMet(missionId: string, p: FlightProgress): boolean {
       return !!l && l.landing?.outcome === 'landed' && l.surfaceDone && l.ascent && l.earthReturn;
     case 'mars-cargo':
       return p.mars?.landing?.outcome === 'landed' && !!p.mars.surfaceDone;
+    case 'contract-satellite':
+      return !!p.release?.ok;
+    case 'contract-resupply':
+      return !!p.docking?.grade && !!p.docking.tasksDone;
+    case 'contract-lunar-depot':
+      return !!l?.refuelDepot && !!l.earthReturn;
+    case 'contract-mars-tanker':
+      return (p.mars?.deliveredKg ?? 0) > 0;
     case 'mars-crewed': {
       const m = p.mars;
       return (
@@ -299,7 +332,63 @@ const INCOMPLETE: Record<string, string> = {
   'lunar-landing': 'land on the Moon, finish the surface tasks and fly home.',
   'mars-cargo': 'land on Mars and finish the surface tasks.',
   'mars-crewed': 'land on Mars, finish the surface tasks, and fly the crew home.',
+  'contract-satellite': 'release the satellite in the requested orbit.',
+  'contract-resupply': 'dock with the station and finish the docked tasks.',
+  'contract-lunar-depot': 'unload at the lunar depot and fly home.',
+  'contract-mars-tanker': 'land at the plant and unload the propellant.',
 };
+
+/** Whether a contract flight met the client's terms (paid if in time; see economy/contracts). */
+export function judgeContract(
+  c: FlightContract,
+  p: FlightProgress,
+  m?: MarsSummary,
+): ContractFlightResult {
+  switch (c.kind) {
+    case 'satellite': {
+      const r = p.release;
+      return {
+        contractId: c.id,
+        met: !!r?.ok,
+        detail: r?.ok
+          ? `Satellite released at ${Math.round(r.apoKm)} × ${Math.round(r.periKm)} km (asked: ${c.targetAltKm} ± ${c.toleranceKm} km).`
+          : 'The satellite was not released in the requested orbit.',
+      };
+    }
+    case 'resupply': {
+      const ok = !!p.docking?.grade && !!p.docking.tasksDone;
+      return {
+        contractId: c.id,
+        met: ok,
+        detail: ok
+          ? 'Resupply module delivered to the station.'
+          : 'The resupply module never reached the station.',
+      };
+    }
+    case 'lunar-depot': {
+      const ok = !!p.lunar?.refuelDepot;
+      return {
+        contractId: c.id,
+        met: ok,
+        detail: ok
+          ? 'Cargo pallet unloaded at the lunar depot.'
+          : 'The pallet never reached the depot.',
+      };
+    }
+    case 'mars-tanker': {
+      const kg = m?.deliveredKg ?? 0;
+      return {
+        contractId: c.id,
+        met: kg > 0,
+        detail:
+          kg > 0
+            ? `${Math.round(kg / 1000)} t of propellant unloaded into the Mars plant.`
+            : 'No propellant reached the Mars plant.',
+        ...(kg > 0 ? { deliveredKg: kg } : {}),
+      };
+    }
+  }
+}
 
 /** Classifies how the flight ended. `ended` = the player ended the flight while still flying. */
 export function landingSummary(
@@ -436,6 +525,7 @@ export function evaluateFlight(
       ...s.events.map((e) => `T+${Math.round(e.tS)}s ${e.text}`),
     ].slice(-60),
     landing,
+    ...(ctx.contract ? { contract: judgeContract(ctx.contract, p) } : {}),
     ...(p.docking ? { docking: p.docking } : {}),
     ...(p.lunar ? { lunar: lunarSummary(p.lunar) } : {}),
     ...(ctx.recovery ? { recovery: ctx.recovery } : {}),
@@ -542,6 +632,7 @@ function evaluateMarsFlight(
     ].slice(-60),
     landing,
     mars: m,
+    ...(ctx.contract ? { contract: judgeContract(ctx.contract, p, m) } : {}),
     ...(ctx.recovery ? { recovery: ctx.recovery } : {}),
     hardware: ctx.hardware ?? { boosterId: null, shipId: null },
   };
@@ -632,6 +723,7 @@ function evaluateMarsRoundTrip(
     ].slice(-60),
     landing,
     mars: m,
+    ...(ctx.contract ? { contract: judgeContract(ctx.contract, p, m) } : {}),
     ...(ctx.recovery ? { recovery: ctx.recovery } : {}),
     hardware: ctx.hardware ?? { boosterId: null, shipId: null },
   };

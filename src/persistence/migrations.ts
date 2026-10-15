@@ -1,6 +1,6 @@
 /** Save-format migrations. Each entry upgrades version N to N+1; never edit a shipped migration. */
 
-export const CURRENT_SAVE_VERSION = 8;
+export const CURRENT_SAVE_VERSION = 9;
 
 type Data = Record<string, unknown>;
 type Migration = (data: Data) => Data;
@@ -77,6 +77,27 @@ const MIGRATIONS: Record<number, Migration> = {
         }
       : data.progression,
   }),
+  // v9 (Stage 12): a treasury and contracts. Existing programs start with a balance that
+  // grows with what they have already flown, and a little reputation for it.
+  8: (data) => {
+    const p = data.progression;
+    const done = isRecord(p) && Array.isArray(p.completedMissions) ? p.completedMissions.length : 0;
+    return {
+      ...data,
+      progression: isRecord(p)
+        ? {
+            ...p,
+            economy: {
+              treasury: 400_000 + 150_000 * done,
+              reputation: Math.min(50, 20 + 3 * done),
+              board: { period: -1, offers: [] },
+              active: null,
+              history: [],
+            },
+          }
+        : p,
+    };
+  },
 };
 
 export type MigrationResult =

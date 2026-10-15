@@ -124,6 +124,10 @@ export interface MissionActions {
   refurbishVehicle(id: string): void;
   scrapVehicle(id: string): void;
   runMissionFix(action: MissionFixAction): void;
+  /** Takes an offer from the contract board and sets Mission Control up to fly it. */
+  acceptContract(id: string): void;
+  /** Walks away from the active contract (reputation down). */
+  cancelContract(): void;
 }
 
 export interface UiActions {

@@ -9,10 +9,13 @@ import {
   setRefuel,
   setMissionDesign,
   setPayload,
+  setupForContract,
   toggleCrew,
   waitForNextWindow,
   type MissionSetup,
 } from '../../missions/missionSetup';
+import { acceptContract, cancelContract } from '../../economy/contracts';
+import { advanceProgram, currentEconomy, expiredText } from './economy';
 import { generateConditions } from '../../missions/conditions';
 import { RECOVERY_LABELS } from '../../recovery/recoveryPlan';
 import { refurbish, scrap } from '../../fleet/fleet';
@@ -66,13 +69,47 @@ export function createMissionActions(set: SetState, get: GetState): MissionActio
       const s = get();
       const day = programDay(s.progression);
       if (toDay <= day) return;
+      const r = advanceProgram(s.progression, toDay);
       set({
-        progression: { ...s.progression, calendarDay: toDay },
+        progression: r.progression,
         mission: { ...s.mission, commit: null },
         notice: makeNotice(
-          'success',
-          `Waited ${toDay - day} days: the Mars launch window is open (day ${toDay}).`,
+          r.expired ? 'warning' : 'success',
+          `Waited ${toDay - day} days: the Mars launch window is open (day ${toDay}).${expiredText(r.expired)}`,
         ),
+      });
+    },
+    acceptContract: (id) => {
+      const s = get();
+      const day = programDay(s.progression);
+      const r = acceptContract(currentEconomy(s.progression), id, day);
+      if (!r.ok) return warn(r.reason);
+      set({
+        progression: { ...s.progression, economy: r.economy },
+        mission: setupForContract(s.mission, r.contract),
+        missionTab: 'manifest',
+        notice: makeNotice(
+          'success',
+          `Contract accepted: ${r.contract.title} for ${r.contract.client}, due by day ${r.contract.deadlineDay}. Plan the flight in the Manifest.`,
+        ),
+      });
+    },
+    cancelContract: () => {
+      const s = get();
+      const e = currentEconomy(s.progression);
+      if (!e.active) return;
+      const title = e.active.title;
+      const flying = findMission(s.mission.missionId)?.contract === e.active.kind;
+      const back = flying
+        ? selectMission(s.mission, 'test-flight', s.progression.completedMissions)
+        : null;
+      set({
+        progression: {
+          ...s.progression,
+          economy: cancelContract(e, programDay(s.progression)),
+        },
+        ...(back?.ok ? { mission: back.setup } : {}),
+        notice: makeNotice('warning', `Contract cancelled: ${title}. Reputation down.`),
       });
     },
     commitMission: () => {

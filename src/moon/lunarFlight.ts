@@ -59,6 +59,8 @@ export interface LunarMissionPlan {
   readonly refuel: { readonly leo: boolean; readonly depot: boolean };
   /** Surface cargo to unload (the surface science package). */
   readonly cargo?: boolean;
+  /** Contract cargo run: docking at the depot unloads a pallet instead of buying propellant. */
+  readonly depotDelivery?: boolean;
 }
 
 export interface SurfaceView {
@@ -394,9 +396,16 @@ export class LunarFlight {
     if (this.op) return { ok: false, kind: this.op.kind, reason: 'Refuelling in progress.' };
     if (s.phase !== 'flight') return { ok: false, kind: null, reason: 'The ship is down.' };
     if (s.ref === 'moon') {
-      if (!this.plan.refuel.depot)
+      if (!this.plan.refuel.depot && !this.plan.depotDelivery)
         return { ok: false, kind: null, reason: 'No depot top-up was bought for this mission.' };
-      if (this.p.refuelDepot) return { ok: false, kind: null, reason: 'The depot top-up is used.' };
+      if (this.p.refuelDepot)
+        return {
+          ok: false,
+          kind: null,
+          reason: this.plan.depotDelivery
+            ? 'The pallet is already delivered.'
+            : 'The depot top-up is used.',
+        };
       if (!inLunarOrbit(s, this.env))
         return {
           ok: false,
@@ -434,11 +443,17 @@ export class LunarFlight {
   applyRefuel(s: FlightState, spec: ShipSpec): { state: FlightState; done?: string } {
     const op = this.op;
     if (!op) return { state: s };
-    const cap = spec.stage.propellantKg;
+    // A delivery run only unloads at the depot: the tanks stay as they are.
+    const delivery = op.kind === 'depot' && !!this.plan.depotDelivery;
+    const cap = delivery ? op.fromKg : spec.stage.propellantKg;
     const f = Math.min(1, (s.tS - op.startT) / (op.endT - op.startT));
     const propKg = Math.max(s.propKg, op.fromKg + (cap - op.fromKg) * f);
     if (f < 1) return { state: { ...s, propKg } };
     this.op = null;
+    if (delivery) {
+      this.p = { ...this.p, refuelDepot: true };
+      return { state: s, done: 'Cargo pallet unloaded at the lunar depot.' };
+    }
     this.p = op.kind === 'leo' ? { ...this.p, refuelLeo: true } : { ...this.p, refuelDepot: true };
     return {
       state: { ...s, propKg: cap },

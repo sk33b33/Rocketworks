@@ -10,6 +10,14 @@ import { MAX_BLUEPRINTS } from '../rocket/library/blueprintLibrary';
 import { MILESTONES } from '../progression/milestones';
 import { INITIAL_PROGRESSION, TECH_TREE, type ProgressionState } from '../progression/research';
 import type { MarsBase } from '../mars/marsRules';
+import {
+  initialEconomy,
+  type Contract,
+  type ContractFlightResult,
+  type ContractKind,
+  type ContractResult,
+  type EconomyState,
+} from '../economy/contracts';
 import { findCrew } from '../missions/crew';
 import { findMission, findPayload, MISSIONS } from '../missions/missionCatalog';
 import type { MissionSetup } from '../missions/missionSetup';
@@ -192,6 +200,97 @@ function parseProgression(raw: unknown, warnings: string[]): ProgressionState {
     completedMissions,
     calendarDay,
     marsBase: parseMarsBase(raw.marsBase),
+    economy: parseEconomy(raw.economy),
+  };
+}
+
+const CONTRACT_KINDS: readonly ContractKind[] = [
+  'satellite',
+  'resupply',
+  'lunar-depot',
+  'mars-tanker',
+];
+const CONTRACT_RESULTS: readonly ContractResult[] = [
+  'paid',
+  'failed',
+  'late',
+  'expired',
+  'cancelled',
+];
+
+function parseContract(raw: unknown): Contract | null {
+  if (!isRecord(raw)) return null;
+  const ok =
+    isString(raw.id) &&
+    CONTRACT_KINDS.includes(raw.kind as ContractKind) &&
+    isString(raw.client) &&
+    isString(raw.title) &&
+    isString(raw.payloadId) &&
+    !!findPayload(raw.payloadId) &&
+    isNum(raw.payout) &&
+    isNum(raw.repReward) &&
+    isNum(raw.repPenalty) &&
+    isNum(raw.deadlineDays) &&
+    isNum(raw.minReputation) &&
+    isNum(raw.toleranceKm);
+  if (!ok) return null;
+  return {
+    id: raw.id as string,
+    kind: raw.kind as ContractKind,
+    client: raw.client as string,
+    title: raw.title as string,
+    payloadId: raw.payloadId as string,
+    targetAltKm: isNum(raw.targetAltKm) ? raw.targetAltKm : null,
+    toleranceKm: raw.toleranceKm as number,
+    payout: raw.payout as number,
+    repReward: raw.repReward as number,
+    repPenalty: raw.repPenalty as number,
+    deadlineDays: raw.deadlineDays as number,
+    minReputation: raw.minReputation as number,
+  };
+}
+
+/** Treasury and contracts (Stage 12+); a damaged part falls back to safe defaults. */
+function parseEconomy(raw: unknown): EconomyState {
+  if (!isRecord(raw)) return initialEconomy();
+  const board = isRecord(raw.board) ? raw.board : {};
+  const offers = Array.isArray(board.offers)
+    ? board.offers.map(parseContract).filter((c): c is Contract => !!c)
+    : [];
+  const a = isRecord(raw.active) ? raw.active : null;
+  const base = a ? parseContract(a) : null;
+  const active =
+    base && a && isNum(a.acceptedDay) && isNum(a.deadlineDay)
+      ? { ...base, acceptedDay: a.acceptedDay, deadlineDay: a.deadlineDay }
+      : null;
+  const history = Array.isArray(raw.history)
+    ? raw.history
+        .filter(
+          (h): h is Record<string, unknown> =>
+            isRecord(h) &&
+            isString(h.id) &&
+            isString(h.title) &&
+            isString(h.client) &&
+            CONTRACT_RESULTS.includes(h.result as ContractResult) &&
+            isNum(h.payout) &&
+            isNum(h.day),
+        )
+        .map((h) => ({
+          id: h.id as string,
+          title: h.title as string,
+          client: h.client as string,
+          result: h.result as ContractResult,
+          payout: h.payout as number,
+          day: h.day as number,
+        }))
+        .slice(-12)
+    : [];
+  return {
+    treasury: isNum(raw.treasury) ? raw.treasury : initialEconomy().treasury,
+    reputation: isNum(raw.reputation) ? Math.max(0, Math.min(100, Math.round(raw.reputation))) : 20,
+    board: { period: isNum(board.period) ? Math.floor(board.period) : -1, offers },
+    active,
+    history,
   };
 }
 
@@ -281,6 +380,7 @@ function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
       const hw = isRecord(r.hardware) ? r.hardware : null;
       const lunar = parseLunar(r.lunar);
       const mars = parseMars(r.mars);
+      const contract = parseContractResult(r.contract);
       out.push({
         id: r.id,
         at: r.at,
@@ -302,6 +402,7 @@ function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
         ...(docking ? { docking } : {}),
         ...(lunar ? { lunar } : {}),
         ...(mars ? { mars } : {}),
+        ...(contract ? { contract } : {}),
         ...(hw
           ? {
               hardware: {
@@ -346,7 +447,13 @@ function parseMissionSetup(
   const c = raw.commit;
   const commit =
     isRecord(c) && isString(c.designId) && isCount(c.revision) && isString(c.at)
-      ? { designId: c.designId, revision: c.revision, at: c.at }
+      ? {
+          designId: c.designId,
+          revision: c.revision,
+          at: c.at,
+          ...(isNum(c.cost) && c.cost >= 0 ? { cost: c.cost } : {}),
+          ...(isString(c.contractId) ? { contractId: c.contractId } : {}),
+        }
       : null;
   return {
     missionId: raw.missionId as string,
@@ -405,6 +512,18 @@ function parseMars(raw: unknown): MarsSummary | null {
     ice: numOrNull(raw.ice),
     landedDay: numOrNull(raw.landedDay),
     ...(isRecord(raw.returnTrip) ? { returnTrip: parseReturnTrip(raw.returnTrip) } : {}),
+    ...(isNum(raw.deliveredKg) && raw.deliveredKg >= 0 ? { deliveredKg: raw.deliveredKg } : {}),
+  };
+}
+
+/** A contract flight's result (Stage 12+). */
+function parseContractResult(raw: unknown): ContractFlightResult | null {
+  if (!isRecord(raw) || !isString(raw.contractId) || !isString(raw.detail)) return null;
+  return {
+    contractId: raw.contractId,
+    met: raw.met === true,
+    detail: raw.detail,
+    ...(isNum(raw.deliveredKg) && raw.deliveredKg >= 0 ? { deliveredKg: raw.deliveredKg } : {}),
   };
 }
 

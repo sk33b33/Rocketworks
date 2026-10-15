@@ -1,5 +1,5 @@
 import type { LocationId } from '../app/locations';
-import { missionAvailability, MISSIONS } from '../missions/missionCatalog';
+import { missionAvailability, STORY_MISSIONS } from '../missions/missionCatalog';
 import type { RocketBlueprint } from '../rocket/model/types';
 import { certificationStatus } from '../rocket/readiness/certification';
 
@@ -32,7 +32,7 @@ export function nextStep(i: NextStepInput): NextStep {
   });
   if (!certified) return { text: 'Build and certify a rocket in the Factory', location: 'factory' };
   if (i.missionCommitted) return { text: 'Roll out the committed mission', location: 'launch-pad' };
-  const next = MISSIONS.find(
+  const next = STORY_MISSIONS.find(
     (m) =>
       !i.completedMissionIds.includes(m.id) &&
       missionAvailability(m, i.completedMissionIds).available,

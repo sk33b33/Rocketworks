@@ -17,6 +17,7 @@ import {
 } from '../mars/marsRules';
 import { bestTransfer, HOHMANN_DAYS, windowStatus, type WindowStatus } from '../mars/marsTransfer';
 import { DAY_S } from '../mars/solarSystem';
+import { orbitRaiseDvMS, type ActiveContract } from '../economy/contracts';
 import type { ReadinessReport } from '../rocket/readiness/readiness';
 import type { RocketBlueprint } from '../rocket/model/types';
 import { generateConditions, type LaunchConditions } from './conditions';
@@ -102,6 +103,8 @@ export interface MissionReport {
   readonly poll: readonly { area: PollArea; status: PollStatus }[];
   readonly deltaV: DeltaVEstimate | null;
   readonly requiredDeltaVMs: number;
+  /** Contract missions: the contract this flight is for (null otherwise). */
+  readonly contract: ActiveContract | null;
   /** Moon missions: Δv per leg after reaching orbit (null otherwise). */
   readonly lunarLegs: LegCheck[] | null;
   /** Mars missions: the launch window today and the Δv legs (null otherwise). */
@@ -169,6 +172,10 @@ export interface MissionContext {
   /** The propellant plant on Mars, and whether better drills are researched. */
   readonly marsBase?: MarsBase | null;
   readonly plantBoosted?: boolean;
+  /** Treasury balance (cr); omitted = not checked. */
+  readonly treasury?: number;
+  /** The contract accepted from the board (contract missions fly it). */
+  readonly contract?: ActiveContract | null;
 }
 
 /** Crew-days of life support per part. Game values. */
@@ -509,16 +516,79 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
     });
   }
 
+  if (bp && ctx.treasury !== undefined && cost.missionCredits > ctx.treasury) {
+    add({
+      id: 'treasury-short',
+      area: 'recovery',
+      severity: 'critical',
+      title: `Not enough money in the treasury (${fmt(ctx.treasury)} cr)`,
+      detail: `This flight costs ${fmt(cost.missionCredits)} cr, paid when it flies. Contracts, first-time missions, milestones and the program grant every 30 days add to the treasury.`,
+      fix: 'Fly recovered hardware, skip the tankers, or take a contract that pays.',
+      action: { kind: 'open-tab', tab: 'manifest' },
+      actionLabel: 'Open manifest',
+    });
+  }
+
+  // ---- Contract ----
+  const contract =
+    mission.contract && ctx.contract?.kind === mission.contract ? ctx.contract : null;
+  if (mission.contract && !contract) {
+    add({
+      id: 'contract-missing',
+      area: 'payload',
+      severity: 'critical',
+      title: 'No contract for this flight',
+      detail: 'Contract missions are flown for a client: accept an offer on the contract board.',
+      fix: 'Pick a contract from the board.',
+    });
+  }
+  if (contract && ctx.setup.payloadId !== contract.payloadId) {
+    add({
+      id: 'contract-payload',
+      area: 'payload',
+      severity: 'critical',
+      title: `The contract is for ${findPayload(contract.payloadId)?.name ?? contract.payloadId}`,
+      detail: `${contract.client} expects that payload on this flight.`,
+      fix: 'Select the contract payload in the Manifest.',
+      action: { kind: 'open-tab', tab: 'manifest' },
+      actionLabel: 'Open manifest',
+    });
+  }
+  if (contract && (ctx.calendarDay ?? 0) > contract.deadlineDay) {
+    add({
+      id: 'contract-expired',
+      area: 'payload',
+      severity: 'critical',
+      title: 'The contract deadline has passed',
+      detail: `${contract.client} needed this by day ${fmt(contract.deadlineDay)}.`,
+      fix: 'Cancel the contract and pick another from the board.',
+    });
+  }
+  if (mission.mars?.tanker && !ctx.marsBase) {
+    add({
+      id: 'mars-no-plant',
+      area: 'payload',
+      severity: 'critical',
+      title: 'No propellant plant on Mars',
+      detail: 'A tanker run unloads into the plant, and none is running.',
+      fix: 'Fly the Mars Cargo Lander with the propellant plant first.',
+    });
+  }
+  // Satellite deployments climb from the parking orbit to the requested one.
+  const requiredDv =
+    mission.requiredDeltaVMs +
+    (contract?.targetAltKm ? Math.round(orbitRaiseDvMS(contract.targetAltKm)) : 0);
+
   // ---- Propulsion ----
   if (deltaV) {
-    const margin = deltaV.totalMs / mission.requiredDeltaVMs - 1;
+    const margin = deltaV.totalMs / requiredDv - 1;
     if (margin < 0) {
       add({
         id: 'delta-v',
         area: 'propulsion',
         severity: 'critical',
         title: 'Not enough Δv for this mission',
-        detail: `Estimated ${fmt(deltaV.totalMs)} m/s with ${fmt(carriedMassKg / 1000)} t carried${recovery === 'expend' ? '' : ` and ${Math.round(RESERVE_FRACTION[recovery] * 100)}% booster propellant held back for recovery`}; ${fmt(mission.requiredDeltaVMs)} m/s needed.`,
+        detail: `Estimated ${fmt(deltaV.totalMs)} m/s with ${fmt(carriedMassKg / 1000)} t carried${recovery === 'expend' ? '' : ` and ${Math.round(RESERVE_FRACTION[recovery] * 100)}% booster propellant held back for recovery`}; ${fmt(requiredDv)} m/s needed${requiredDv > mission.requiredDeltaVMs ? ' (including the climb to the requested orbit)' : ''}.`,
         fix:
           recovery === 'catch'
             ? 'Try a platform landing (smaller reserve), lighten the payload, or add tanks.'
@@ -551,7 +621,7 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
     );
     for (const c of lunarLegs) {
       if (c.ok) continue;
-      const bought = ctx.setup.refuel[c.leg.refuel];
+      const bought = c.leg.refuel === 'none' || ctx.setup.refuel[c.leg.refuel];
       const refuelName = c.leg.refuel === 'leo' ? 'orbital refuelling' : 'the lunar depot top-up';
       add({
         id: `lunar-dv-${c.leg.id}`,
@@ -814,7 +884,8 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
     issues: sorted,
     poll,
     deltaV,
-    requiredDeltaVMs: mission.requiredDeltaVMs,
+    requiredDeltaVMs: requiredDv,
+    contract,
     lunarLegs,
     mars,
     carriedMassKg,
@@ -860,6 +931,15 @@ export function commitMission(
   }
   return {
     ok: true,
-    setup: { ...setup, commit: { designId: bp.id, revision: bp.revision, at: now } },
+    setup: {
+      ...setup,
+      commit: {
+        designId: bp.id,
+        revision: bp.revision,
+        at: now,
+        cost: report.cost.missionCredits,
+        ...(report.contract ? { contractId: report.contract.id } : {}),
+      },
+    },
   };
 }

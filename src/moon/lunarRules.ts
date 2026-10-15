@@ -45,11 +45,11 @@ export function refuelCost(
 
 /** One leg of a Moon mission and the Δv it needs from the ship. */
 export interface LunarLeg {
-  readonly id: 'trip' | 'outbound' | 'surface';
+  readonly id: 'trip' | 'outbound' | 'surface' | 'home';
   readonly label: string;
   readonly requiredDvMS: number;
-  /** The refuelling that fills the tanks at the start of this leg. */
-  readonly refuel: keyof RefuelChoice;
+  /** The refuelling that fills the tanks at the start of this leg ('none' = carry over). */
+  readonly refuel: keyof RefuelChoice | 'none';
 }
 
 export interface LunarMissionRules {
@@ -90,6 +90,27 @@ export const LANDING_RULES: LunarMissionRules = {
   ],
 };
 
+/** Contract runs to the lunar depot: into lunar orbit, unload at the depot, then home. */
+export const DEPOT_RULES: LunarMissionRules = {
+  goal: 'capture',
+  landing: false,
+  legs: [
+    {
+      id: 'outbound',
+      label: 'Trans-lunar injection and lunar orbit insertion',
+      requiredDvMS: 4_250,
+      refuel: 'leo',
+    },
+    {
+      // The depot takes the pallet but sells no propellant on a delivery run.
+      id: 'home',
+      label: 'Trans-Earth injection and the Earth arrival',
+      requiredDvMS: 1_600,
+      refuel: 'none',
+    },
+  ],
+};
+
 export interface LegCheck {
   readonly leg: LunarLeg;
   /** Δv the ship has for this leg (m/s). */
@@ -112,7 +133,7 @@ export function checkLegs(
 ): LegCheck[] {
   let carried = inOrbitDvMS;
   return rules.legs.map((leg) => {
-    const available = refuel[leg.refuel] ? fullShipDvMS : carried;
+    const available = leg.refuel !== 'none' && refuel[leg.refuel] ? fullShipDvMS : carried;
     carried = Math.max(0, available - leg.requiredDvMS);
     return { leg, availableMS: available, ok: available >= leg.requiredDvMS };
   });

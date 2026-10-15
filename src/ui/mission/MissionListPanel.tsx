@@ -1,5 +1,5 @@
 import { useGameStore } from '../../app/gameStore';
-import { missionAvailability, MISSIONS } from '../../missions/missionCatalog';
+import { missionAvailability, STORY_MISSIONS } from '../../missions/missionCatalog';
 import { formatCredits, formatSpeed } from '../format';
 
 /** Mission selector with lock reasons, requirements at a glance and rewards. */
@@ -14,7 +14,7 @@ export function MissionListPanel() {
         <span className="muted">{completed.length} flown</span>
       </div>
       <ul className="mission-list">
-        {MISSIONS.map((m) => {
+        {STORY_MISSIONS.map((m) => {
           const availability = missionAvailability(m, completed);
           const reason = availability.available ? undefined : availability.reason;
           const active = m.id === current;
