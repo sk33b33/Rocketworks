@@ -291,6 +291,7 @@ export interface FlightContract {
   readonly toleranceKm: number;
   /** Mass released or unloaded (kg). */
   readonly payloadKg: number;
+  readonly payout: number;
 }
 
 /** What a flight did for the active contract (judged by the flight outcome). */

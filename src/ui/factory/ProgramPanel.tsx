@@ -3,6 +3,8 @@ import { MILESTONES } from '../../progression/milestones';
 import { canResearch, TECH_TREE } from '../../progression/research';
 import { calculateRocketStats } from '../../rocket/stats/calculateRocketStats';
 import { formatCredits } from '../format';
+import { currentEconomy } from '../../app/store/economy';
+import { GRANT_CREDITS, PERIOD_DAYS } from '../../economy/treasury';
 
 /** Budget, research points, research projects and milestones. */
 export function ProgramPanel() {
@@ -10,6 +12,7 @@ export function ProgramPanel() {
   const blueprint = useGameStore((s) => s.blueprint);
   const research = useGameStore((s) => s.research);
   const program = useGameStore(selectProgram);
+  const economy = currentEconomy(progression);
   const cost = calculateRocketStats(blueprint).costCredits;
   const share = Math.min(1, cost / program.budgetCredits);
 
@@ -35,8 +38,19 @@ export function ProgramPanel() {
         />
       </div>
       <p className="footnote">
-        The budget caps what one design may cost. It grows with milestones and research; nothing is
-        spent or refunded.
+        The budget caps what one design may cost. It grows with milestones and research.
+      </p>
+      <div className="row section-gap">
+        <span className="eyebrow">Treasury</span>
+        <strong>
+          {formatCredits(economy.treasury)}{' '}
+          <span className="muted">· reputation {economy.reputation}</span>
+        </strong>
+      </div>
+      <p className="footnote">
+        Flights are paid from the treasury when they fly. First-time missions, milestones and
+        contracts pay in, and the program office adds {formatCredits(GRANT_CREDITS)} every{' '}
+        {PERIOD_DAYS} program days.
       </p>
 
       <div className="row section-gap">

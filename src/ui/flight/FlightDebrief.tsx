@@ -38,6 +38,12 @@ export function FlightDebrief({ record }: { record: FlightRecord }) {
       <h2 className="debrief-title">{record.missionName}</h2>
       <p>{record.summary}</p>
       {record.recovery && <RecoveryResultLine r={record.recovery} />}
+      {record.contract && (
+        <p className={record.contract.met ? 'tone-ok' : 'tone-bad'}>
+          {record.contract.met ? '✓ Contract terms met: ' : '✕ Contract not met: '}
+          {record.contract.detail} Payment is settled with the client in Mission Control.
+        </p>
+      )}
       {record.docking && (
         <p className={record.docking.grade ? 'tone-ok' : 'tone-warn'}>
           {record.docking.grade ? (
@@ -72,10 +78,10 @@ export function FlightDebrief({ record }: { record: FlightRecord }) {
           {record.crewSafe ? '✓ Crew safe.' : '✕ Crew lost.'}
         </p>
       )}
-      {record.credited && mission && (
+      {record.credited && mission && !mission.contract && (
         <p className="tone-ok">
-          Mission credited: +{mission.rewardRp} RP and +{fmt(mission.rewardCredits)} cr budget on
-          first completion. New missions may now be available in Mission Control.
+          Mission credited: +{mission.rewardRp} RP and +{fmt(mission.rewardCredits)} cr on first
+          completion. New missions may now be available in Mission Control.
         </p>
       )}
       {l && (

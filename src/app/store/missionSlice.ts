@@ -94,6 +94,12 @@ export function createMissionActions(set: SetState, get: GetState): MissionActio
         ),
       });
     },
+    planActiveContract: () => {
+      const s = get();
+      const c = currentEconomy(s.progression).active;
+      if (!c) return;
+      update(setupForContract(s.mission, c), `Planning the contract flight: ${c.title}.`);
+    },
     cancelContract: () => {
       const s = get();
       const e = currentEconomy(s.progression);

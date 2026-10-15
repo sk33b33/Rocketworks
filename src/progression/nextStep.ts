@@ -39,7 +39,7 @@ export function nextStep(i: NextStepInput): NextStep {
   );
   if (next) return { text: `Next mission: ${next.name}`, location: 'mission-control' };
   return {
-    text: 'Every mission flown: try harder landing sites or fly manually for ratings',
+    text: 'Every story mission flown: take contracts from the board in Mission Control',
     location: 'mission-control',
   };
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { selectMissionReport, useGameStore } from '../../app/gameStore';
+import { currentEconomy } from '../../app/store/economy';
 import {
   compatibleVehicles,
   FLEET,
@@ -148,6 +149,7 @@ export function RecoveryFleetSection({ bp }: { bp: RocketBlueprint | undefined }
   const setRecovery = useGameStore((s) => s.setRecovery);
   const hw = bp ? boosterHardware(bp) : { gridFins: 0, boosterLegs: 0 };
   const cost = report.cost;
+  const treasury = useGameStore((s) => currentEconomy(s.progression).treasury);
   const over = cost.budgetCredits !== null && cost.missionCredits > cost.budgetCredits;
   return (
     <div className="recovery-section">
@@ -210,6 +212,18 @@ export function RecoveryFleetSection({ bp }: { bp: RocketBlueprint | undefined }
           <>
             <dt>Program budget (per mission)</dt>
             <dd>{formatCredits(cost.budgetCredits)}</dd>
+          </>
+        )}
+        <dt>Treasury now · after this flight</dt>
+        <dd className={treasury < cost.missionCredits ? 'tone-bad' : undefined}>
+          {formatCredits(treasury)} · {formatCredits(treasury - cost.missionCredits)}
+        </dd>
+        {report.contract && (
+          <>
+            <dt>Contract pays</dt>
+            <dd className="tone-ok">
+              {formatCredits(report.contract.payout)} ({report.contract.client})
+            </dd>
           </>
         )}
       </dl>

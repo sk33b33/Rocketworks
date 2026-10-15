@@ -67,6 +67,10 @@ function nextAction(next: ObjectiveId | undefined, mars: boolean): string {
       return 'Next: entry guidance flies the entry and the landing burn. Take over below 500 m for a manual landing.';
     case 'mars-surface':
       return 'Next: lower the propellant plant and start it (time warp up to 10,000× on the surface), then complete the mission.';
+    case 'sat-release':
+      return 'Next: engage "Raise orbit" to climb to the requested orbit, then press "Release the satellite" in the Contract panel.';
+    case 'mars-unload':
+      return 'Next: warp through the surface tasks at the Mars location; the ship pumps its propellant into the plant.';
     case 'mars-crew-tasks':
       return 'Next: the crew works through the surface tasks at the Mars location (time warp up to 10,000×).';
     case 'mars-refuel':

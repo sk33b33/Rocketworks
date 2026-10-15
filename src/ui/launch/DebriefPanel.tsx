@@ -35,10 +35,10 @@ export function DebriefPanel({ record }: { record: FlightRecord }) {
         </p>
       )}
       {record.recovery && <RecoveryResultLine r={record.recovery} />}
-      {record.credited && mission && (
+      {record.credited && mission && !mission.contract && (
         <p className="tone-ok">
-          Mission credited: +{mission.rewardRp} RP and +{fmt(mission.rewardCredits)} cr budget on
-          first completion.
+          Mission credited: +{mission.rewardRp} RP and +{fmt(mission.rewardCredits)} cr on first
+          completion.
         </p>
       )}
       {record.result !== 'scrubbed' && (

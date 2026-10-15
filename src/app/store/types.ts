@@ -128,6 +128,8 @@ export interface MissionActions {
   acceptContract(id: string): void;
   /** Walks away from the active contract (reputation down). */
   cancelContract(): void;
+  /** Sets Mission Control up to fly the active contract again (after planning something else). */
+  planActiveContract(): void;
 }
 
 export interface UiActions {

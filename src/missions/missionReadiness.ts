@@ -266,7 +266,8 @@ function marsRoundTrip(
 export function evaluateMission(ctx: MissionContext): MissionReport {
   const mission = findMission(ctx.setup.missionId) ?? findMission('test-flight')!;
   const req = mission.requirements;
-  const crewed = req.maxCrew > 0;
+  // Missions with an optional crew (contracts) are crewed only when someone is assigned.
+  const crewed = req.minCrew > 0 || (req.maxCrew > 0 && ctx.setup.crewIds.length > 0);
   const issues: MissionIssue[] = [];
   const add = (issue: MissionIssue) => issues.push(issue);
   const bp = ctx.blueprint;
@@ -278,7 +279,10 @@ export function evaluateMission(ctx: MissionContext): MissionReport {
   const riskFactors: string[] = [];
   let risk = mission.baseRisk;
 
-  const availability = missionAvailability(mission, ctx.completedMissionIds);
+  // Contract missions are approved by the contract itself (see 'contract-missing').
+  const availability = mission.contract
+    ? { available: true as const }
+    : missionAvailability(mission, ctx.completedMissionIds);
   if (!availability.available) {
     add({
       id: 'mission-locked',

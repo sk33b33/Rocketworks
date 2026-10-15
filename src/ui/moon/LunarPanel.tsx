@@ -37,8 +37,9 @@ export function LunarPanel({
   const refuel = lunar.refuel;
   const avail = lunar.refuelAvailable;
   const flying = snap.phase === 'flight' && s.phase === 'flight';
-  const remaining =
-    (lunar.plan.refuel.leo && !p.refuelLeo) || (lunar.plan.refuel.depot && !p.refuelDepot);
+  const delivery = !!lunar.plan.depotDelivery;
+  const depot = lunar.plan.refuel.depot || delivery;
+  const remaining = (lunar.plan.refuel.leo && !p.refuelLeo) || (depot && !p.refuelDepot);
   return (
     <div className="panel">
       <div className="panel-header">
@@ -79,7 +80,7 @@ export function LunarPanel({
           </>
         )}
       </dl>
-      {(lunar.plan.refuel.leo || lunar.plan.refuel.depot) && (
+      {(lunar.plan.refuel.leo || depot) && (
         <>
           <div className="eyebrow section-gap">Refuelling</div>
           {refuel ? (
@@ -106,7 +107,9 @@ export function LunarPanel({
               <p className="small-text muted">
                 {refuel.kind === 'leo'
                   ? 'Tankers transferring propellant'
-                  : 'Topping up at the depot'}{' '}
+                  : delivery
+                    ? 'Unloading the pallet at the depot'
+                    : 'Topping up at the depot'}{' '}
                 · {formatDuration(Math.max(0, refuel.endT - t))} left (time warp is available)
               </p>
             </>
@@ -120,7 +123,9 @@ export function LunarPanel({
                 onClick={() => flightRuntime.refuel()}
               >
                 {avail.kind === 'depot' || s.ref === 'moon' || p.refuelLeo
-                  ? `Top up at the lunar depot (~${REFUEL.depotDurationS / 3_600} h)`
+                  ? delivery
+                    ? `Unload at the lunar depot (~${REFUEL.depotDurationS / 3_600} h)`
+                    : `Top up at the lunar depot (~${REFUEL.depotDurationS / 3_600} h)`
                   : `Refuel in orbit (~${REFUEL.leoDurationS / 3_600} h)`}
               </button>
               {!avail.ok && avail.reason && <p className="small-text muted">{avail.reason}</p>}
@@ -135,7 +140,7 @@ export function LunarPanel({
               : lunar.plan.refuel.leo
                 ? '○ Earth-orbit tankers'
                 : ''}
-            {lunar.plan.refuel.depot && (p.refuelDepot ? ' · ✓ lunar depot' : ' · ○ lunar depot')}
+            {depot && (p.refuelDepot ? ' · ✓ lunar depot' : ' · ○ lunar depot')}
           </p>
         </>
       )}

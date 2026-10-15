@@ -1,18 +1,46 @@
+import { useState } from 'react';
 import { useGameStore } from '../../app/gameStore';
-import { missionAvailability, STORY_MISSIONS } from '../../missions/missionCatalog';
+import { findMission, missionAvailability, STORY_MISSIONS } from '../../missions/missionCatalog';
 import { formatCredits, formatSpeed } from '../format';
+import { ContractBoard } from './ContractBoard';
 
-/** Mission selector with lock reasons, requirements at a glance and rewards. */
+/** Story missions (with lock reasons, requirements and rewards) and the contract board. */
 export function MissionListPanel() {
+  const current = useGameStore((s) => s.mission.missionId);
+  const completed = useGameStore((s) => s.progression.completedMissions);
+  const [view, setView] = useState<'story' | 'contracts'>(() =>
+    findMission(current)?.contract ? 'contracts' : 'story',
+  );
+  const flown = completed.filter((id) => !findMission(id)?.contract).length;
+  return (
+    <div className="panel missions">
+      <div className="panel-header">
+        <h2>{view === 'story' ? 'Missions' : 'Contracts'}</h2>
+        <span className="muted">{flown} flown</span>
+      </div>
+      <div className="segmented" role="group" aria-label="Mission list">
+        <button type="button" aria-pressed={view === 'story'} onClick={() => setView('story')}>
+          Story missions
+        </button>
+        <button
+          type="button"
+          aria-pressed={view === 'contracts'}
+          onClick={() => setView('contracts')}
+        >
+          Contracts
+        </button>
+      </div>
+      {view === 'contracts' ? <ContractBoard /> : <StoryList />}
+    </div>
+  );
+}
+
+function StoryList() {
   const current = useGameStore((s) => s.mission.missionId);
   const completed = useGameStore((s) => s.progression.completedMissions);
   const select = useGameStore((s) => s.selectMission);
   return (
-    <div className="panel missions">
-      <div className="panel-header">
-        <h2>Missions</h2>
-        <span className="muted">{completed.length} flown</span>
-      </div>
+    <>
       <ul className="mission-list">
         {STORY_MISSIONS.map((m) => {
           const availability = missionAvailability(m, completed);
@@ -50,7 +78,7 @@ export function MissionListPanel() {
                   <span className="mission-reward">
                     {done
                       ? 'Reward earned'
-                      : `Reward +${m.rewardRp} RP, +${formatCredits(m.rewardCredits)} budget`}
+                      : `Reward +${m.rewardRp} RP, +${formatCredits(m.rewardCredits)}`}
                   </span>
                 )}
               </button>
@@ -59,8 +87,9 @@ export function MissionListPanel() {
         })}
       </ul>
       <p className="footnote">
-        Rewards are paid the first time a mission is flown successfully and credited.
+        Rewards are paid into the treasury the first time a mission is flown successfully and
+        credited. Contracts pay for repeat flights.
       </p>
-    </div>
+    </>
   );
 }

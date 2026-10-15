@@ -83,13 +83,20 @@ export function AutopilotPanel({ snap }: { snap: FlightSnapshot }) {
   const flying = s.phase === 'flight' && (!voyage || !!mars?.manualAllowed);
   const active = s.phase === 'flight' ? snap.program.program : 'none';
   const lunar = snap.lunar;
+  const contract = snap.context?.contract;
+  const raiseTarget =
+    contract?.kind === 'satellite' && contract.targetAltKm !== null && !snap.progress.release
+      ? contract.targetAltKm * 1000
+      : null;
   const programs = mars
     ? marsPrograms(snap, s.origin)
-    : lunar
-      ? lunar.plan.landing
-        ? LANDING_PROGRAMS
-        : LUNAR_PROGRAMS
-      : PROGRAMS;
+    : raiseTarget !== null
+      ? (['circularize', 'raise-orbit', 'deorbit', 'reentry', 'landing'] as ProgramId[])
+      : lunar
+        ? lunar.plan.landing
+          ? LANDING_PROGRAMS
+          : LUNAR_PROGRAMS
+        : PROGRAMS;
   const angle = localFrame(s.r).groundAngle;
   // Distance ahead along the ground track (0..40,000 km eastward).
   const ahead = (z: LandingZone) => {
@@ -147,6 +154,7 @@ export function AutopilotPanel({ snap }: { snap: FlightSnapshot }) {
                 }
               : null,
             mars ? (p) => mars.programs[p] : null,
+            raiseTarget,
           );
           const on = active === id;
           return (
@@ -196,6 +204,10 @@ function programStatus(snap: FlightSnapshot): string {
   switch (p.program) {
     case 'circularize':
       return p.burning ? 'Burning prograde…' : 'Coasting to apoapsis…';
+    case 'raise-orbit':
+      return p.burning
+        ? `Raising apoapsis to ${fmt((p.targetAltM ?? 0) / 1000)} km…`
+        : 'Waiting for periapsis…';
     case 'rendezvous': {
       const label = RENDEZVOUS_LABELS[snap.rendezvous.phase];
       const eta = snap.station?.view.toBurnS;

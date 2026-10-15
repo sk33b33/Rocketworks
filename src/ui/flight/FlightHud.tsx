@@ -5,6 +5,7 @@ import { launchRuntime } from '../../app/launchBinding';
 import { useShortcut } from '../useShortcut';
 import { flownFromMars } from '../../flight/flightRuntime';
 import { AutopilotPanel } from './AutopilotPanel';
+import { ContractPanel } from './ContractPanel';
 import { FlightControlsBar } from './FlightControlsBar';
 import { FlightDebrief } from './FlightDebrief';
 import { FlightHelp } from './FlightHelp';
@@ -100,6 +101,11 @@ export function FlightHud() {
         </section>
       </div>
       <div className="hud-col hud-right">
+        {snap.context?.contract && (
+          <section data-panel="contract">
+            <ContractPanel snap={snap} />
+          </section>
+        )}
         <section data-panel="autopilot">
           <AutopilotPanel snap={snap} />
         </section>

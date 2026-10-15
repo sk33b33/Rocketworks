@@ -116,6 +116,7 @@ function contractFor(
     targetAltKm: c.targetAltKm,
     toleranceKm: c.toleranceKm,
     payloadKg: findPayload(payloadId)?.massKg ?? 0,
+    payout: c.payout,
   };
 }
 
