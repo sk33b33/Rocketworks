@@ -51,6 +51,8 @@ function sampleData(): Omit<SaveData, 'saveVersion'> {
       reduceMotion: true,
       uiScale: 1.1,
       overviewSeen: true,
+      soundVolume: 0.35,
+      soundMuted: true,
     },
     flights: [],
     fleet: [],
@@ -222,6 +224,8 @@ describe('migration v1 → v2', () => {
       reduceMotion: false,
       uiScale: 1,
       overviewSeen: true,
+      soundVolume: 0.6,
+      soundMuted: false,
     });
     expect(result.data.flights).toEqual([]);
   });

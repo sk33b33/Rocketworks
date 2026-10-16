@@ -140,6 +140,8 @@ export interface UiActions {
   setAssemblyMode(mode: AssemblyMode): void;
   setReduceMotion(on: boolean): void;
   setUiScale(scale: number): void;
+  setSoundVolume(volume: number): void;
+  setSoundMuted(muted: boolean): void;
   setOverviewSeen(seen: boolean): void;
   setShowPerf(on: boolean): void;
   setVehicleTab(tab: VehicleTab): void;

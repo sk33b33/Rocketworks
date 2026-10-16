@@ -2,7 +2,7 @@
 
 ## Current stage
 
-**Stage 15: EVA on the Moon and Mars.** Complete. The approved run continues with Stages 16–17 (procedural audio, manoeuvre planner).
+**Stage 16: Procedural audio.** Complete. The approved run continues with Stage 17 (manoeuvre planner).
 
 ## Completed
 
@@ -273,6 +273,27 @@
   - **Saves:** flight records carry the EVA tally (validated, clamped). No format bump was needed: older saves simply have none.
   - **Fix:** the photo camera keeps the scene's near plane. The Moon view's far plane reaches Earth, and a smaller near plane would lose depth precision.
 
+- **Stage 16 (procedural audio):**
+  - **Pure mixer** (`src/audio/soundMix.ts`):
+    - Turns the game state into levels.
+    - Engine roar (louder and brighter with throttle; through the structure only in vacuum) and a deeper rumble on the booster.
+    - Wind from dynamic pressure (log scale) plus the plasma roar from heating.
+    - A room tone per location.
+    - Continuous sounds go quiet while paused or above 10× warp.
+  - **Cue detection:**
+    - Beeps over the last ten seconds of the count, then ignition (not on a scrub).
+    - Touchdown or crash, docking, EVA sample chimes, the photo shutter, and the low-oxygen warning.
+    - Each cue fires once per change.
+  - **Engine** (`src/audio/AudioEngine.ts`):
+    - Web Audio only, with no recorded assets: a looped noise buffer through filters for the roar, rumble and wind; two sines for the hum; short synthesized envelopes for the cues.
+    - Parameters are smoothed. The context is created on the first gesture (autoplay rules), and `dispose` stops and disconnects everything and closes the context.
+    - It's a silent no-op without Web Audio.
+  - **Binding** (`src/app/audioBinding.ts`):
+    - Reads the launch and flight runtimes 20 times a second (silent while the tab is hidden) and applies the volume from settings.
+    - Soft clicks on enabled buttons, tabs and checkboxes.
+    - Started and cleaned up by the app.
+  - **Settings:** a volume slider and mute, saved in the UI prefs (defaults 60%, unmuted). Old saves get the defaults and damaged values are clamped; no format bump was needed.
+
 ## Assumptions (documented, reversible)
 
 - Flight physics is a simplified planar gameplay model: one orbital plane (the equator), no Earth rotation, an exponential atmosphere, lumped aerodynamics, and Sutton–Graves heating with gameplay heat capacities. The UI and footnotes say so; it is not a flight simulator.
@@ -319,6 +340,10 @@
   - An EVA in progress isn't saved: after a reload the astronaut is back aboard and unboarded samples are lost.
   - Walking is on the terrain heightfield; small boulders are walked over, and lighting doesn't change.
   - Headless software rendering runs the surface at a few frames per second; the per-frame step cap then slows the walk in real time.
+- Audio:
+  - Sounds are simple synthesis: no positional (3D) audio, no voice or radio chatter, no music.
+  - The booster's return and the station's RCS have no sounds of their own yet.
+  - Automated tests can't hear the output: the mix and the cues are unit-tested and the engine is checked for errors only.
 - Crewed round trips:
   - The supplies payload stands in for consumables, recycling and a surface habitat. Life support is a crew-day budget, not simulated.
   - The plant's pumping rate, the 2 km reach and the crew task durations are game values.
@@ -329,8 +354,11 @@
 ## Checks (last run)
 
 - `npm run typecheck` (app and e2e), `npm run lint`, `npm run build`: pass.
-- `npm test`: 284 tests pass across 26 files. New in Stage 15 (`tests/eva.test.ts`, plus the lunar landing, the crewed Mars round trip and saves): deterministic sample placement clear of boulders; walking, turning, slopes, cliffs, boulders, the hull and the range limit; collecting only within reach and standing still; the oxygen warning and the abort; boarding range and the tally across EVAs; directions; a scripted player collecting everything; the milestones; a full lunar landing with an EVA collecting all three samples (warp and liftoff blocked while outside) into the flight record; an EVA on Mars blocking the window wait; the EVA record in saves.
-- Stage 15 e2e: 11 Playwright tests, including the new EVA test (`e2e/eva.e2e.ts`: start an EVA on Mars, warp locked, walk, board). Result recorded below once the run finishes.
+- `npm test`: 293 tests pass across 27 files. New in Stage 16 (`tests/audio.test.ts`, plus saves): the mix (silence, room tone, thrust, booster, vacuum, wind and heating, pause and warp); cues (the last-ten beeps, ignition but not on a scrub, touchdown, crash, docking, chimes, shutter, warnings, each once); volume sanitizing; the engine as a silent no-op without Web Audio; sound prefs in saves.
+- Stage 16 e2e: 12 Playwright tests, including the new sound-settings test (`e2e/audio.e2e.ts`). Result recorded below once the run finishes.
+- Headless Chromium smoke test, Stage 16 (manual script, not committed), with no console errors: no audio context before the first click, a running one after it; volume and mute saved; every location visited; a reload disposes it cleanly.
+- Stage 15: `npm test`: 284 tests pass across 26 files. New in Stage 15 (`tests/eva.test.ts`, plus the lunar landing, the crewed Mars round trip and saves): deterministic sample placement clear of boulders; walking, turning, slopes, cliffs, boulders, the hull and the range limit; collecting only within reach and standing still; the oxygen warning and the abort; boarding range and the tally across EVAs; directions; a scripted player collecting everything; the milestones; a full lunar landing with an EVA collecting all three samples (warp and liftoff blocked while outside) into the flight record; an EVA on Mars blocking the window wait; the EVA record in saves.
+- Stage 15 e2e: 11 Playwright tests, including the new EVA test (`e2e/eva.e2e.ts`: start an EVA on Mars, warp locked, walk, board). All 11 pass (about 10 min).
 - Headless Chromium smoke tests, Stage 15 (manual scripts, not committed), with no console errors: on Mars (the e2e fixture) and on the Moon (a Sea of Calm landing flown by the runtime in the page). _Start EVA_ put the astronaut on the ground 10 m from the ship with a beacon ahead; walking and turning worked, warp was locked, and photo mode works on foot.
 - Stage 14: `npm test`: 276 tests pass across 25 files. New in Stage 14 (`tests/replay.test.ts`, plus the full-flight runtime test): Hermite interpolation along an orbit; short-way attitude blending; steps across discrete changes; recording interval, phase changes and cuts; bounded track thinning; playback, seek, speed, replay from the end; a real flight replayed end to end and handed back to the debrief; the photo camera's orbit, clamps and file names.
 - Stage 14 e2e: 10 Playwright tests pass (about 9 min), including the new photo-mode test (`e2e/photo.e2e.ts`: interface hidden, PNG download, Esc and P).
@@ -480,4 +508,4 @@
 
 ## Next action
 
-Stage 16 (procedural audio), then Stage 17 (manoeuvre planner), as approved.
+Stage 17 (manoeuvre planner), as approved.

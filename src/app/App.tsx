@@ -15,12 +15,15 @@ import { NoticeBar } from '../ui/NoticeBar';
 import { Viewport } from '../ui/Viewport';
 import { PhotoButton, PhotoMode } from '../ui/PhotoMode';
 import { usePhotoStore } from './photoStore';
+import { useEffect } from 'react';
 import { useGameStore } from './gameStore';
+import { startAudio } from './audioBinding';
 
 export function App() {
   const location = useGameStore((s) => s.currentLocation);
   const showPerf = useGameStore((s) => s.showPerf);
   const photo = usePhotoStore((s) => s.active);
+  useEffect(() => startAudio(), []);
   return (
     <div className={photo ? 'app photo-mode' : 'app'}>
       <header className="topbar">

@@ -1,3 +1,4 @@
+import { sanitizeVolume } from '../audio/soundMix';
 import { create } from 'zustand';
 import { DEFAULT_UI, getBrowserStorage, loadGame, writeSave } from '../persistence/saveGame';
 import { setReducedMotion } from '../render/motion';
@@ -137,6 +138,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
   setAssemblyMode: (assemblyMode) => set({ ui: { ...get().ui, assemblyMode } }),
   setReduceMotion: (reduceMotion) => set({ ui: { ...get().ui, reduceMotion } }),
   setUiScale: (uiScale) => set({ ui: { ...get().ui, uiScale } }),
+  setSoundVolume: (v) =>
+    set({ ui: { ...get().ui, soundVolume: sanitizeVolume(v, get().ui.soundVolume) } }),
+  setSoundMuted: (soundMuted) => set({ ui: { ...get().ui, soundMuted } }),
   setOverviewSeen: (overviewSeen) => set({ ui: { ...get().ui, overviewSeen } }),
   setShowPerf: (showPerf) => set({ showPerf }),
   setVehicleTab: (vehicleTab) => set({ vehicleTab }),

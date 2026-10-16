@@ -8,6 +8,8 @@ export function SettingsMenu() {
   const ui = useGameStore((s) => s.ui);
   const setReduceMotion = useGameStore((s) => s.setReduceMotion);
   const setUiScale = useGameStore((s) => s.setUiScale);
+  const setSoundVolume = useGameStore((s) => s.setSoundVolume);
+  const setSoundMuted = useGameStore((s) => s.setSoundMuted);
   const setRandomFailures = useGameStore((s) => s.setRandomFailures);
   const setOverviewSeen = useGameStore((s) => s.setOverviewSeen);
   const showPerf = useGameStore((s) => s.showPerf);
@@ -73,6 +75,35 @@ export function SettingsMenu() {
               </label>
             ))}
           </fieldset>
+          <fieldset className="scale-picker">
+            <legend className="eyebrow">Sound</legend>
+            <label>
+              Volume
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={ui.soundVolume}
+                disabled={ui.soundMuted}
+                aria-label="Sound volume"
+                onChange={(e) => setSoundVolume(Number(e.target.value))}
+              />
+              {Math.round(ui.soundVolume * 100)}%
+            </label>
+            <label>
+              <input
+                type="checkbox"
+                checked={ui.soundMuted}
+                onChange={(e) => setSoundMuted(e.target.checked)}
+              />
+              Mute
+            </label>
+          </fieldset>
+          <p className="small-text muted">
+            Procedural engine, wind, countdown and interface sounds. They start after your first
+            click or key press.
+          </p>
           <label className="inline-check">
             <input
               type="checkbox"

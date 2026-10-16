@@ -125,6 +125,11 @@ Current progress is tracked in `docs/STATUS.md`.
 - W/S walk, A/D turn (or the on-screen pad), and hold E (or _Collect_) next to an orange beacon to bag a geology sample. The panel shows the suit's oxygen, where the next sample is and where the ship is. Big boulders, steep slopes and the ship's hull are in the way, and there's a 300 m safety limit.
 - Walk back and _Board the ship_: the samples count once they're aboard. Running out of oxygen ends the EVA and drops the samples. New milestones pay credits for the first samples and for a full set on each body.
 
+**Sound (Stage 16):**
+
+- Everything you hear is synthesized in the browser (Web Audio), with no sound files: engine roar and booster rumble that follow the throttle (muffled in vacuum), wind and the plasma roar of re-entry, room tone in the factory and Mission Control, countdown beeps, ignition, touchdowns, docking, sample chimes, the camera shutter and soft interface clicks.
+- Sound starts after your first click or key press (browser rule). _Settings_ has the volume and a mute switch, and both are saved. Continuous sounds fade while paused or above 10× warp.
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:

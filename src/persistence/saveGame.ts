@@ -1,4 +1,5 @@
 import { validateBlueprint } from '../rocket/assembly/validation';
+import { sanitizeVolume } from '../audio/soundMix';
 import { isHullFinish, isVehicleRole } from '../rocket/model/finish';
 import {
   BLUEPRINT_SCHEMA_VERSION,
@@ -48,6 +49,9 @@ export interface UiPrefs {
   readonly uiScale: number;
   /** The first-run program overview has been seen. */
   readonly overviewSeen: boolean;
+  /** Sound volume 0..1 and mute (Stage 16; procedural audio). */
+  readonly soundVolume: number;
+  readonly soundMuted: boolean;
 }
 
 export const UI_SCALES = [0.9, 1, 1.1, 1.25] as const;
@@ -86,6 +90,8 @@ export const DEFAULT_UI: UiPrefs = {
   reduceMotion: prefersReducedMotion(),
   uiScale: 1,
   overviewSeen: false,
+  soundVolume: 0.6,
+  soundMuted: false,
 };
 
 /** Most recent flights kept in the save. */
@@ -736,6 +742,8 @@ export function parseSave(json: string): LoadResult {
           ? (ui.uiScale as number)
           : 1,
         overviewSeen: ui.overviewSeen !== false,
+        soundVolume: sanitizeVolume(ui.soundVolume, DEFAULT_UI.soundVolume),
+        soundMuted: ui.soundMuted === true,
       },
     },
   };
