@@ -2,7 +2,7 @@
 
 ## Current stage
 
-**Stage 16: Procedural audio.** Complete. The approved run continues with Stage 17 (manoeuvre planner).
+**Stage 17: Manoeuvre planner.** Complete. This finishes the approved run of Stages 13–17.
 
 ## Completed
 
@@ -294,6 +294,27 @@
     - Started and cleaned up by the app.
   - **Settings:** a volume slider and mute, saved in the UI prefs (defaults 60%, unmuted). Old saves get the defaults and damaged values are clamped; no format bump was needed.
 
+- **Stage 17 (manoeuvre planner):**
+  - **Planning maths** (`src/flight/maneuver.ts`, pure):
+    - A node is a time plus prograde and radial Δv.
+    - Two-body Kepler propagation (planar, elliptic) gives the ship's state at the node; adding the Δv gives the orbit afterwards.
+    - Helpers: the pitch that points along a vector, burn time from the rocket equation, node limits (±1,500 m/s per component, at least 30 s ahead, at most 3 orbits), and the next apoapsis or periapsis as node times.
+  - **Execute node** (autopilot program `execute-node`):
+    - The inertial Δv vector is fixed when engaged.
+    - The ship slews to it, starts half the estimated burn time before the node once aligned, and measures the Δv delivered from propellant used (rocket equation). It eases the throttle near the end and stops when the planned Δv is in.
+    - Time warp drops to 10× two minutes before the burn.
+    - A node not flown within five minutes of its time is reported missed. An executed or missed node is cleared.
+  - **Runtime:**
+    - `setNode` (clamped, Earth orbit only, with reasons) and `executeNodeAvailability` (Δv, ship's Δv left, time to turn).
+    - Moving a node while its program waits re-arms it.
+    - The node and its predicted orbit are in the snapshot, and the node is in the flight save (older saves have none).
+  - **UI:**
+    - A Manoeuvre planner panel in Flight / Orbit.
+    - It places a node at apoapsis, periapsis or in 10 minutes, with prograde and radial sliders and fine buttons, and time shifts (±1 min, to apoapsis or periapsis).
+    - It shows the orbit now and after, then _Execute node_ (disabled with a reason), _Stop the burn program_ and _Delete node_.
+    - The map draws the planned orbit dashed in yellow with a node marker.
+  - **Polish:** the new EVA and planner panels use the shared HUD panel header.
+
 ## Assumptions (documented, reversible)
 
 - Flight physics is a simplified planar gameplay model: one orbital plane (the equator), no Earth rotation, an exponential atmosphere, lumped aerodynamics, and Sutton–Graves heating with gameplay heat capacities. The UI and footnotes say so; it is not a flight simulator.
@@ -354,8 +375,11 @@
 ## Checks (last run)
 
 - `npm run typecheck` (app and e2e), `npm run lint`, `npm run build`: pass.
-- `npm test`: 293 tests pass across 27 files. New in Stage 16 (`tests/audio.test.ts`, plus saves): the mix (silence, room tone, thrust, booster, vacuum, wind and heating, pause and warp); cues (the last-ten beeps, ignition but not on a scrub, touchdown, crash, docking, chimes, shutter, warnings, each once); volume sanitizing; the engine as a silent no-op without Web Audio; sound prefs in saves.
-- Stage 16 e2e: 12 Playwright tests, including the new sound-settings test (`e2e/audio.e2e.ts`). Result recorded below once the run finishes.
+- `npm test`: 300 tests pass across 28 files. New in Stage 17 (`tests/maneuver.test.ts`, plus the flight runtime): Kepler propagation against an RK4 integration and a full period; pitch conventions; a Hohmann raise, lowering and a radial burn; the Δv vector; burn time and node limits; apoapsis and periapsis node times; a runtime flight that plans a node (preview, refusal when the ship lacks the Δv, save and resume) and flies it to within 15 km of the prediction.
+- Stage 17 e2e: 13 Playwright tests pass (about 10 min), including the new planner test (`e2e/maneuver.e2e.ts`: place a node, shape it, preview, survive a reload, arm and delete).
+- Headless Chromium smoke test, Stage 17 (manual script, not committed), with no console errors: from a 316 × 267 km orbit, a node in 10 minutes with +120 m/s predicted 708 × 304 km and drew a dashed orbit on the map. _Execute node_ flew it to 710 × 302 km and cleared the node.
+- Stage 16: `npm test`: 293 tests pass across 27 files. New in Stage 16 (`tests/audio.test.ts`, plus saves): the mix (silence, room tone, thrust, booster, vacuum, wind and heating, pause and warp); cues (the last-ten beeps, ignition but not on a scrub, touchdown, crash, docking, chimes, shutter, warnings, each once); volume sanitizing; the engine as a silent no-op without Web Audio; sound prefs in saves.
+- Stage 16 e2e: 12 Playwright tests, including the new sound-settings test (`e2e/audio.e2e.ts`). All 12 pass (about 11 min).
 - Headless Chromium smoke test, Stage 16 (manual script, not committed), with no console errors: no audio context before the first click, a running one after it; volume and mute saved; every location visited; a reload disposes it cleanly.
 - Stage 15: `npm test`: 284 tests pass across 26 files. New in Stage 15 (`tests/eva.test.ts`, plus the lunar landing, the crewed Mars round trip and saves): deterministic sample placement clear of boulders; walking, turning, slopes, cliffs, boulders, the hull and the range limit; collecting only within reach and standing still; the oxygen warning and the abort; boarding range and the tally across EVAs; directions; a scripted player collecting everything; the milestones; a full lunar landing with an EVA collecting all three samples (warp and liftoff blocked while outside) into the flight record; an EVA on Mars blocking the window wait; the EVA record in saves.
 - Stage 15 e2e: 11 Playwright tests, including the new EVA test (`e2e/eva.e2e.ts`: start an EVA on Mars, warp locked, walk, board). All 11 pass (about 10 min).
@@ -480,12 +504,17 @@
 - The assisted tower-catch landing burn lights high (around 12–15 km) and runs long. It reliably catches, but it's less efficient than a real booster's short final burn (tuning candidate).
 - The Earth texture is procedural and low-resolution (1024×512); near the ground a flat local surface tile stands in for terrain.
 - Ctrl is the throttle-down key; browsers reserve some Ctrl combinations (e.g. Ctrl+W), so use the X cutoff or the buttons if in doubt.
-- Photo mode orbits a point in front of the camera; there's no free-fly camera. The map view shows the predicted path but no manoeuvre planning nodes.
+- Photo mode orbits a point in front of the camera; there's no free-fly camera.
+- Manoeuvre planner:
+  - Earth orbit only: the Moon and Mars transfers, corrections and captures stay assisted.
+  - Planar orbits, so there are no normal or anti-normal (plane change) burns.
+  - One node at a time.
+  - The prediction is impulsive two-body, so long burns land slightly off; no station-intercept preview yet.
 - Replays:
   - Only what the Flight view shows is recorded: not the launch ascent, station proximity operations, a surface stay or the Mars side of a voyage.
   - Replays aren't saved: a reload or closing the debrief discards them, and a flight resumed after a reload records from the resume.
   - On long flights the track thins out, so fast manoeuvres from early in the flight are smoothed in the replay.
-- The rendezvous is assisted only: there are no manual phasing burns or a planning tool for them.
+- The rendezvous program is assisted. The planner can fly manual phasing burns, but it doesn't preview the closest approach to the station.
 - The station has a single (forward) docking port and doesn't rotate; the ship's model isn't animated for RCS puffs.
 - Crew transfer and cargo tasks are timed progress bars, not interactive activities.
 - Moon missions: no manual trajectory planning tools (the transfer, corrections, insertion and the burn home are assisted only); no Moon rotation-dependent lighting changes on the surface.
@@ -508,4 +537,4 @@
 
 ## Next action
 
-Stage 17 (manoeuvre planner), as approved.
+The approved run (Stages 13–17) is complete. Candidates next: planner nodes for the Moon and Mars legs with an intercept preview, more contract kinds, positional audio, and EVA tools or a rover. Pick the next focus before starting.

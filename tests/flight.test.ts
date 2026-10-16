@@ -400,6 +400,57 @@ describe('FlightRuntime', () => {
     expect(rt.replayAvailability().ok).toBe(false);
   });
 
+  it('plans a manoeuvre node, shows the orbit it gives and flies it', () => {
+    const rt = new FlightRuntime(
+      () => {},
+      () => NOW,
+    );
+    rt.start(
+      flightContextFromLaunch(launchContext(), simulateAscent(launchContext().config, SIM_DT_S)),
+    );
+    const frames = (n: number, until: () => boolean) => {
+      for (let i = 0; i < n && !until(); i++) {
+        if (rt.current.warp < rt.current.maxWarp) rt.setWarp(rt.current.maxWarp);
+        rt.update(0.1);
+      }
+    };
+    frames(50_000, () => rt.current.program.program === 'none' && rt.current.progress.orbit);
+    expect(rt.engage('execute-node').reason).toMatch(/Plan a manoeuvre node/);
+    const s = rt.liveState!;
+    const el = orbitalElements(s.r, s.v);
+    // A node half an orbit ahead that lifts the far side by about 150 km.
+    const r0 = Math.hypot(...s.r);
+    const dv = visVivaSpeed(r0, r0 + 150_000, r0) - Math.hypot(...s.v);
+    const tNode = s.tS + el.periodS / 2;
+    expect(rt.setNode({ tS: tNode, progradeMS: dv, radialMS: 0 }).ok).toBe(true);
+    rt.update(0.1);
+    const plan = rt.current.nodePlan!;
+    expect(plan.dvMS).toBeCloseTo(dv, 3);
+    const planned = plan.elements.apoapsisAltM;
+    expect(planned).toBeGreaterThan(el.apoapsisAltM + 100_000);
+    // Too much Δv for the ship is refused with a reason.
+    rt.setNode({ tS: tNode, progradeMS: 1_500, radialMS: 1_500 });
+    expect(rt.engage('execute-node').reason).toMatch(/needs .* m\/s; the ship has/);
+    rt.setNode({ tS: tNode, progradeMS: dv, radialMS: 0 });
+    // The node survives a save and resume.
+    const snap = JSON.parse(JSON.stringify(rt.snapshot()));
+    const copy = new FlightRuntime(
+      () => {},
+      () => NOW,
+    );
+    copy.restore(snap);
+    copy.update(0.1);
+    expect(copy.current.node).toEqual(rt.current.node);
+    expect(rt.engage('execute-node').ok).toBe(true);
+    frames(100_000, () => rt.current.program.program === 'none');
+    expect(rt.current.message).toMatch(/Node executed/);
+    expect(rt.current.node).toBeNull();
+    const after = orbitalElements(rt.liveState!.r, rt.liveState!.v);
+    // A finite burn lands close to the impulsive prediction.
+    expect(Math.abs(after.apoapsisAltM - planned)).toBeLessThan(15_000);
+    expect(after.periapsisAltM).toBeGreaterThan(el.periapsisAltM - 15_000);
+  });
+
   it('disengages the autopilot on manual input and keeps the attitude', () => {
     const rt = new FlightRuntime(
       () => {},

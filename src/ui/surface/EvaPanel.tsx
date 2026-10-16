@@ -89,7 +89,9 @@ export function EvaPanel({ snap }: { snap: FlightSnapshot }) {
     const check = flightRuntime.evaAvailability();
     return (
       <div className="panel">
-        <h2>EVA</h2>
+        <div className="panel-header">
+          <h2>EVA</h2>
+        </div>
         <p className="small-text">
           {done
             ? `${done.samples} of ${total} geology samples from this site are aboard.`
@@ -125,7 +127,10 @@ function EvaOutside({ eva, body }: { eva: EvaState; body: 'moon' | 'mars' }) {
   const bagged = eva.samples.filter((s) => s.progress >= 1).length;
   return (
     <div className="panel" aria-label="EVA">
-      <h2>EVA · astronaut outside</h2>
+      <div className="panel-header">
+        <h2>EVA</h2>
+        <span className="badge tone-warn">OUTSIDE</span>
+      </div>
       <div className="meter-row">
         <span>Suit oxygen</span>
         <div

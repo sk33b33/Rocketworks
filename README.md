@@ -130,6 +130,12 @@ Current progress is tracked in `docs/STATUS.md`.
 - Everything you hear is synthesized in the browser (Web Audio), with no sound files: engine roar and booster rumble that follow the throttle (muffled in vacuum), wind and the plasma roar of re-entry, room tone in the factory and Mission Control, countdown beeps, ignition, touchdowns, docking, sample chimes, the camera shutter and soft interface clicks.
 - Sound starts after your first click or key press (browser rule). _Settings_ has the volume and a mute switch, and both are saved. Continuous sounds fade while paused or above 10× warp.
 
+**Planning your own burns (Stage 17):**
+
+- In Earth orbit, the _Manoeuvre planner_ panel places a node: at the next apoapsis, periapsis, or in 10 minutes. Shape the burn with prograde and radial Δv (slider or ±1/±10 m/s) and move its time. The panel shows the orbit it gives, and the map (M) draws it as a dashed line with the node marked.
+- _Execute node_ hands the burn to the autopilot. It turns the ship, starts half the burn time before the node, eases off at the end, and stops when the planned Δv is in. Time warp drops to 10× two minutes before the burn. The node is saved with the flight.
+- Use it for Hohmann raises, lowering the orbit, phasing for the station, or a manual deorbit. The prediction is two-body and impulsive, so a long burn lands slightly off.
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:

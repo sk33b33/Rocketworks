@@ -1,8 +1,10 @@
 import { airDensity, EARTH_RADIUS_M, G0_MS2 } from '../simulation/constants';
 import type { GravityEnv } from '../moon/moonOrbit';
 import {
+  deltaVRemaining,
   FLIGHT,
   flightPathAngleDeg,
+  shipMassKg,
   relativeFlightPathDeg,
   stepFlight,
   wrap180,
@@ -11,6 +13,7 @@ import {
   type ShipSpec,
 } from './flightModel';
 import type { LandingZone } from './landingZones';
+import { pitchAlong } from './maneuver';
 import { len, localFrame, orbitalElements, visVivaSpeed, wrapAngle, type Vec2 } from './orbitMath';
 
 /*
@@ -41,7 +44,8 @@ export type ProgramId =
   | 'mars-ascent'
   | 'trans-earth-mars'
   | 'earth-aerocapture'
-  | 'raise-orbit';
+  | 'raise-orbit'
+  | 'execute-node';
 
 export const BELLY_AOA_DEG = 65;
 export const DEORBIT_PERIAPSIS_M = 30_000;
@@ -93,6 +97,25 @@ export interface ProgramState {
   readonly lastEccentricity?: number;
   /** Raise orbit: the circular orbit altitude to reach (m). */
   readonly targetAltM?: number;
+  /**
+   * Execute node: the burn's midpoint (mission time), its inertial Δv (fixed when engaged), the
+   * estimated burn time, and the Δv the ship had left when the burn began.
+   */
+  readonly nodeT?: number;
+  readonly nodeDv?: readonly [number, number];
+  readonly nodeBurnS?: number;
+  readonly nodeStartDv?: number;
+}
+
+/** Warp drops to 10× this long before a node's burn starts (s). */
+export const NODE_WARP_LEAD_S = 120;
+/** A node counts as missed when the ship still can't burn this long after its time (s). */
+export const NODE_MISS_S = 300;
+
+/** When an execute-node burn starts (mission time), or null if no node program. */
+export function nodeBurnStart(ps: ProgramState): number | null {
+  if (ps.program !== 'execute-node' || ps.nodeT === undefined) return null;
+  return ps.nodeT - (ps.nodeBurnS ?? 0) / 2;
 }
 
 export const IDLE_PROGRAM: ProgramState = {
@@ -213,6 +236,47 @@ export function runProgram(
         },
         next: { ...ps, burning, lastEccentricity: el.eccentricity },
       };
+    }
+    case 'execute-node': {
+      const dv = ps.nodeDv;
+      const start = nodeBurnStart(ps);
+      if (!dv || start === null) return idle('prograde');
+      const total = len(dv);
+      const pitch = pitchAlong(s.r, dv);
+      const hold = (throttle: number, next: ProgramState): ProgramOutput => ({
+        mode: 'manual',
+        controls: { targetPitchDeg: pitch, bankDeg: 0, throttle },
+        next,
+      });
+      if (!ps.burning) {
+        const aligned = Math.abs(wrap180(pitch - s.pitchDeg)) < 3;
+        if (s.tS > (ps.nodeT ?? start) + NODE_MISS_S)
+          return idle('prograde', 'Manoeuvre node missed: plan a new one.');
+        if (s.tS < start || !aligned) return hold(0, ps);
+        return hold(1, { ...ps, burning: true, nodeStartDv: deltaVRemaining(spec, s.propKg) });
+      }
+      const delivered = (ps.nodeStartDv ?? 0) - deltaVRemaining(spec, s.propKg);
+      const left = total - delivered;
+      if (left <= 0.2 || s.propKg <= 0) {
+        const apo = el.status === 'escape' ? 'escape' : `${Math.round(el.apoapsisAltM / 1000)} km`;
+        return {
+          mode: 'prograde',
+          controls: { targetPitchDeg: flightPathAngleDeg(s.r, s.v), bankDeg: 0, throttle: 0 },
+          next: IDLE_PROGRAM,
+          message:
+            s.propKg <= 0
+              ? `Out of propellant: ${Math.round(delivered)} of ${Math.round(total)} m/s delivered.`
+              : `Node executed (${Math.round(total)} m/s): apoapsis ${apo}, periapsis ${Math.round(el.periapsisAltM / 1000)} km.`,
+        };
+      }
+      // Ease off near the end so the last metres per second land on target.
+      const mass = shipMassKg(spec, s.propKg);
+      const full = Math.min(
+        spec.stage.engineCount * spec.stage.thrustVacPerEngineN,
+        FLIGHT.maxThrustG * G0_MS2 * mass,
+      );
+      const accel = full / mass;
+      return hold(Math.min(1, Math.max(0.05, left / Math.max(0.1, accel * 1.5))), ps);
     }
     case 'raise-orbit': {
       // Burn prograde until the apoapsis reaches the target, then circularize up there.

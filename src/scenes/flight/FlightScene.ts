@@ -172,7 +172,7 @@ export class FlightScene implements GameScene {
       );
       lunarOverlay = { path: lunar.path, moonR: m.r, moonV: m.v, nearMoon: s.ref === 'moon' };
     }
-    this.overlay!.update(s, snap.zone, mapDist, st, lunarOverlay);
+    this.overlay!.update(s, snap.zone, mapDist, st, lunarOverlay, snap.nodePlan);
     this.placeStation(st, s, mode === 'map');
     this.placeSatellite(snap.progress.release, s, mode === 'map');
     this.updateSky(camAlt);

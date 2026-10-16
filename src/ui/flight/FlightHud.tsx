@@ -10,6 +10,7 @@ import { ContractPanel } from './ContractPanel';
 import { FlightControlsBar } from './FlightControlsBar';
 import { FlightDebrief } from './FlightDebrief';
 import { FlightHelp } from './FlightHelp';
+import { ManeuverPanel } from './ManeuverPanel';
 import { ReplayBar, useReplay } from './ReplayBar';
 import { ObjectivesPanel } from './ObjectivesPanel';
 import { OrbitPanel } from './OrbitPanel';
@@ -119,6 +120,11 @@ export function FlightHud() {
         <section data-panel="autopilot">
           <AutopilotPanel snap={snap} />
         </section>
+        {snap.phase === 'flight' && !snap.state.origin && snap.state.ref !== 'moon' && (
+          <section data-panel="maneuver">
+            <ManeuverPanel snap={snap} />
+          </section>
+        )}
         {snap.lunar && (snap.phase === 'flight' || snap.phase === 'surface') && (
           <section data-panel="moon">
             <LunarPanel snap={snap} />

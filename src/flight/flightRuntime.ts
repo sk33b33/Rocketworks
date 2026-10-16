@@ -4,6 +4,8 @@ import type { RocketBlueprint } from '../rocket/model/types';
 import {
   attitudeTarget,
   IDLE_PROGRAM,
+  NODE_WARP_LEAD_S,
+  nodeBurnStart,
   runProgram,
   slewRate,
   type AttitudeMode,
@@ -70,6 +72,9 @@ import {
 } from '../moon/lunarTransfer';
 import { coastDt } from '../moon/propagate';
 import { FlightTrack, ReplayPlayer, type ReplaySpeed } from './flightTrack';
+import { burnTimeS, clampNode, planNode, type ManeuverNode, type NodePlan } from './maneuver';
+import { deltaVRemaining, FLIGHT, shipMassKg } from './flightModel';
+import { G0_MS2 } from '../simulation/constants';
 import {
   boardShip,
   canBoard,
@@ -209,6 +214,9 @@ export interface FlightSnapshot {
   readonly mars: MarsView | null;
   /** An astronaut outside on the Moon or Mars (null when everyone is aboard). */
   readonly eva: EvaState | null;
+  /** A planned manoeuvre (Earth orbit) and the orbit it would give (null when none). */
+  readonly node: ManeuverNode | null;
+  readonly nodePlan: NodePlan | null;
 }
 
 const DEFAULT_ZONE = findZone('platform') ?? LANDING_ZONES[0]!;
@@ -234,6 +242,8 @@ const IDLE: FlightSnapshot = {
   lunar: null,
   mars: null,
   eva: null,
+  node: null,
+  nodePlan: null,
 };
 
 /** Everything needed to resume a flight after a reload (plain data; see persistence/flightSave). */
@@ -260,6 +270,8 @@ export interface RuntimeSnapshot {
   readonly lunar: LunarSnapshot | null;
   /** Absent in saves made before Mars missions existed. */
   readonly mars?: MarsSnapshot | null;
+  /** A planned manoeuvre (absent in saves made before the planner). */
+  readonly node?: ManeuverNode | null;
 }
 
 /** Highest warp allowed for a state (pure; exported for tests and the UI). */
@@ -274,6 +286,9 @@ export function warpLimit(
     return { max: MAX_FINE_WARP, reason: 'Inside the atmosphere: warp limited to 10×.' };
   if (throttle > 0 || ps.burning)
     return { max: MAX_FINE_WARP, reason: 'Engines burning: warp limited to 10×.' };
+  const nodeStart = nodeBurnStart(ps);
+  if (nodeStart !== null && s.tS > nodeStart - NODE_WARP_LEAD_S)
+    return { max: MAX_FINE_WARP, reason: 'Manoeuvre burn coming up: warp limited to 10×.' };
   if (ps.program === 'deorbit' && ps.deorbitBurnAngle !== null) {
     const togo = wrapAngle(ps.deorbitBurnAngle - localFrame(s.r).groundAngle);
     if (togo >= 0 && togo < 0.12)
@@ -315,6 +330,7 @@ export class FlightRuntime {
   /** The flight as watched in the Flight view, for the post-flight replay. */
   readonly flightTrack = new FlightTrack();
   private eva: EvaState | null = null;
+  private node: ManeuverNode | null = null;
   private readonly evaKeys = new Set<EvaKey>();
   readonly replay = new ReplayPlayer(this.flightTrack);
 
@@ -411,12 +427,19 @@ export class FlightRuntime {
       prox: this.prox?.snapshot() ?? null,
       lunar: this.lunar?.snapshot() ?? null,
       mars: this.mars?.snapshot() ?? null,
+      node: this.node,
     };
   }
 
   /** Resumes a flight from a snapshot, paused at 1×. */
   restore(snap: RuntimeSnapshot): void {
     this.clearTrack();
+    const n = snap.node;
+    this.node =
+      n &&
+      [n.tS, n.progradeMS, n.radialMS].every((x) => typeof x === 'number' && Number.isFinite(x))
+        ? { tS: n.tS, progradeMS: n.progradeMS, radialMS: n.radialMS }
+        : null;
     this.live = snap.live;
     this.progress = snap.progress;
     this.ps = snap.ps;
@@ -548,13 +571,23 @@ export class FlightRuntime {
       this.publish();
       return { ok: false, reason: this.message };
     }
+    if (program === 'execute-node') {
+      const armed = this.armNode();
+      if (!armed.ok) {
+        this.message = armed.reason ?? null;
+        this.publish();
+        return armed;
+      }
+    }
     const target = this.raiseTarget();
     this.ps =
-      program === 'none'
-        ? IDLE_PROGRAM
-        : program === 'raise-orbit' && target !== null
-          ? { ...IDLE_PROGRAM, program, targetAltM: target }
-          : { ...IDLE_PROGRAM, program };
+      program === 'execute-node'
+        ? this.ps
+        : program === 'none'
+          ? IDLE_PROGRAM
+          : program === 'raise-orbit' && target !== null
+            ? { ...IDLE_PROGRAM, program, targetAltM: target }
+            : { ...IDLE_PROGRAM, program };
     if (isLunarProgram(program)) this.lunar?.startProgram(program);
     else this.lunar?.stopProgram();
     if (isMarsProgram(program)) this.mars?.startProgram(program, s);
@@ -641,6 +674,110 @@ export class FlightRuntime {
     this.state = { ...this.state, phase: 'flight', warp: 1 };
     this.publish();
     return { ok: true };
+  }
+
+  // ---- manoeuvre planning ----
+
+  /** Whether a manoeuvre node can be planned now (Earth orbit), with a reason if not. */
+  nodeAvailability(): { ok: boolean; reason?: string } {
+    const s = this.live;
+    if (!s || this.state.phase !== 'flight' || s.phase !== 'flight')
+      return { ok: false, reason: 'No ship in flight.' };
+    if (s.origin || s.ref === 'moon')
+      return { ok: false, reason: 'The planner works in Earth orbit (other legs are assisted).' };
+    if (orbitalElements(s.r, s.v).status !== 'orbit')
+      return { ok: false, reason: 'Reach a stable orbit first.' };
+    if (this.ps.program === 'execute-node' && this.ps.burning)
+      return { ok: false, reason: 'A planned burn is in progress.' };
+    return { ok: true };
+  }
+
+  /** Places, moves or (with null) deletes the manoeuvre node. A waiting burn re-arms. */
+  setNode(node: ManeuverNode | null): { ok: boolean; reason?: string } {
+    if (node === null) {
+      if (this.ps.program === 'execute-node' && this.ps.burning)
+        return { ok: false, reason: 'A planned burn is in progress.' };
+      this.node = null;
+      if (this.ps.program === 'execute-node') this.ps = IDLE_PROGRAM;
+      this.publish();
+      return { ok: true };
+    }
+    const check = this.nodeAvailability();
+    const s = this.live;
+    if (!check.ok || !s) return check;
+    this.node = clampNode(node, s.tS, orbitalElements(s.r, s.v).periodS);
+    if (this.ps.program === 'execute-node') {
+      const armed = this.armNode();
+      if (!armed.ok) {
+        this.ps = IDLE_PROGRAM;
+        this.message = `${armed.reason} Execute node disengaged.`;
+      }
+    }
+    this.publish();
+    return { ok: true };
+  }
+
+  /** Whether the current node can be flown now, with a reason if not. */
+  executeNodeAvailability(): { ok: boolean; reason?: string } {
+    const r = this.nodeProgram();
+    return r.ok ? { ok: true } : r;
+  }
+
+  /** Sets up the execute-node program for the current node. */
+  private armNode(): { ok: boolean; reason?: string } {
+    const r = this.nodeProgram();
+    if (!r.ok) return r;
+    this.ps = r.ps;
+    return { ok: true };
+  }
+
+  /** The execute-node program state for the current node, or why it can't be flown. */
+  private nodeProgram(): { ok: true; ps: ProgramState } | { ok: false; reason: string } {
+    const s = this.live;
+    const node = this.node;
+    const spec = this.state.context?.spec;
+    if (!s || !spec) return { ok: false, reason: 'No ship in flight.' };
+    if (!node)
+      return {
+        ok: false,
+        reason: 'Plan a manoeuvre node first (map view or the Manoeuvre panel).',
+      };
+    const plan = planNode(s.r, s.v, s.tS, node);
+    if (!plan) return { ok: false, reason: "The orbit can't be predicted from here." };
+    if (plan.dvMS < 0.5) return { ok: false, reason: 'Give the node some Δv first.' };
+    const have = deltaVRemaining(spec, s.propKg);
+    if (plan.dvMS > have)
+      return {
+        ok: false,
+        reason: `The node needs ${Math.round(plan.dvMS)} m/s; the ship has ${Math.round(have)} m/s.`,
+      };
+    const mass = shipMassKg(spec, s.propKg);
+    const running = Math.max(0, spec.stage.engineCount - s.enginesOut);
+    const thrust = Math.min(
+      running * spec.stage.thrustVacPerEngineN,
+      FLIGHT.maxThrustG * G0_MS2 * mass,
+    );
+    const burnS = burnTimeS(plan.dvMS, mass, thrust, spec.stage.ispVacS * G0_MS2);
+    if (!Number.isFinite(burnS)) return { ok: false, reason: 'No engine can fly this burn.' };
+    if (node.tS - burnS / 2 < s.tS + 10)
+      return { ok: false, reason: 'Too close to the node to turn and burn: move it later.' };
+    return {
+      ok: true,
+      ps: {
+        ...IDLE_PROGRAM,
+        program: 'execute-node',
+        nodeT: node.tS,
+        nodeDv: plan.dvVec,
+        nodeBurnS: burnS,
+      },
+    };
+  }
+
+  /** The orbit the node would give, while it's still ahead (null otherwise). */
+  private nodePlanNow(s: FlightState | null): NodePlan | null {
+    if (!this.node || !s || s.origin || s.ref === 'moon' || s.tS > this.node.tS) return null;
+    if (this.ps.program === 'execute-node' && this.ps.burning) return null;
+    return planNode(s.r, s.v, s.tS, this.node);
   }
 
   // ---- EVA ----
@@ -1387,6 +1524,7 @@ export class FlightRuntime {
   }
 
   private clearTrack(): void {
+    this.node = null;
     this.eva = null;
     this.evaKeys.clear();
     this.replay.stop();
@@ -1551,6 +1689,9 @@ export class FlightRuntime {
       controls = { ...out.controls, yawDeg: this.manual.yawDeg, slewDegS: slewRate(s) };
     } else if (this.ps.program !== 'none') {
       const out = runProgram(this.ps, s, spec, zone);
+      // An executed (or missed) node is used up.
+      if (this.ps.program === 'execute-node' && out.next.program !== 'execute-node')
+        this.node = null;
       this.ps = out.next;
       this.mode = out.mode;
       if (out.message) this.message = out.message;
@@ -1769,6 +1910,8 @@ export class FlightRuntime {
         lunar: this.lunar?.view(s) ?? null,
         mars: this.mars?.view(s, this.state.context?.spec ?? null) ?? null,
         eva: this.eva,
+        node: this.node,
+        nodePlan: this.nodePlanNow(s),
       },
       true,
     );
@@ -1792,6 +1935,7 @@ export const PROGRAM_LABELS: Record<ProgramId, string> = {
   ...LUNAR_PROGRAM_LABELS,
   ...MARS_PROGRAM_LABELS,
   'raise-orbit': 'Raise orbit',
+  'execute-node': 'Execute manoeuvre node',
 };
 
 /** Whether a program can be engaged now, with a player-readable reason if not. Pure. */
@@ -1883,6 +2027,11 @@ export function programAvailability(
         return { ok: false, reason: 'Reach a stable orbit first.' };
       if (el.apoapsisAltM >= raiseTargetAltM - 300 && el.periapsisAltM >= raiseTargetAltM - 25_000)
         return { ok: false, reason: 'Already at the requested orbit.' };
+      return { ok: true };
+    case 'execute-node':
+      if (noProp) return { ok: false, reason: 'No propellant left for a burn.' };
+      if (!p.orbit || el.status !== 'orbit')
+        return { ok: false, reason: 'Reach a stable orbit first.' };
       return { ok: true };
     default:
       return { ok: false, reason: 'Not available here.' };

@@ -3,6 +3,7 @@ import type { FlightState } from '../../flight/flightModel';
 import type { LandingZone } from '../../flight/landingZones';
 import { localFrame, orbitalElements, orbitPath } from '../../flight/orbitMath';
 import type { ResourceCache } from '../../render/ResourceCache';
+import type { NodePlan } from '../../flight/maneuver';
 import { EARTH_RADIUS_M } from '../../simulation/constants';
 import { STATION_RADIUS_M } from '../../station/stationOrbit';
 import { MOON_DISTANCE_M, MOON_RADIUS_M } from '../../moon/moonOrbit';
@@ -35,6 +36,11 @@ export class OrbitOverlay {
   private readonly stationRing: THREE.Line;
   private readonly moonMarker: THREE.Mesh;
   private readonly moonRing: THREE.Line;
+  /** A planned manoeuvre: the orbit after the burn (dashed) and the burn point. */
+  private readonly planLine: THREE.Line;
+  private readonly planPositions: THREE.BufferAttribute;
+  private readonly planMat: THREE.LineDashedMaterial;
+  private readonly nodeMarker: THREE.Mesh;
 
   constructor(cache: ResourceCache) {
     const geo = new THREE.BufferGeometry();
@@ -104,7 +110,29 @@ export class OrbitOverlay {
       ),
     );
     this.moonRing.frustumCulled = false;
+    const planGeo = new THREE.BufferGeometry();
+    this.planPositions = new THREE.BufferAttribute(new Float32Array((SAMPLES + 1) * 3), 3);
+    this.planPositions.setUsage(THREE.DynamicDrawUsage);
+    planGeo.setAttribute('position', this.planPositions);
+    this.planMat = new THREE.LineDashedMaterial({
+      color: 0xffd23f,
+      dashSize: 1,
+      gapSize: 1,
+      depthTest: false,
+      transparent: true,
+      opacity: 0.95,
+      fog: false,
+    });
+    this.planLine = new THREE.Line(planGeo, this.planMat);
+    this.planLine.frustumCulled = false;
+    this.planLine.renderOrder = 1;
+    this.planLine.visible = false;
+    this.nodeMarker = new THREE.Mesh(dot, mat('flight:nodeMarker', 0xffd23f));
+    this.nodeMarker.renderOrder = 3;
+    this.nodeMarker.visible = false;
     this.group.add(
+      this.planLine,
+      this.nodeMarker,
       this.line,
       this.apo,
       this.peri,
@@ -124,7 +152,9 @@ export class OrbitOverlay {
     mapScale: number | null,
     station: { readonly r: readonly [number, number] } | null = null,
     lunar: LunarOverlay | null = null,
+    plan: NodePlan | null = null,
   ): void {
+    this.updatePlan(plan, mapScale);
     this.moonMarker.visible = !!lunar;
     this.moonRing.visible = !!lunar;
     if (lunar && mapScale !== null) {
@@ -196,8 +226,35 @@ export class OrbitOverlay {
     }
   }
 
+  /** The orbit after a planned burn, dashed, from the burn point once round. */
+  private updatePlan(plan: NodePlan | null, mapScale: number | null): void {
+    const show = !!plan && mapScale !== null;
+    this.planLine.visible = show;
+    this.nodeMarker.visible = show;
+    if (!plan || mapScale === null) return;
+    const arr = this.planPositions.array as Float32Array;
+    let n = 0;
+    const from = localFrame(plan.at.r).groundAngle;
+    for (const p of orbitPath(plan.elements, from, SAMPLES)) {
+      arr[n * 3] = Math.sin(p.angle) * p.radiusM;
+      arr[n * 3 + 1] = Math.cos(p.angle) * p.radiusM;
+      arr[n * 3 + 2] = 0;
+      n++;
+    }
+    this.planLine.geometry.setDrawRange(0, n);
+    this.planPositions.needsUpdate = true;
+    this.planLine.computeLineDistances();
+    // Dashes a fixed size on screen.
+    this.planMat.dashSize = mapScale * 0.012;
+    this.planMat.gapSize = mapScale * 0.008;
+    this.nodeMarker.position.set(plan.at.r[0], plan.at.r[1], 0);
+    this.nodeMarker.scale.setScalar(mapScale * 0.011);
+  }
+
   dispose(): void {
     this.line.geometry.dispose();
     this.lineMat.dispose();
+    this.planLine.geometry.dispose();
+    this.planMat.dispose();
   }
 }
