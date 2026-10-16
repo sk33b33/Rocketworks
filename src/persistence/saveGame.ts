@@ -340,6 +340,20 @@ function parseLanding(raw: unknown): LandingSummary | undefined {
 }
 
 /** Flight history: malformed entries are dropped individually. */
+/** The EVA tally of a flight record (absent before Stage 15; dropped when damaged). */
+function parseEva(raw: unknown): FlightRecord['eva'] | null {
+  if (!isRecord(raw) || (raw.body !== 'moon' && raw.body !== 'mars')) return null;
+  if (!isCount(raw.samples) || !isCount(raw.total) || !isCount(raw.walks) || !isCount(raw.aborted))
+    return null;
+  return {
+    body: raw.body,
+    samples: Math.min(raw.samples, raw.total),
+    total: raw.total,
+    walks: raw.walks,
+    aborted: raw.aborted,
+  };
+}
+
 function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw)) {
@@ -382,6 +396,7 @@ function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
       const lunar = parseLunar(r.lunar);
       const mars = parseMars(r.mars);
       const contract = parseContractResult(r.contract);
+      const eva = parseEva(r.eva);
       out.push({
         id: r.id,
         at: r.at,
@@ -404,6 +419,7 @@ function parseFlights(raw: unknown, warnings: string[]): FlightRecord[] {
         ...(lunar ? { lunar } : {}),
         ...(mars ? { mars } : {}),
         ...(contract ? { contract } : {}),
+        ...(eva ? { eva } : {}),
         ...(hw
           ? {
               hardware: {

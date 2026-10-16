@@ -7,6 +7,7 @@ import { marsFrame } from '../../mars/marsModel';
 import { marsDensity, MARS_RADIUS_M, PLANETS } from '../../mars/solarSystem';
 import { autoMotion } from '../../render/motion';
 import { ResourceCache } from '../../render/ResourceCache';
+import { EvaView } from '../surface/EvaView';
 import { ShipView } from '../flight/ShipView';
 import { MarsBody } from './MarsBody';
 import type { MarsCameraMode, MarsController } from './marsController';
@@ -32,6 +33,7 @@ export class MarsScene implements GameScene {
   private readonly cache = new ResourceCache();
   private mars: MarsBody | null = null;
   private ship: ShipView | null = null;
+  private evaView: EvaView | null = null;
   private stars: THREE.Points | null = null;
   private dust: THREE.Mesh | null = null;
   private readonly system = new THREE.Group();
@@ -71,6 +73,8 @@ export class MarsScene implements GameScene {
     this.scene.environmentIntensity = 0.3;
     this.scene.background = this.sky.set(0x000000);
     this.mars = new MarsBody(this.cache);
+    this.evaView = new EvaView(this.cache);
+    this.scene.add(this.evaView.root);
     this.ship = new ShipView(this.cache);
     this.stars = this.buildStars();
     this.dust = new THREE.Mesh(
@@ -207,7 +211,8 @@ export class MarsScene implements GameScene {
     const onSurface = !!mars.surface || (s.phase !== 'flight' && s.touchdown?.body === 'mars');
     const nearMars = s.origin === 'mars' || onSurface;
     const requested = this.controller.getCameraMode();
-    const mode: MarsCameraMode = nearMars ? requested : 'system';
+    const eva = rt.evaState;
+    const mode: MarsCameraMode = eva ? 'chase' : nearMars ? requested : 'system';
     if (mode === 'system') {
       this.systemView(mars);
       return;
@@ -265,6 +270,10 @@ export class MarsScene implements GameScene {
       dust.scale.setScalar(1 + (60 - geo.radarM) / 30 + autoMotion(Math.sin(this.time * 9) * 0.05));
     }
     this.updateCamera(mode, s, mars, f.up, f.altitudeM);
+    // An astronaut outside: the camera follows them on the ground.
+    const patch = body.terrainPatch;
+    this.evaView!.update(eva, patch, this.time, deltaSeconds);
+    if (eva && patch?.group.visible) this.evaView!.applyCamera(this.camera, eva, patch);
     this.stars!.position.copy(this.camera.position);
     this.stars!.scale.setScalar(this.camera.far * 0.9);
   }

@@ -119,6 +119,12 @@ Current progress is tracked in `docs/STATUS.md`.
 - Press **P** or the _Photo_ button (top bar) anywhere: the interface hides, drag (or the arrow keys) orbits the camera around what's in the middle of the view, the wheel or +/− zooms, and _Take photo_ saves a PNG. The simulation keeps running; Space still pauses a flight. Esc or _Exit_ brings the interface back.
 - After a flight, _Watch replay_ in the debrief plays it back in the Flight view as you watched it, time warp included: play/pause, 1–64× speed, a seek bar, and the chase, orbit and map cameras. _Back to debrief_ when done. The station, the Moon's surface and the Mars side of a voyage aren't recorded.
 
+**Walking on the Moon and Mars (Stage 15):**
+
+- With a crewed ship standing on the Moon or Mars, the _EVA_ panel offers _Start EVA_. An astronaut steps out next to the ship, and time warp stops while they're outside.
+- W/S walk, A/D turn (or the on-screen pad), and hold E (or _Collect_) next to an orange beacon to bag a geology sample. The panel shows the suit's oxygen, where the next sample is and where the ship is. Big boulders, steep slopes and the ship's hull are in the way, and there's a 300 m safety limit.
+- Walk back and _Board the ship_: the samples count once they're aboard. Running out of oxygen ends the EVA and drops the samples. New milestones pay credits for the first samples and for a full set on each body.
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:

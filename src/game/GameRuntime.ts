@@ -119,7 +119,8 @@ export class GameRuntime {
     cam.quaternion.copy(sceneCamera.quaternion).multiply(this.photoQuat);
     cam.fov = sceneCamera.fov;
     cam.aspect = sceneCamera.aspect;
-    cam.near = Math.min(sceneCamera.near, Math.max(0.05, this.pivotDist * 0.01));
+    // Same near plane as the scene: its far plane can be huge (the Moon view reaches Earth).
+    cam.near = sceneCamera.near;
     cam.far = sceneCamera.far + this.pivotDist * (1 + this.photo.zoom);
     cam.updateProjectionMatrix();
     cam.updateMatrixWorld();

@@ -39,6 +39,7 @@ export class TerrainPatch {
   private readonly boulders: THREE.InstancedMesh;
   private readonly aim: THREE.Mesh;
   private readonly target: THREE.Mesh;
+  private ringsHidden = false;
   /** Terrain height at the target (the patch origin). */
   readonly baseH: number;
 
@@ -153,8 +154,15 @@ export class TerrainPatch {
 
   /** Moves the assist's aim ring (along-track offset from the target), or hides it. */
   setAim(x: number | null): void {
-    this.aim.visible = x !== null && Math.abs(x) > 1;
+    this.aim.visible = !this.ringsHidden && x !== null && Math.abs(x) > 1;
     if (x !== null) this.aim.position.set(x, this.localY(x, 0) + 0.5, 0);
+  }
+
+  /** Hides the target and aim rings (on foot they'd cut across the view). */
+  setRingsHidden(hidden: boolean): void {
+    this.ringsHidden = hidden;
+    this.target.visible = !hidden;
+    if (hidden) this.aim.visible = false;
   }
 
   dispose(): void {

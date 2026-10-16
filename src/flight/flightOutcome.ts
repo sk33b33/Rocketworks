@@ -1,5 +1,6 @@
 import type {
   BoosterRecoverySummary,
+  EvaFlightSummary,
   FlightRecord,
   LandingSummary,
   LunarSummary,
@@ -15,6 +16,7 @@ import type { LunarProgress } from '../moon/lunarFlight';
 import type { MarsProgress } from '../mars/marsFlight';
 import type { Vec2 } from './orbitMath';
 import type { ContractFlightResult, FlightContract } from '../economy/contracts';
+import type { EvaSummary } from '../surface/eva';
 
 /*
  * Objectives and outcome evaluation for the orbital part of a flight. Pure: the runtime tracks
@@ -78,6 +80,8 @@ export interface FlightProgress {
     readonly v?: Vec2;
     readonly tS?: number;
   };
+  /** Moon and Mars landings: astronaut walks and the samples brought aboard. */
+  readonly eva?: EvaSummary;
 }
 
 export interface DockingSummary {
@@ -551,8 +555,14 @@ export function evaluateFlight(
     ...(p.docking ? { docking: p.docking } : {}),
     ...(p.lunar ? { lunar: lunarSummary(p.lunar) } : {}),
     ...(ctx.recovery ? { recovery: ctx.recovery } : {}),
+    ...(p.eva ? { eva: evaRecord(p.eva) } : {}),
     hardware: ctx.hardware ?? { boosterId: null, shipId: null },
   };
+}
+
+/** The EVA part of a flight record. */
+export function evaRecord(e: EvaSummary): EvaFlightSummary {
+  return { body: e.body, samples: e.samples, total: e.total, walks: e.walks, aborted: e.aborted };
 }
 
 /** The Moon part of a flight record. */
@@ -656,6 +666,7 @@ function evaluateMarsFlight(
     mars: m,
     ...(ctx.contract ? { contract: judgeContract(ctx.contract, p, m) } : {}),
     ...(ctx.recovery ? { recovery: ctx.recovery } : {}),
+    ...(p.eva ? { eva: evaRecord(p.eva) } : {}),
     hardware: ctx.hardware ?? { boosterId: null, shipId: null },
   };
 }
@@ -747,6 +758,7 @@ function evaluateMarsRoundTrip(
     mars: m,
     ...(ctx.contract ? { contract: judgeContract(ctx.contract, p, m) } : {}),
     ...(ctx.recovery ? { recovery: ctx.recovery } : {}),
+    ...(p.eva ? { eva: evaRecord(p.eva) } : {}),
     hardware: ctx.hardware ?? { boosterId: null, shipId: null },
   };
 }

@@ -1,3 +1,4 @@
+import { EvaPanel } from '../surface/EvaPanel';
 import { useState } from 'react';
 import { useGameStore } from '../../app/gameStore';
 import type { MoonCameraMode } from '../../scenes/moon/moonController';
@@ -86,6 +87,11 @@ export function MoonHud() {
         </section>
       </div>
       <div className="hud-col hud-right">
+        {snap.phase === 'surface' && snap.context?.crewed && (
+          <section data-panel="eva">
+            <EvaPanel snap={snap} />
+          </section>
+        )}
         <section data-panel="moon">
           <LunarPanel snap={snap} showGoTo={false} />
         </section>

@@ -348,6 +348,23 @@ describe('migration v3 → v4 and flight history', () => {
     expect(result.data.flights[1]?.landing).toBeUndefined();
     expect(result.data.flights).toHaveLength(2);
   });
+
+  it('keeps a valid EVA tally and drops a malformed one', () => {
+    const eva = { body: 'moon', samples: 2, total: 3, walks: 1, aborted: 1 };
+    const data = {
+      ...sampleData(),
+      flights: [
+        { ...flight, eva },
+        { ...flight, id: 'f2', eva: { body: 'venus', samples: 1, total: 3, walks: 1, aborted: 0 } },
+        { ...flight, id: 'f3', eva: { ...eva, samples: 9 } },
+      ],
+    };
+    const result = parseSave(serializeSave(data as never));
+    if (result.status !== 'loaded') throw new Error();
+    expect(result.data.flights[0]?.eva).toEqual(eva);
+    expect(result.data.flights[1]?.eva).toBeUndefined();
+    expect(result.data.flights[2]?.eva?.samples).toBe(3);
+  });
 });
 
 describe('migration v4 → v5 and the fleet', () => {

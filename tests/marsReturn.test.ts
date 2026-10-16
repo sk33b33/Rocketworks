@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { EVA_RULES } from '../src/surface/eva';
+import { collectAll } from './evaHelpers';
 import { flightContextFromLaunch } from '../src/app/flightBinding';
 import { locationFor } from '../src/app/flightAutosave';
 import { evaluateFlight, NO_PROGRESS, objectivesFor } from '../src/flight/flightOutcome';
@@ -257,6 +259,13 @@ describe('crewed Mars round trip', () => {
     const landing = rt.current.progress.mars!.landing!;
     expect(landing).toMatchObject({ outcome: 'landed', siteId: 'delta-hollow' });
     expect(landing.missM).toBeLessThan(2_000);
+    // A geology EVA on Mars: the window can't be skipped while someone is outside.
+    expect(rt.beginEva().ok).toBe(true);
+    expect(rt.current.eva?.body).toBe('mars');
+    expect(rt.waitForReturnWindow().ok).toBe(false);
+    collectAll(rt, EVA_RULES.mars.reachM, EVA_RULES.mars.boardM);
+    expect(rt.boardShip().ok).toBe(true);
+    expect(rt.current.progress.eva).toMatchObject({ body: 'mars', samples: 3, walks: 1 });
     // The line can only be connected once the crew has done the hook-up EVA.
     expect(rt.plantRefuel(true).ok).toBe(false);
     frames(100_000, () => !!rt.current.mars?.plant?.available.ok);

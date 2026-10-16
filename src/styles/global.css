@@ -1887,3 +1887,15 @@ fieldset.stacked label {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+.eva-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 44px);
+  gap: 4px;
+  justify-content: center;
+  margin: 8px 0;
+}
+.eva-hold {
+  min-height: 44px;
+  touch-action: none;
+  user-select: none;
+}

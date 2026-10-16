@@ -44,6 +44,18 @@ export interface FlightRecord {
   readonly hardware?: { readonly boosterId: string | null; readonly shipId: string | null };
   /** Contract flights: whether the contract's terms were met (Stage 12+). */
   readonly contract?: ContractFlightResult;
+  /** Moon and Mars landings: surface EVAs and the samples brought aboard (Stage 15+). */
+  readonly eva?: EvaFlightSummary;
+}
+
+export interface EvaFlightSummary {
+  readonly body: 'moon' | 'mars';
+  /** Samples brought aboard, of those on offer at the site. */
+  readonly samples: number;
+  readonly total: number;
+  /** EVAs ended by boarding, and those ended by running out of oxygen. */
+  readonly walks: number;
+  readonly aborted: number;
 }
 
 export type LunarLandingOutcome = 'landed' | 'tipped' | 'crashed';

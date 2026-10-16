@@ -74,6 +74,16 @@ export function FlightDebrief({ record }: { record: FlightRecord }) {
           {record.lunar.earthReturn ? ' Returned to Earth orbit.' : ''}
         </p>
       )}
+      {record.eva && (
+        <p className={record.eva.samples > 0 ? 'tone-ok' : 'tone-warn'}>
+          {record.eva.samples > 0 ? '✓ ' : '! '}EVA on{' '}
+          {record.eva.body === 'moon' ? 'the Moon' : 'Mars'}: {record.eva.samples} of{' '}
+          {record.eva.total} geology samples brought aboard
+          {record.eva.aborted > 0 &&
+            ` (${record.eva.aborted} EVA${record.eva.aborted === 1 ? '' : 's'} cut short by low oxygen)`}
+          .
+        </p>
+      )}
       {record.crewSafe !== null && (
         <p className={record.crewSafe ? 'tone-ok' : 'tone-bad'}>
           {record.crewSafe ? '✓ Crew safe.' : '✕ Crew lost.'}

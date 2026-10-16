@@ -70,6 +70,22 @@ import {
 } from '../moon/lunarTransfer';
 import { coastDt } from '../moon/propagate';
 import { FlightTrack, ReplayPlayer, type ReplaySpeed } from './flightTrack';
+import {
+  boardShip,
+  canBoard,
+  EVA_RULES,
+  NO_EVA_INPUT,
+  startEva,
+  stepEva,
+  tallyEva,
+  type EvaInput,
+  type EvaRules,
+  type EvaState,
+} from '../surface/eva';
+import type { SiteTerrain, TerrainSite } from '../moon/lunarSites';
+
+/** Held EVA controls. */
+export type EvaKey = 'forward' | 'back' | 'left' | 'right' | 'collect';
 import type { GravityEnv } from '../moon/moonOrbit';
 import {
   isMarsProgram,
@@ -191,6 +207,8 @@ export interface FlightSnapshot {
   readonly lunar: LunarView | null;
   /** Mars missions: the voyage, the site, entry and landing, and the surface. */
   readonly mars: MarsView | null;
+  /** An astronaut outside on the Moon or Mars (null when everyone is aboard). */
+  readonly eva: EvaState | null;
 }
 
 const DEFAULT_ZONE = findZone('platform') ?? LANDING_ZONES[0]!;
@@ -215,6 +233,7 @@ const IDLE: FlightSnapshot = {
   proximity: null,
   lunar: null,
   mars: null,
+  eva: null,
 };
 
 /** Everything needed to resume a flight after a reload (plain data; see persistence/flightSave). */
@@ -295,6 +314,8 @@ export class FlightRuntime {
   private readonly listeners = new Set<() => void>();
   /** The flight as watched in the Flight view, for the post-flight replay. */
   readonly flightTrack = new FlightTrack();
+  private eva: EvaState | null = null;
+  private readonly evaKeys = new Set<EvaKey>();
   readonly replay = new ReplayPlayer(this.flightTrack);
 
   constructor(
@@ -454,6 +475,11 @@ export class FlightRuntime {
   }
 
   setWarp(warp: FlightWarp): void {
+    if (this.eva && warp > 1) {
+      this.message = 'Time warp is off while an astronaut is outside.';
+      this.publish();
+      return;
+    }
     if (this.state.phase === 'surface') {
       const cap = this.mars ? 10_000 : 1000;
       this.set({ ...this.state, warp: Math.min(warp, cap) as FlightWarp }, true);
@@ -601,6 +627,7 @@ export class FlightRuntime {
 
   /** Lifts off from the Moon or Mars (surface operations end) under the ascent program. */
   liftOff(): { ok: boolean; reason?: string } {
+    if (this.eva) return { ok: false, reason: 'Bring the astronaut back aboard first.' };
     if (this.state.phase === 'surface' && this.mars && this.live) return this.marsLiftOff();
     if (this.state.phase !== 'surface' || !this.lunar || !this.live)
       return { ok: false, reason: 'Not on the Moon.' };
@@ -614,6 +641,141 @@ export class FlightRuntime {
     this.state = { ...this.state, phase: 'flight', warp: 1 };
     this.publish();
     return { ok: true };
+  }
+
+  // ---- EVA ----
+
+  /** The astronaut outside (null when everyone is aboard); read every frame by the scene. */
+  get evaState(): EvaState | null {
+    return this.eva;
+  }
+
+  /** The EVA rules, the site's terrain and where the ship stands on it (null off the surface). */
+  private evaGround(): {
+    rules: EvaRules;
+    terrain: SiteTerrain<TerrainSite>;
+    siteId: string;
+    shipX: number;
+  } | null {
+    if (this.state.phase !== 'surface') return null;
+    if (this.mars) {
+      const x = this.state.mars?.geometry?.x;
+      return x === undefined || x === null
+        ? null
+        : {
+            rules: EVA_RULES.mars,
+            terrain: this.mars.ground.terrain,
+            siteId: this.mars.site.id,
+            shipX: x,
+          };
+    }
+    if (this.lunar) {
+      const x = this.state.lunar?.geometry?.x;
+      return x === undefined || x === null
+        ? null
+        : {
+            rules: EVA_RULES.moon,
+            terrain: this.lunar.terrain,
+            siteId: this.lunar.site.id,
+            shipX: x,
+          };
+    }
+    return null;
+  }
+
+  /** Whether an astronaut can go outside now, with a reason if not. */
+  evaAvailability(): { ok: boolean; reason?: string } {
+    const ctx = this.state.context;
+    if (this.state.phase !== 'surface' || !ctx)
+      return { ok: false, reason: 'Only with the ship standing on the Moon or Mars.' };
+    if (!ctx.crewed) return { ok: false, reason: 'An EVA needs a crew aboard.' };
+    if (this.eva) return { ok: false, reason: 'An astronaut is already outside.' };
+    const g = this.evaGround();
+    if (!g) return { ok: false, reason: 'The ground around the ship is not mapped yet.' };
+    const done = this.progress.eva;
+    if (done && done.samples >= done.total)
+      return { ok: false, reason: 'All the samples here are already aboard.' };
+    return { ok: true };
+  }
+
+  /** Sends an astronaut outside (time warp stops). */
+  beginEva(): { ok: boolean; reason?: string } {
+    const check = this.evaAvailability();
+    const g = this.evaGround();
+    if (!check.ok || !g) return check;
+    this.eva = startEva(g.rules, g.terrain, g.siteId, g.shipX, this.progress.eva?.taken ?? []);
+    this.evaKeys.clear();
+    this.accumulator = 0;
+    this.state = { ...this.state, warp: 1 };
+    this.message = `EVA: walk to the sample markers (W/S walk, A/D turn), hold E to collect, then come back aboard. Suit oxygen ${Math.round(g.rules.o2S / 60)} minutes.`;
+    this.logEvent('EVA started.');
+    this.publish();
+    return { ok: true };
+  }
+
+  /** Whether the astronaut can climb back aboard now. */
+  boardAvailability(): { ok: boolean; reason?: string } {
+    const g = this.evaGround();
+    if (!this.eva || !g) return { ok: false, reason: 'No one is outside.' };
+    return canBoard(this.eva, g.rules);
+  }
+
+  /** The astronaut climbs back aboard with whatever is in the bag. */
+  boardShip(): { ok: boolean; reason?: string } {
+    const check = this.boardAvailability();
+    if (!check.ok || !this.eva) return check;
+    this.endEva(boardShip(this.eva));
+    return { ok: true };
+  }
+
+  setEvaKey(key: EvaKey, down: boolean): void {
+    if (down) this.evaKeys.add(key);
+    else this.evaKeys.delete(key);
+  }
+
+  private evaInput(): EvaInput {
+    if (!this.evaKeys.size) return NO_EVA_INPUT;
+    const k = this.evaKeys;
+    return {
+      walk: (k.has('forward') ? 1 : 0) - (k.has('back') ? 1 : 0),
+      turn: (k.has('left') ? 1 : 0) - (k.has('right') ? 1 : 0),
+      collect: k.has('collect'),
+    };
+  }
+
+  private stepEva(realDtS: number): void {
+    const g = this.evaGround();
+    if (!this.eva || !g) return;
+    const res = stepEva(this.eva, this.evaInput(), Math.min(realDtS, 0.25), g.rules, g.terrain);
+    this.eva = res.state;
+    if (res.note) this.message = res.note;
+    if (res.state.phase === 'aborted') this.endEva(res.state);
+  }
+
+  private endEva(st: EvaState): void {
+    const g = this.evaGround();
+    if (!g) return;
+    const before = this.progress.eva?.samples ?? 0;
+    const tally = tallyEva(this.progress.eva, st, g.rules);
+    this.progress = { ...this.progress, eva: tally };
+    this.eva = null;
+    this.evaKeys.clear();
+    if (st.phase === 'aboard') {
+      const n = tally.samples - before;
+      this.message = `Back aboard${n ? ` with ${n} sample${n === 1 ? '' : 's'}` : ''}: ${tally.samples} of ${tally.total} samples from this site are aboard.`;
+      this.logEvent(`EVA complete: ${tally.samples}/${tally.total} samples aboard.`);
+    } else {
+      this.logEvent('EVA aborted: suit oxygen exhausted.');
+    }
+    this.publish();
+  }
+
+  private logEvent(text: string): void {
+    if (!this.live) return;
+    this.live = {
+      ...this.live,
+      events: [...this.live.events, { tS: this.live.tS, kind: 'success', text }],
+    };
   }
 
   /** Advances time standing on the Moon or Mars by `dt`; returns a note when something ends. */
@@ -635,6 +797,7 @@ export class FlightRuntime {
 
   private updateSurface(realDtS: number): void {
     if ((!this.lunar && !this.mars) || !this.live || this.state.paused) return;
+    if (this.eva) this.stepEva(realDtS);
     this.accumulator += realDtS * this.state.warp;
     const dt = 10;
     let steps = 0;
@@ -824,6 +987,7 @@ export class FlightRuntime {
     const s = this.live;
     if (!mars?.crewed || !s || this.state.phase !== 'surface')
       return { ok: false, reason: 'Only on the Mars surface on a crewed mission.' };
+    if (this.eva) return { ok: false, reason: 'Bring the astronaut back aboard first.' };
     const wait = mars.returnWindowWaitS(s);
     if (wait <= 0) return { ok: false, reason: 'The return window is already open.' };
     // In day-long chunks so the pumping and the tasks finish (and are logged) on time.
@@ -1162,6 +1326,11 @@ export class FlightRuntime {
 
   /** Ends the flight where it is (only offered while still flying, or standing on the Moon). */
   endFlight(): void {
+    if (this.eva) {
+      this.message = 'Bring the astronaut back aboard first.';
+      this.publish();
+      return;
+    }
     if (
       ((this.state.phase === 'flight' || this.state.phase === 'voyage') &&
         this.live?.phase === 'flight') ||
@@ -1218,6 +1387,8 @@ export class FlightRuntime {
   }
 
   private clearTrack(): void {
+    this.eva = null;
+    this.evaKeys.clear();
     this.replay.stop();
     this.flightTrack.clear();
   }
@@ -1563,9 +1734,11 @@ export class FlightRuntime {
     const s = this.live;
     const lim =
       this.state.phase === 'surface'
-        ? this.mars
-          ? { max: 10_000 as FlightWarp, reason: 'On Mars: warp up to 10,000×.' }
-          : { max: 1000 as FlightWarp, reason: 'On the surface: warp up to 1000×.' }
+        ? this.eva
+          ? { max: 1 as FlightWarp, reason: 'Astronaut outside: no time warp.' }
+          : this.mars
+            ? { max: 10_000 as FlightWarp, reason: 'On Mars: warp up to 10,000×.' }
+            : { max: 1000 as FlightWarp, reason: 'On the surface: warp up to 1000×.' }
         : this.state.phase === 'proximity'
           ? {
               max: (this.prox?.maxWarp ?? 1) as FlightWarp,
@@ -1595,6 +1768,7 @@ export class FlightRuntime {
         proximity: this.prox?.view() ?? null,
         lunar: this.lunar?.view(s) ?? null,
         mars: this.mars?.view(s, this.state.context?.spec ?? null) ?? null,
+        eva: this.eva,
       },
       true,
     );

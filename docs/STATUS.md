@@ -2,7 +2,7 @@
 
 ## Current stage
 
-**Stage 14: Photo mode and replays.** Complete. The approved run continues with Stages 15–17 (EVA, audio, manoeuvre planner).
+**Stage 15: EVA on the Moon and Mars.** Complete. The approved run continues with Stages 16–17 (procedural audio, manoeuvre planner).
 
 ## Completed
 
@@ -257,6 +257,22 @@
     - Replays don't change the record, the save or the economy. They're cleared when the debrief closes.
   - **Fix:** pausing now publishes the live state, so the paused clock shows exactly where the ship is. At 100,000× the paused view could lag the saved flight by up to 0.1 s of real time (hours of flight time). This made the Mars resume e2e test flaky.
 
+- **Stage 15 (EVA on the Moon and Mars):**
+  - **Pure EVA model** (`src/surface/eva.ts`):
+    - One astronaut in the landing site's terrain frame (the same heights and boulders the physics and the terrain patch use).
+    - Walking: Moon 2.2 m/s, Mars 1.8 m/s. Uphill is slower and very steep ground is impassable. Boulders of 0.7 m or more block within their drawn size, and so does the ship's hull. There's a 300 m safety limit.
+    - Suit oxygen: 7 minutes on the Moon, 8 on Mars (real time). A warning comes at 25%; running out ends the EVA, the crew hauls the astronaut back and the samples are dropped.
+    - Three geology samples per site, placed deterministically from the site on walkable ground 35–150 m out. Hold collect within 3 m for 4–5 s. Boarding within 12 m of the ship brings the bagged samples aboard. A later EVA at the same site finds the ones already taken.
+  - **Runtime:** `beginEva`, `setEvaKey`, `boardShip`, plus availability checks with reasons (crewed and standing on the surface; not all samples aboard). While someone is outside, time warp, liftoff, ending the flight and waiting for the Mars return window are blocked with a reason. Steps are real-time and capped per frame. The tally (`progress.eva`) goes into the flight record.
+  - **Scene** (`src/scenes/surface/EvaView.ts`, original procedural art):
+    - An astronaut with a loping walk (bouncier on the Moon) and orange sample beacons on poles.
+    - A follow camera that stays clear of the ship's hull, in both the Moon and Mars scenes.
+    - The landing target rings are hidden on foot.
+  - **HUD:** an EVA panel on the Moon and Mars surface. It shows the oxygen meter, the next sample's distance and direction, the ship's direction, a progress readout when within reach, a touch-friendly hold pad and _Collect_, and _Board the ship_ (disabled with a reason). The debrief reports the samples brought aboard.
+  - **Progression:** milestones _Moonwalk_ (40,000 cr), _Lunar geologist_ (50,000 cr), _First steps on Mars_ (80,000 cr) and _Martian geologist_ (100,000 cr), with the crew safe. They pay credits, not RP: milestone RP already nearly covers the tech tree, and the tree must stay a choice.
+  - **Saves:** flight records carry the EVA tally (validated, clamped). No format bump was needed: older saves simply have none.
+  - **Fix:** the photo camera keeps the scene's near plane. The Moon view's far plane reaches Earth, and a smaller near plane would lose depth precision.
+
 ## Assumptions (documented, reversible)
 
 - Flight physics is a simplified planar gameplay model: one orbital plane (the equator), no Earth rotation, an exponential atmosphere, lumped aerodynamics, and Sutton–Graves heating with gameplay heat capacities. The UI and footnotes say so; it is not a flight simulator.
@@ -297,6 +313,12 @@
   - The client tolerance for satellite orbits (±50 km) suits the assisted _Raise orbit_ program, which lands within about 40 km of the target.
   - A depot delivery run sells no propellant, so the ship comes home light enough for the aerocapture. A full depot top-up left the ship too heavy for it in testing.
   - Contracts are judged on the day the flight ends. A contract flight scrubbed on the pad keeps the contract.
+- EVA:
+  - One astronaut at a time, and only walking: no rover, tools, tethers or habitat building.
+  - Samples are fixed geology markers per site, not a geology model.
+  - An EVA in progress isn't saved: after a reload the astronaut is back aboard and unboarded samples are lost.
+  - Walking is on the terrain heightfield; small boulders are walked over, and lighting doesn't change.
+  - Headless software rendering runs the surface at a few frames per second; the per-frame step cap then slows the walk in real time.
 - Crewed round trips:
   - The supplies payload stands in for consumables, recycling and a surface habitat. Life support is a crew-day budget, not simulated.
   - The plant's pumping rate, the 2 km reach and the crew task durations are game values.
@@ -307,7 +329,10 @@
 ## Checks (last run)
 
 - `npm run typecheck` (app and e2e), `npm run lint`, `npm run build`: pass.
-- `npm test`: 276 tests pass across 25 files. New in Stage 14 (`tests/replay.test.ts`, plus the full-flight runtime test): Hermite interpolation along an orbit; short-way attitude blending; steps across discrete changes; recording interval, phase changes and cuts; bounded track thinning; playback, seek, speed, replay from the end; a real flight replayed end to end and handed back to the debrief; the photo camera's orbit, clamps and file names.
+- `npm test`: 284 tests pass across 26 files. New in Stage 15 (`tests/eva.test.ts`, plus the lunar landing, the crewed Mars round trip and saves): deterministic sample placement clear of boulders; walking, turning, slopes, cliffs, boulders, the hull and the range limit; collecting only within reach and standing still; the oxygen warning and the abort; boarding range and the tally across EVAs; directions; a scripted player collecting everything; the milestones; a full lunar landing with an EVA collecting all three samples (warp and liftoff blocked while outside) into the flight record; an EVA on Mars blocking the window wait; the EVA record in saves.
+- Stage 15 e2e: 11 Playwright tests, including the new EVA test (`e2e/eva.e2e.ts`: start an EVA on Mars, warp locked, walk, board). Result recorded below once the run finishes.
+- Headless Chromium smoke tests, Stage 15 (manual scripts, not committed), with no console errors: on Mars (the e2e fixture) and on the Moon (a Sea of Calm landing flown by the runtime in the page). _Start EVA_ put the astronaut on the ground 10 m from the ship with a beacon ahead; walking and turning worked, warp was locked, and photo mode works on foot.
+- Stage 14: `npm test`: 276 tests pass across 25 files. New in Stage 14 (`tests/replay.test.ts`, plus the full-flight runtime test): Hermite interpolation along an orbit; short-way attitude blending; steps across discrete changes; recording interval, phase changes and cuts; bounded track thinning; playback, seek, speed, replay from the end; a real flight replayed end to end and handed back to the debrief; the photo camera's orbit, clamps and file names.
 - Stage 14 e2e: 10 Playwright tests pass (about 9 min), including the new photo-mode test (`e2e/photo.e2e.ts`: interface hidden, PNG download, Esc and P).
 - Headless Chromium smoke test, Stage 14 (manual script, not committed), with no console errors:
   - Photo mode in the factory: interface hidden, drag and zoom, _Take photo_ downloaded a valid 945 KB PNG; Esc restored the interface.
@@ -435,7 +460,7 @@
 - The rendezvous is assisted only: there are no manual phasing burns or a planning tool for them.
 - The station has a single (forward) docking port and doesn't rotate; the ship's model isn't animated for RCS puffs.
 - Crew transfer and cargo tasks are timed progress bars, not interactive activities.
-- Moon missions: no manual trajectory planning tools (the transfer, corrections, insertion and the burn home are assisted only); no EVA (the roadmap lists it as a later optional feature); no Moon rotation-dependent lighting changes on the surface.
+- Moon missions: no manual trajectory planning tools (the transfer, corrections, insertion and the burn home are assisted only); no Moon rotation-dependent lighting changes on the surface.
 - Hazard avoidance and manual landings are along the ground track only (the 2D model has no cross-track motion); the 3D terrain shows cross-track variation for looks.
 - In headless browsers the deep-space coast is fast, but 10× phases (burns, descent, re-entry) take a few real minutes.
 - Mars:
@@ -449,10 +474,10 @@
   - A released satellite soon climbs out of the chase camera's view (the Contract panel keeps its range).
 - Crewed round trips:
   - There's no abort-to-orbit from a failed ascent, no Mars orbit rendezvous, and no manual planning of the burn home.
-  - The surface stay is time-skipped: there's no EVA gameplay, habitat building or dust storms.
+  - The surface stay is time-skipped apart from optional EVAs: no habitat building or dust storms.
   - Only one plant is supported, and later expeditions share it.
   - Life support is a crew-day budget, not a simulation.
 
 ## Next action
 
-Stage 15: EVA on the Moon and Mars, then Stage 16 (procedural audio) and Stage 17 (manoeuvre planner), as approved.
+Stage 16 (procedural audio), then Stage 17 (manoeuvre planner), as approved.

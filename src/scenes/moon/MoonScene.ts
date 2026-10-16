@@ -8,6 +8,7 @@ import type { LunarView } from '../../moon/lunarFlight';
 import { ResourceCache } from '../../render/ResourceCache';
 import { EARTH_RADIUS_M } from '../../simulation/constants';
 import { createEarthTexture } from '../flight/earthTextures';
+import { EvaView } from '../surface/EvaView';
 import { ShipView } from '../flight/ShipView';
 import type { MoonCameraMode, MoonController } from './moonController';
 import { MoonBody } from './MoonBody';
@@ -32,6 +33,7 @@ export class MoonScene implements GameScene {
   private readonly cache = new ResourceCache();
   private moon: MoonBody | null = null;
   private ship: ShipView | null = null;
+  private evaView: EvaView | null = null;
   private earth: THREE.Mesh | null = null;
   private stars: THREE.Points | null = null;
   private dust: THREE.Mesh | null = null;
@@ -67,6 +69,8 @@ export class MoonScene implements GameScene {
     this.scene.environmentIntensity = 0.3;
     this.scene.background = new THREE.Color(0x000000);
     this.moon = new MoonBody(this.cache);
+    this.evaView = new EvaView(this.cache);
+    this.scene.add(this.evaView.root);
     this.ship = new ShipView(this.cache);
     this.earth = new THREE.Mesh(
       this.cache.geometry('moon:earth', () =>
@@ -184,8 +188,13 @@ export class MoonScene implements GameScene {
     const nearSite = !!geo && geo.h < 80_000 && Math.abs(geo.x) < 400_000;
     const onSurface = !!lunar.surface || (s.phase !== 'flight' && s.touchdown?.body === 'moon');
     const mode: MoonCameraMode = this.controller.getCameraMode();
-    moon.update(this.centre, toEarth, (nearSite || onSurface) && mode !== 'orbit', 0);
+    const eva = this.controller.runtime.evaState;
+    moon.update(this.centre, toEarth, (nearSite || onSurface) && (mode !== 'orbit' || !!eva), 0);
     const camDist = this.updateCamera(mode, s, lunar, f.up, f.altitudeM);
+    // An astronaut outside: the camera follows them on the ground.
+    const patch = moon.terrainPatch;
+    this.evaView!.update(eva, patch, this.time, deltaSeconds);
+    if (eva && patch?.group.visible) this.evaView!.applyCamera(this.camera, eva, patch);
     moon.setMarkers(
       mode === 'orbit' || f.altitudeM > 300_000 ? Math.max(8_000, camDist * 0.006) : 0,
     );

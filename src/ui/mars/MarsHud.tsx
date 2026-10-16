@@ -1,3 +1,4 @@
+import { EvaPanel } from '../surface/EvaPanel';
 import { useState } from 'react';
 import { useGameStore } from '../../app/gameStore';
 import type { MarsCameraMode } from '../../scenes/mars/marsController';
@@ -96,6 +97,11 @@ export function MarsHud() {
         </section>
       </div>
       <div className="hud-col hud-right">
+        {snap.phase === 'surface' && snap.context?.crewed && (
+          <section data-panel="eva">
+            <EvaPanel snap={snap} />
+          </section>
+        )}
         <section data-panel="mars">
           <MarsPanel snap={snap} showGoTo={false} />
         </section>

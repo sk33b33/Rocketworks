@@ -1,4 +1,5 @@
 import type { FlightState } from '../../flight/flightModel';
+import type { EvaState } from '../../surface/eva';
 import type { FlightSnapshot } from '../../flight/flightRuntime';
 
 export type MoonCameraMode = 'chase' | 'landing' | 'orbit';
@@ -7,6 +8,8 @@ export type MoonCameraMode = 'chase' | 'landing' | 'orbit';
 export interface MoonRuntimeView {
   readonly current: FlightSnapshot;
   readonly liveState: FlightState | null;
+  /** An astronaut outside on the surface (null when everyone is aboard). */
+  readonly evaState: EvaState | null;
   update(realDtS: number): void;
 }
 

@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { EVA_RULES } from '../src/surface/eva';
+import { collectAll } from './evaHelpers';
 import {
   initialFlightState,
   noseDirection,
@@ -432,6 +434,18 @@ describe('lunar landing', () => {
     const landing = rt.current.progress.lunar!.landing!;
     expect(landing).toMatchObject({ outcome: 'landed', manual: false });
     expect(gradeAtLeast(landing.grade, 'B')).toBe(true);
+    // An EVA: no warp or liftoff while outside; walk to every sample and back aboard.
+    expect(rt.beginEva().ok).toBe(true);
+    expect(rt.current.eva?.phase).toBe('out');
+    expect(rt.liftOff().ok).toBe(false);
+    rt.setWarp(100);
+    expect(rt.current.warp).toBe(1);
+    collectAll(rt, EVA_RULES.moon.reachM, EVA_RULES.moon.boardM);
+    expect(rt.evaState?.samples.every((x) => x.progress >= 1)).toBe(true);
+    expect(rt.boardShip().ok).toBe(true);
+    expect(rt.evaState).toBeNull();
+    expect(rt.current.progress.eva).toMatchObject({ body: 'moon', samples: 3, total: 3, walks: 1 });
+    expect(rt.evaAvailability().reason).toMatch(/already aboard/);
     frames(100_000, () => !!rt.current.progress.lunar?.surfaceDone);
     expect(rt.liftOff().ok).toBe(true);
     frames(100_000, () => rt.current.program.program === 'none');
@@ -443,6 +457,7 @@ describe('lunar landing', () => {
     frames(200_000, () => rt.current.phase === 'debrief');
     expect(records[0]).toMatchObject({ result: 'success', credited: true, crewSafe: true });
     expect(records[0]?.lunar?.landing?.siteId).toBe('aurora-highlands');
+    expect(records[0]?.eva).toEqual({ body: 'moon', samples: 3, total: 3, walks: 1, aborted: 0 });
   }, 120_000);
 
   it('credits a manual landing when the player flies the last 500 m', () => {

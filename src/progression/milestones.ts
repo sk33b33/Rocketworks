@@ -216,7 +216,50 @@ export const MILESTONES: readonly Milestone[] = [
           f.missionId === 'mars-crewed' && f.credited && (f.mars?.returnTrip?.plantDrawKg ?? 0) > 0,
       ),
   },
+  {
+    id: 'moonwalk',
+    title: 'Moonwalk',
+    description: 'Walk on the Moon and bring a geology sample back aboard, crew safe.',
+    rewardRp: 0,
+    rewardCredits: 40_000,
+    isAchieved: (ctx) => anyEva(ctx, 'moon', 1),
+  },
+  {
+    id: 'lunar-geologist',
+    title: 'Lunar geologist',
+    description: 'Bring every sample at a lunar landing site back aboard, crew safe.',
+    rewardRp: 0,
+    rewardCredits: 50_000,
+    isAchieved: (ctx) => anyEva(ctx, 'moon', 'all'),
+  },
+  {
+    id: 'marswalk',
+    title: 'First steps on Mars',
+    description: 'Walk on Mars and bring a sample back aboard, crew safe.',
+    rewardRp: 0,
+    rewardCredits: 80_000,
+    isAchieved: (ctx) => anyEva(ctx, 'mars', 1),
+  },
+  {
+    id: 'mars-geologist',
+    title: 'Martian geologist',
+    description: 'Bring every sample at a Mars landing site back aboard, crew safe.',
+    rewardRp: 0,
+    rewardCredits: 100_000,
+    isAchieved: (ctx) => anyEva(ctx, 'mars', 'all'),
+  },
 ];
+
+/** A flight with a safe crew that brought EVA samples aboard on `body` (1+ or all on offer). */
+function anyEva(ctx: MilestoneContext, body: 'moon' | 'mars', need: 1 | 'all'): boolean {
+  return anyFlight(
+    ctx,
+    (f) =>
+      f.crewSafe === true &&
+      f.eva?.body === body &&
+      f.eva.samples >= (need === 'all' ? Math.max(1, f.eva.total) : 1),
+  );
+}
 
 /** Milestones achieved by the context that are not yet recorded. */
 export function newlyAchieved(recorded: readonly string[], ctx: MilestoneContext): Milestone[] {
