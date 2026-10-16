@@ -10,6 +10,7 @@ import { ContractPanel } from './ContractPanel';
 import { FlightControlsBar } from './FlightControlsBar';
 import { FlightDebrief } from './FlightDebrief';
 import { FlightHelp } from './FlightHelp';
+import { ReplayBar, useReplay } from './ReplayBar';
 import { ObjectivesPanel } from './ObjectivesPanel';
 import { OrbitPanel } from './OrbitPanel';
 import { VehiclePanel } from './VehiclePanel';
@@ -21,6 +22,7 @@ import { MarsPanel } from '../mars/MarsPanel';
 /** Flight / Orbit overlay: empty state, orbit and ship telemetry, autopilot, controls, debrief. */
 export function FlightHud() {
   const snap = useFlightSnapshot();
+  const replay = useReplay();
   // Re-render when the launch hands off (the empty state offers to continue).
   useSyncExternalStore(launchRuntime.subscribe, launchRuntime.getSnapshot);
   const goTo = useGameStore((s) => s.goTo);
@@ -61,6 +63,13 @@ export function FlightHud() {
       </div>
     );
   }
+
+  if (replay && snap.phase === 'debrief')
+    return (
+      <div className="factory-hud launch-hud flight-hud">
+        <ReplayBar view={replay} />
+      </div>
+    );
 
   // On the way to Mars or on Mars: Earth telemetry no longer applies.
   if (flownFromMars(snap)) {

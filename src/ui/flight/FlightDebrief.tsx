@@ -5,6 +5,7 @@ import { findMission } from '../../missions/missionCatalog';
 import { RecoveryResultLine } from '../launch/RecoveryPanel';
 import { formatPercent } from '../format';
 import { fmt, formatDuration } from './useFlight';
+import { ReplayButton } from './ReplayBar';
 
 const RESULT = {
   success: { label: '✓ MISSION SUCCESS', tone: 'ok' },
@@ -140,6 +141,7 @@ export function FlightDebrief({ record }: { record: FlightRecord }) {
         <button type="button" onClick={() => close('factory')}>
           Go to the Factory
         </button>
+        <ReplayButton />
       </div>
       <p className="footnote">
         This flight used the mission commitment. Plan the next one in Mission Control.

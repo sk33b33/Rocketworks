@@ -1808,3 +1808,82 @@ fieldset.stacked label {
     bottom: 8px;
   }
 }
+
+/* Photo mode: only the 3D view and the photo bar. */
+.app.photo-mode .topbar,
+.app.photo-mode .stage > :not(.viewport):not(.photo-ui) {
+  display: none !important;
+}
+.photo-ui {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+}
+.photo-layer {
+  position: absolute;
+  inset: 0;
+  cursor: grab;
+  touch-action: none;
+}
+.photo-layer:active {
+  cursor: grabbing;
+}
+.photo-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  max-width: calc(100% - 32px);
+  padding: 8px 12px;
+  zoom: var(--ui-scale, 1);
+}
+.photo-title {
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+}
+.photo-help {
+  flex-basis: 100%;
+  text-align: center;
+}
+.photo-msg {
+  flex-basis: 100%;
+  text-align: center;
+  color: var(--ok, #6fcf97);
+}
+.replay-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: min(900px, calc(100% - 32px));
+  padding: 8px 12px;
+  zoom: var(--ui-scale, 1);
+}
+.replay-group {
+  display: flex;
+  gap: 4px;
+}
+.replay-group button[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.replay-seek {
+  flex: 1 1 200px;
+  min-width: 140px;
+  accent-color: var(--accent);
+}
+.replay-clock {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

@@ -13,18 +13,22 @@ import { ProgramOverview } from '../ui/ProgramOverview';
 import { PerfOverlay } from '../ui/PerfOverlay';
 import { NoticeBar } from '../ui/NoticeBar';
 import { Viewport } from '../ui/Viewport';
+import { PhotoButton, PhotoMode } from '../ui/PhotoMode';
+import { usePhotoStore } from './photoStore';
 import { useGameStore } from './gameStore';
 
 export function App() {
   const location = useGameStore((s) => s.currentLocation);
   const showPerf = useGameStore((s) => s.showPerf);
+  const photo = usePhotoStore((s) => s.active);
   return (
-    <div className="app">
+    <div className={photo ? 'app photo-mode' : 'app'}>
       <header className="topbar">
         <span className="brand">ROCKETWORKS</span>
         <LocationSelector />
         <NextStepChip />
         <SettingsMenu />
+        <PhotoButton />
       </header>
       <main className="stage">
         <ErrorBoundary>
@@ -40,6 +44,7 @@ export function App() {
         <NoticeBar />
         <ProgramOverview />
         {showPerf && <PerfOverlay />}
+        <PhotoMode />
       </main>
     </div>
   );

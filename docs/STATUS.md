@@ -2,7 +2,7 @@
 
 ## Current stage
 
-**Stage 13: Economy balance and polish.** Complete. The approved run continues with Stages 14–17 (photo mode and replays, EVA, audio, manoeuvre planner).
+**Stage 14: Photo mode and replays.** Complete. The approved run continues with Stages 15–17 (EVA, audio, manoeuvre planner).
 
 ## Completed
 
@@ -243,6 +243,20 @@
     - The flight notice moves to the top of the view while a debrief is open, instead of overlapping it.
     - The Station panel only shows on station missions.
 
+- **Stage 14 (photo mode and replays):**
+  - **Photo mode** (P key or the top-bar _Photo_ button, every location):
+    - Hides the interface. A photo camera orbits a pivot found by a ray from the centre of the view, and rides along with the scene camera so a moving ship stays framed (`src/game/photoCamera.ts`).
+    - Drag or arrow keys orbit, the wheel or +/− zoom, _Reset view_, _Exit_ or Esc. Leaving the location closes it.
+    - _Take photo_ renders the view and downloads it as `rocketworks-<location>-<date-time>.png`. The renderer doesn't preserve its drawing buffer, so the capture renders and reads back in the same task.
+    - Photo state is transient (`src/app/photoStore.ts`); the runtime gets the view through the viewport.
+  - **Flight replays** (`src/flight/flightTrack.ts`):
+    - The flight runtime records the ship's state as the Flight view showed it, on a clock that stops while paused (so a replay follows the flight as watched, time warp included).
+    - The track is bounded: 3,000 samples at most; when full it drops every other sample and doubles its interval. Phase or reference-body changes are always recorded. Time at the station, on the Moon's surface or on the Mars side of a voyage is a cut (no interpolation across it).
+    - Playback interpolates position and velocity with a cubic Hermite curve, with the radius blended linearly, so even a thinned track follows the orbit instead of cutting chords. Attitude is blended the short way round.
+    - The debrief's _Watch replay_ opens the Flight view with a replay bar: play/pause (Space), 1/4/16/64× speed, a seek bar, mission time and altitude, chase/orbit/map cameras, _Back to debrief_ (Esc). The scene reads the replayed state in place of the live one, so the planet, station, Moon and released satellite are placed for that moment.
+    - Replays don't change the record, the save or the economy. They're cleared when the debrief closes.
+  - **Fix:** pausing now publishes the live state, so the paused clock shows exactly where the ship is. At 100,000× the paused view could lag the saved flight by up to 0.1 s of real time (hours of flight time). This made the Mars resume e2e test flaky.
+
 ## Assumptions (documented, reversible)
 
 - Flight physics is a simplified planar gameplay model: one orbital plane (the equator), no Earth rotation, an exponential atmosphere, lumped aerodynamics, and Sutton–Graves heating with gameplay heat capacities. The UI and footnotes say so; it is not a flight simulator.
@@ -293,8 +307,12 @@
 ## Checks (last run)
 
 - `npm run typecheck` (app and e2e), `npm run lint`, `npm run build`: pass.
-- `npm test`: 268 tests pass across 24 files. New in Stage 13: grant cap, board size by reputation, crew-rotation judging and offers, the satellite's separation motion.
-- Stage 13 e2e: 9 Playwright tests pass (about 7.5 min)
+- `npm test`: 276 tests pass across 25 files. New in Stage 14 (`tests/replay.test.ts`, plus the full-flight runtime test): Hermite interpolation along an orbit; short-way attitude blending; steps across discrete changes; recording interval, phase changes and cuts; bounded track thinning; playback, seek, speed, replay from the end; a real flight replayed end to end and handed back to the debrief; the photo camera's orbit, clamps and file names.
+- Stage 14 e2e: 10 Playwright tests pass (about 9 min), including the new photo-mode test (`e2e/photo.e2e.ts`: interface hidden, PNG download, Esc and P).
+- Headless Chromium smoke test, Stage 14 (manual script, not committed), with no console errors:
+  - Photo mode in the factory: interface hidden, drag and zoom, _Take photo_ downloaded a valid 945 KB PNG; Esc restored the interface.
+  - An orbital flight to a landing recorded 573 samples. _Watch replay_ hid the debrief and played from orbit insertion (T+05:13, 137.6 km) to the landing. Speed, seek, pause and play-again, and the map camera all worked. Photo mode works during a replay, and _Back to debrief_ restores the debrief.
+- Stage 13: `npm test`: 268 tests pass across 24 files. New in Stage 13: grant cap, board size by reputation, crew-rotation judging and offers, the satellite's separation motion. e2e: 9 Playwright tests pass (about 7.5 min).
 - Headless Chromium smoke test, Stage 13 (manual script, not committed), with no console errors:
   - With the station mission flown, the board offered three contracts at reputation 20, including crew rotations.
   - A satellite contract (1,000 km) was flown: raised to 1,048 × 970 km, released, and drawn drifting off after release. The Contract panel showed the range (151 m after 40 s). Landed, paid; no Station panel on the contract flight.
@@ -409,7 +427,11 @@
 - The assisted tower-catch landing burn lights high (around 12–15 km) and runs long. It reliably catches, but it's less efficient than a real booster's short final burn (tuning candidate).
 - The Earth texture is procedural and low-resolution (1024×512); near the ground a flat local surface tile stands in for terrain.
 - Ctrl is the throttle-down key; browsers reserve some Ctrl combinations (e.g. Ctrl+W), so use the X cutoff or the buttons if in doubt.
-- There's no free-fly camera, and the map view shows the predicted path but no manoeuvre planning nodes.
+- Photo mode orbits a point in front of the camera; there's no free-fly camera. The map view shows the predicted path but no manoeuvre planning nodes.
+- Replays:
+  - Only what the Flight view shows is recorded: not the launch ascent, station proximity operations, a surface stay or the Mars side of a voyage.
+  - Replays aren't saved: a reload or closing the debrief discards them, and a flight resumed after a reload records from the resume.
+  - On long flights the track thins out, so fast manoeuvres from early in the flight are smoothed in the replay.
 - The rendezvous is assisted only: there are no manual phasing burns or a planning tool for them.
 - The station has a single (forward) docking port and doesn't rotate; the ship's model isn't animated for RCS puffs.
 - Crew transfer and cargo tasks are timed progress bars, not interactive activities.
@@ -433,4 +455,4 @@
 
 ## Next action
 
-Review Stage 12. Candidates for the next stage: photo mode and replays, EVA on the Moon or Mars, audio, a manoeuvre planner, or an economy balance and polish pass (contract variety, payout tuning, drawing released satellites). Pick the next focus before starting.
+Stage 15: EVA on the Moon and Mars, then Stage 16 (procedural audio) and Stage 17 (manoeuvre planner), as approved.

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useGameStore } from '../app/gameStore';
+import { registerPhotoCapture, usePhotoStore } from '../app/photoStore';
 import { GameRuntime } from '../game/GameRuntime';
 import { isWebGLAvailable } from '../game/webgl';
 import { sceneFactories } from '../scenes/registry';
@@ -34,7 +35,14 @@ export function Viewport() {
       return;
     }
     runtimeRef.current = runtime;
+    registerPhotoCapture(() => runtime.capture());
+    const syncPhoto = (p: { active: boolean; view: Parameters<GameRuntime['setPhoto']>[0] }) =>
+      runtime.setPhoto(p.active ? p.view : null);
+    syncPhoto(usePhotoStore.getState());
+    const offPhoto = usePhotoStore.subscribe(syncPhoto);
     return () => {
+      offPhoto();
+      registerPhotoCapture(null);
       runtime.dispose();
       runtimeRef.current = null;
     };

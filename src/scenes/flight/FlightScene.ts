@@ -253,7 +253,14 @@ export class FlightScene implements GameScene {
   ): void {
     const sat = this.satellite;
     if (!sat) return;
-    if (!release?.r || release.tS === undefined || map || s.origin || s.ref === 'moon') {
+    if (
+      !release?.r ||
+      release.tS === undefined ||
+      s.tS < release.tS ||
+      map ||
+      s.origin ||
+      s.ref === 'moon'
+    ) {
       sat.root.visible = false;
       return;
     }

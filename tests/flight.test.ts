@@ -11,6 +11,7 @@ import {
 } from '../src/flight/flightModel';
 import { evaluateFlight, NO_PROGRESS, type FlightProgress } from '../src/flight/flightOutcome';
 import { FlightRuntime, programAvailability, warpLimit } from '../src/flight/flightRuntime';
+import { TRACK_MAX_SAMPLES } from '../src/flight/flightTrack';
 import { findZone, findZoneAt, LANDING_ZONES, missDistanceM } from '../src/flight/landingZones';
 import {
   localFrame,
@@ -380,6 +381,23 @@ describe('FlightRuntime', () => {
     expect(records[0]).toMatchObject({ result: 'success', credited: true, crewSafe: true });
     expect(records[0]?.landing?.zoneName).toBe(findZone('rtls')!.name);
     expect(rt.current.state?.peakG ?? 99).toBeLessThan(5);
+
+    // The flight was recorded and replays from orbit insertion to the end, then hands back.
+    const track = rt.flightTrack;
+    expect(track.samples.length).toBeGreaterThan(20);
+    expect(track.samples.length).toBeLessThanOrEqual(TRACK_MAX_SAMPLES);
+    const final = rt.liveState;
+    expect(rt.startReplay(64).ok).toBe(true);
+    expect(rt.liveState?.tS).toBeCloseTo(track.samples[0]!.s.tS, 6);
+    for (let i = 0; i < 100_000 && rt.replay.getSnapshot()?.playing; i++) rt.update(0.5);
+    expect(rt.replay.getSnapshot()).toMatchObject({ playing: false, t: track.duration });
+    expect(rt.current.phase).toBe('debrief');
+    expect(records).toHaveLength(1);
+    rt.replay.stop();
+    expect(rt.liveState).toBe(final);
+    rt.reset();
+    expect(track.samples).toHaveLength(0);
+    expect(rt.replayAvailability().ok).toBe(false);
   });
 
   it('disengages the autopilot on manual input and keeps the attitude', () => {

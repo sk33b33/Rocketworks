@@ -69,6 +69,7 @@ import {
   lunarProgramAvailability,
 } from '../moon/lunarTransfer';
 import { coastDt } from '../moon/propagate';
+import { FlightTrack, ReplayPlayer, type ReplaySpeed } from './flightTrack';
 import type { GravityEnv } from '../moon/moonOrbit';
 import {
   isMarsProgram,
@@ -292,6 +293,9 @@ export class FlightRuntime {
   private lunar: LunarFlight | null = null;
   private mars: MarsFlight | null = null;
   private readonly listeners = new Set<() => void>();
+  /** The flight as watched in the Flight view, for the post-flight replay. */
+  readonly flightTrack = new FlightTrack();
+  readonly replay = new ReplayPlayer(this.flightTrack);
 
   constructor(
     private readonly onRecord: (record: FlightRecord) => void,
@@ -306,7 +310,7 @@ export class FlightRuntime {
 
   /** Latest ship state for rendering (may be newer than the published snapshot). */
   get liveState(): FlightState | null {
-    return this.live;
+    return this.replay.state ?? this.live;
   }
   get current(): FlightSnapshot {
     return this.state;
@@ -320,6 +324,7 @@ export class FlightRuntime {
   /** Starts a flight from the ascent hand-off. Assisted by default: circularizes if needed. */
   start(context: FlightContext): void {
     const { r, v, propKg, tS } = context.start;
+    this.clearTrack();
     this.live = initialFlightState(r, v, propKg, tS);
     const el = orbitalElements(r, v);
     this.progress = { ...NO_PROGRESS, orbit: el.status === 'orbit' };
@@ -390,6 +395,7 @@ export class FlightRuntime {
 
   /** Resumes a flight from a snapshot, paused at 1×. */
   restore(snap: RuntimeSnapshot): void {
+    this.clearTrack();
     this.live = snap.live;
     this.progress = snap.progress;
     this.ps = snap.ps;
@@ -424,6 +430,7 @@ export class FlightRuntime {
   }
 
   reset(): void {
+    this.clearTrack();
     this.live = null;
     this.prox = null;
     this.lunar = null;
@@ -439,8 +446,11 @@ export class FlightRuntime {
       this.state.phase === 'proximity' ||
       this.state.phase === 'surface' ||
       this.state.phase === 'voyage'
-    )
-      this.set({ ...this.state, paused: !this.state.paused });
+    ) {
+      // Publish the live state too, so the paused view shows exactly where the ship is.
+      this.state = { ...this.state, paused: !this.state.paused };
+      this.publish();
+    }
   }
 
   setWarp(warp: FlightWarp): void {
@@ -1179,7 +1189,40 @@ export class FlightRuntime {
 
   // ---- per-frame update ----
 
+  /** Advances the flight, or the replay once it's over, by one frame of real time. */
   update(realDtS: number): void {
+    if (this.replay.active) return this.replay.update(realDtS);
+    this.advance(realDtS);
+    const st = this.state;
+    if (st.paused || !this.live) return;
+    // Record what the Flight view shows: not the station, a surface or the Mars side of a voyage.
+    if (st.phase === 'flight' || st.phase === 'voyage')
+      this.flightTrack.record(realDtS, this.live.origin ? null : this.live);
+    else if (st.phase === 'proximity' || st.phase === 'surface')
+      this.flightTrack.record(realDtS, null);
+  }
+
+  /** Whether the finished flight can be replayed, with a reason if not. */
+  replayAvailability(): { ok: boolean; reason?: string } {
+    if (this.state.phase !== 'debrief')
+      return { ok: false, reason: 'Replays are available after the flight, from the debrief.' };
+    return this.replay.availability();
+  }
+
+  /** Starts replaying the finished flight (shown in the Flight view). */
+  startReplay(speed?: ReplaySpeed): { ok: boolean; reason?: string } {
+    const check = this.replayAvailability();
+    if (!check.ok) return check;
+    this.replay.start(speed);
+    return { ok: true };
+  }
+
+  private clearTrack(): void {
+    this.replay.stop();
+    this.flightTrack.clear();
+  }
+
+  private advance(realDtS: number): void {
     const st = this.state;
     if (st.phase === 'proximity') return this.updateProximity(realDtS);
     if (st.phase === 'surface') return this.updateSurface(realDtS);

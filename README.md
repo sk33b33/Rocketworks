@@ -114,6 +114,11 @@ Current progress is tracked in `docs/STATUS.md`.
 - Meet the terms before the deadline to get paid. Late or failed contracts pay nothing and cost reputation. Reusing recovered hardware keeps more of the payout.
 - Once the station mission has been flown, crew rotation contracts appear: fly 2–4 crew to the station and hand them over. A better reputation brings more offers each month (up to five).
 
+**Photo mode and replays (Stage 14):**
+
+- Press **P** or the _Photo_ button (top bar) anywhere: the interface hides, drag (or the arrow keys) orbits the camera around what's in the middle of the view, the wheel or +/− zooms, and _Take photo_ saves a PNG. The simulation keeps running; Space still pauses a flight. Esc or _Exit_ brings the interface back.
+- After a flight, _Watch replay_ in the debrief plays it back in the Flight view as you watched it, time warp included: play/pause, 1–64× speed, a seek bar, and the chase, orbit and map cameras. _Back to debrief_ when done. The station, the Moon's surface and the Mars side of a voyage aren't recorded.
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:
