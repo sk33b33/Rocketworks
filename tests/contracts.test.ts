@@ -8,6 +8,7 @@ import {
   contractKindsAvailable,
   generateOffers,
   initialEconomy,
+  offersFor,
   orbitRaiseDvMS,
   refreshBoard,
   settleContract,
@@ -15,9 +16,15 @@ import {
   type EconomyState,
   type FlightContract,
 } from '../src/economy/contracts';
-import { canAfford, GRANT_CREDITS, grantsBetween, periodOf } from '../src/economy/treasury';
+import {
+  canAfford,
+  GRANT_CREDITS,
+  grantsBetween,
+  MAX_GRANT_PERIODS,
+  periodOf,
+} from '../src/economy/treasury';
 import { judgeContract, NO_PROGRESS } from '../src/flight/flightOutcome';
-import { FlightRuntime } from '../src/flight/flightRuntime';
+import { FlightRuntime, separationOffset } from '../src/flight/flightRuntime';
 import { orbitalElements } from '../src/flight/orbitMath';
 import type { FlightRecord } from '../src/launch/flightRecord';
 import type { LaunchContext } from '../src/launch/launchRuntime';
@@ -81,6 +88,8 @@ describe('treasury', () => {
     expect(grantsBetween(10, 20)).toBe(0);
     expect(grantsBetween(29, 31)).toBe(GRANT_CREDITS);
     expect(grantsBetween(0, 95)).toBe(3 * GRANT_CREDITS);
+    // Long waits (a Mars window, a Mars flight) pay at most half a year of grants.
+    expect(grantsBetween(0, 900)).toBe(MAX_GRANT_PERIODS * GRANT_CREDITS);
     expect(grantsBetween(95, 10)).toBe(0);
     expect(canAfford(100_000, 100_000)).toBe(true);
     expect(canAfford(99_999, 100_000)).toBe(false);
@@ -103,7 +112,12 @@ describe('contract board', () => {
     expect(
       contractKindsAvailable({ completedMissionIds: ['orbital-flight'], hasMarsBase: false }),
     ).toEqual(['satellite']);
-    expect(contractKindsAvailable(CTX)).toEqual(['satellite', 'resupply', 'lunar-depot']);
+    expect(contractKindsAvailable(CTX)).toEqual([
+      'satellite',
+      'resupply',
+      'crew-rotation',
+      'lunar-depot',
+    ]);
     // Tanker runs need the plant on Mars.
     const mars = { completedMissionIds: [...STORY, 'mars-cargo'], hasMarsBase: true };
     expect(contractKindsAvailable(mars)).toContain('mars-tanker');
@@ -114,7 +128,12 @@ describe('contract board', () => {
     const a = generateOffers(7, CTX, 20);
     expect(generateOffers(7, CTX, 20)).toEqual(a);
     expect(generateOffers(8, CTX, 20)).not.toEqual(a);
-    expect(a).toHaveLength(4);
+    // More clients call as reputation grows.
+    expect(a).toHaveLength(3);
+    expect(offersFor(20)).toBe(3);
+    expect(offersFor(40)).toBe(4);
+    expect(offersFor(80)).toBe(5);
+    expect(generateOffers(7, CTX, 80)).toHaveLength(5);
     for (let period = 0; period < 30; period++)
       for (const c of generateOffers(period, CTX, 20)) {
         expect(c.payout).toBeGreaterThan(0);
@@ -230,6 +249,11 @@ describe('judging contract flights', () => {
     expect(
       judgeContract(resupply, { ...NO_PROGRESS, docking: { ...docked, tasksDone: false } }).met,
     ).toBe(false);
+    const rotation = { ...resupply, kind: 'crew-rotation' as const };
+    expect(judgeContract(rotation, { ...NO_PROGRESS, docking: docked })).toMatchObject({
+      met: true,
+      detail: expect.stringMatching(/crew/),
+    });
     const tanker = { ...sat, kind: 'mars-tanker' as const, targetAltKm: null };
     const r = judgeContract(tanker, NO_PROGRESS, {
       launchDay: 1_020,
@@ -521,6 +545,19 @@ describe('contract flights', () => {
     expect(records[0]).toMatchObject({ result: 'success', credited: true });
     expect(records[0]!.contract).toMatchObject({ contractId: 'L1', met: true });
   }, 240_000);
+});
+
+describe('released satellites', () => {
+  it('pull ahead after the separation push, climb, then drift behind', () => {
+    const r = 6_371_000 + 800_000;
+    expect(separationOffset(0, r)).toEqual({ up: 0, along: 0 });
+    const soon = separationOffset(60, r);
+    expect(soon.along).toBeGreaterThan(0);
+    const period = 2 * Math.PI * Math.sqrt(r ** 3 / 3.986004418e14);
+    const half = separationOffset(period / 2, r);
+    expect(half.up).toBeGreaterThan(1_000);
+    expect(separationOffset(period, r).along).toBeLessThan(-5_000);
+  });
 });
 
 describe('economy saves', () => {

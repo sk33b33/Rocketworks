@@ -12,12 +12,14 @@ import { STARTING_TREASURY_CREDITS, grantsBetween, periodOf, PERIOD_DAYS } from 
  * from a seed per 30-day period, so it is the same on every reload. Pure functions; game values.
  */
 
-export type ContractKind = 'satellite' | 'resupply' | 'lunar-depot' | 'mars-tanker';
+export type ContractKind =
+  'satellite' | 'resupply' | 'crew-rotation' | 'lunar-depot' | 'mars-tanker';
 
 /** The (hidden) mission each kind of contract is flown as. */
 export const CONTRACT_MISSION: Record<ContractKind, string> = {
   satellite: 'contract-satellite',
   resupply: 'contract-resupply',
+  'crew-rotation': 'contract-crew-rotation',
   'lunar-depot': 'contract-lunar-depot',
   'mars-tanker': 'contract-mars-tanker',
 };
@@ -25,6 +27,7 @@ export const CONTRACT_MISSION: Record<ContractKind, string> = {
 export const CONTRACT_KIND_LABELS: Record<ContractKind, string> = {
   satellite: 'Satellite deployment',
   resupply: 'Station resupply',
+  'crew-rotation': 'Station crew rotation',
   'lunar-depot': 'Lunar depot cargo',
   'mars-tanker': 'Mars tanker run',
 };
@@ -33,6 +36,7 @@ export const CONTRACT_KIND_LABELS: Record<ContractKind, string> = {
 const UNLOCKED_BY: Record<ContractKind, string> = {
   satellite: 'orbital-flight',
   resupply: 'station-docking',
+  'crew-rotation': 'station-docking',
   'lunar-depot': 'lunar-landing',
   'mars-tanker': 'mars-cargo',
 };
@@ -84,7 +88,9 @@ export interface EconomyState {
 
 export const STARTING_REPUTATION = 20;
 const MAX_HISTORY = 12;
-const OFFERS_PER_BOARD = 4;
+/** Offers on a board: more clients call as the program's reputation grows (3 to 5). */
+export const offersFor = (reputation: number): number =>
+  3 + (reputation >= 35 ? 1 : 0) + (reputation >= 70 ? 1 : 0);
 
 export function initialEconomy(treasury = STARTING_TREASURY_CREDITS): EconomyState {
   return {
@@ -126,6 +132,7 @@ const CLIENTS: Record<ContractKind, readonly string[]> = {
     'Aurora Science Consortium',
   ],
   resupply: ['Orbital Station Partners', 'Low Orbit Research Office'],
+  'crew-rotation': ['Orbital Station Partners', 'Helios Research Institute'],
   'lunar-depot': ['Selene Logistics', 'Cislunar Freight Co.'],
   'mars-tanker': ['Red Dust Holdings', 'Ares Fuel Cooperative'],
 };
@@ -169,6 +176,16 @@ function makeOffer(
         deadlineDays: 45 + Math.round(rand() * 3) * 15,
       };
     }
+    case 'crew-rotation':
+      return {
+        ...base,
+        title: 'Fly a relief crew to the orbital station and bring the old crew home',
+        payloadId: 'none',
+        payout: round5k(230_000 * boost),
+        repReward: 7,
+        repPenalty: 12,
+        deadlineDays: 45 + Math.round(rand() * 2) * 15,
+      };
     case 'resupply':
       return {
         ...base,
@@ -212,7 +229,7 @@ export function generateOffers(period: number, ctx: BoardContext, reputation: nu
   const rand = mulberry32(hashString(`board:${period}`));
   const day = period * PERIOD_DAYS;
   const offers: Contract[] = [];
-  for (let i = 0; i < OFFERS_PER_BOARD; i++) {
+  for (let i = 0; i < offersFor(reputation); i++) {
     const kind = kinds[Math.floor(rand() * kinds.length)]!;
     offers.push(makeOffer(kind, rand, `C${period}-${i + 1}`, day, reputation));
   }

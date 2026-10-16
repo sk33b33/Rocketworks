@@ -13,6 +13,7 @@ import { findZoneAt, isLand, missDistanceM, type LandingZone } from './landingZo
 import { localFrame } from './orbitMath';
 import type { LunarProgress } from '../moon/lunarFlight';
 import type { MarsProgress } from '../mars/marsFlight';
+import type { Vec2 } from './orbitMath';
 import type { ContractFlightResult, FlightContract } from '../economy/contracts';
 
 /*
@@ -68,7 +69,15 @@ export interface FlightProgress {
   /** Mars missions: the voyage and landing. */
   readonly mars?: MarsProgress;
   /** Satellite contracts: the release (apsides in km, inside the client's tolerance). */
-  readonly release?: { readonly apoKm: number; readonly periKm: number; readonly ok: boolean };
+  readonly release?: {
+    readonly apoKm: number;
+    readonly periKm: number;
+    readonly ok: boolean;
+    /** Where and when it was released (Earth-centred), to keep drawing it on its orbit. */
+    readonly r?: Vec2;
+    readonly v?: Vec2;
+    readonly tS?: number;
+  };
 }
 
 export interface DockingSummary {
@@ -231,6 +240,7 @@ export const CREDITABLE_IN_FLIGHT = new Set([
   'mars-crewed',
   'contract-satellite',
   'contract-resupply',
+  'contract-crew-rotation',
   'contract-lunar-depot',
   'contract-mars-tanker',
 ]);
@@ -251,6 +261,7 @@ export function objectivesFor(
     case 'contract-satellite':
       return ['orbit', 'sat-release', 'deorbit', 'reentry', 'landing'];
     case 'contract-resupply':
+    case 'contract-crew-rotation':
       return ['orbit', 'rendezvous', 'dock', 'tasks', 'deorbit', 'reentry', 'landing'];
     case 'contract-lunar-depot':
       return ['orbit', ...leo, 'tli', 'lunar-orbit', 'depot', 'earth-return', 'reentry', 'landing'];
@@ -305,6 +316,7 @@ export function orbitalGoalsMet(missionId: string, p: FlightProgress): boolean {
     case 'contract-satellite':
       return !!p.release?.ok;
     case 'contract-resupply':
+    case 'contract-crew-rotation':
       return !!p.docking?.grade && !!p.docking.tasksDone;
     case 'contract-lunar-depot':
       return !!l?.refuelDepot && !!l.earthReturn;
@@ -334,6 +346,7 @@ const INCOMPLETE: Record<string, string> = {
   'mars-crewed': 'land on Mars, finish the surface tasks, and fly the crew home.',
   'contract-satellite': 'release the satellite in the requested orbit.',
   'contract-resupply': 'dock with the station and finish the docked tasks.',
+  'contract-crew-rotation': 'dock with the station and hand over the crew.',
   'contract-lunar-depot': 'unload at the lunar depot and fly home.',
   'contract-mars-tanker': 'land at the plant and unload the propellant.',
 };
@@ -355,8 +368,17 @@ export function judgeContract(
           : 'The satellite was not released in the requested orbit.',
       };
     }
-    case 'resupply': {
+    case 'resupply':
+    case 'crew-rotation': {
       const ok = !!p.docking?.grade && !!p.docking.tasksDone;
+      if (c.kind === 'crew-rotation')
+        return {
+          contractId: c.id,
+          met: ok,
+          detail: ok
+            ? 'Relief crew handed over at the station.'
+            : 'The relief crew never reached the station.',
+        };
       return {
         contractId: c.id,
         met: ok,

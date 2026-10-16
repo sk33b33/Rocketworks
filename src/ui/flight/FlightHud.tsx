@@ -5,6 +5,7 @@ import { launchRuntime } from '../../app/launchBinding';
 import { useShortcut } from '../useShortcut';
 import { flownFromMars } from '../../flight/flightRuntime';
 import { AutopilotPanel } from './AutopilotPanel';
+import { findMission } from '../../missions/missionCatalog';
 import { ContractPanel } from './ContractPanel';
 import { FlightControlsBar } from './FlightControlsBar';
 import { FlightDebrief } from './FlightDebrief';
@@ -119,11 +120,15 @@ export function FlightHud() {
             <MarsPanel snap={snap} />
           </section>
         )}
-        {snap.station && !snap.lunar && !snap.mars && snap.phase === 'flight' && (
-          <section data-panel="station">
-            <StationPanel snap={snap} />
-          </section>
-        )}
+        {snap.station &&
+          !snap.lunar &&
+          !snap.mars &&
+          snap.phase === 'flight' &&
+          findMission(snap.context?.outcome.missionId ?? '')?.destination === 'station' && (
+            <section data-panel="station">
+              <StationPanel snap={snap} />
+            </section>
+          )}
         <section data-panel="ship">
           <VehiclePanel snap={snap} />
         </section>

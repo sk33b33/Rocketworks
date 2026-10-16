@@ -80,7 +80,9 @@ This is a suggested structure, not a mandate. Adapt it to the existing repositor
 ## Core domain concepts
 
 ### RocketPartDefinition
+
 Fields should include:
+
 - `id`, `name`, `description`
 - `category`
 - `dryMassKg`, `costCredits`
@@ -92,6 +94,7 @@ Fields should include:
 - tags and mission capability flags
 
 ### RocketPartInstance
+
 - unique instance ID
 - part definition ID
 - parent instance ID or root marker
@@ -100,6 +103,7 @@ Fields should include:
 - condition / wear when recovery is implemented
 
 ### RocketBlueprint
+
 - schema version
 - blueprint ID and name
 - ordered part instances and attachment links
@@ -107,6 +111,7 @@ Fields should include:
 - optional livery/paint choices
 
 ### GameState
+
 - current location
 - active stage/unlocks
 - credits/research
@@ -118,6 +123,7 @@ Fields should include:
 ## Scene lifecycle
 
 Use a scene registry and a lifecycle contract such as:
+
 - `create(context)`
 - `enter(previousLocation)`
 - `update(deltaSeconds)`
@@ -129,6 +135,7 @@ A location transition must preserve domain state and dispose of scene-only resou
 ## Rocket rendering
 
 The same blueprint should drive:
+
 1. The factory assembly display.
 2. Vehicle readiness statistics.
 3. The rocket shown at the launch pad.

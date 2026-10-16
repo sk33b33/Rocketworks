@@ -7,6 +7,7 @@ Act as a senior game engineer, Three.js technical artist, simulation designer, U
 ## Product vision
 
 The player develops a reusable crew-capable heavy-lift rocket inspired by the general form of Starship-style launch systems, without copying logos or requiring exact engineering accuracy. They start in a factory, build a rocket from individual components, prepare a mission in Mission Control, travel to the launch pad, launch from Earth, and progressively unlock:
+
 - Low Earth orbit
 - An ISS-like orbital station for rendezvous and docking
 - Earth orbit / free flight
@@ -51,6 +52,7 @@ Follow `docs/ROADMAP.md` exactly. The first visible playable deliverable is **St
 ## UX and navigation
 
 The user must always be able to understand where they are and what to do next. Provide a persistent location selector with:
+
 - **Rocket Factory**
 - **Mission Control**
 - **Launch Pad**
@@ -78,10 +80,11 @@ Show the current location, stage objective, progress, warnings, and next action.
 ## Completion report
 
 At the end of each stage, report:
+
 - Implemented
 - How to run
 - How to test
 - Known limitations
 - Files changed
 - Recommended next stage
-Update `docs/STATUS.md`.
+  Update `docs/STATUS.md`.

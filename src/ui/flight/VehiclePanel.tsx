@@ -71,7 +71,7 @@ export function VehiclePanel({ snap }: { snap: FlightSnapshot }) {
         {s.ref !== 'moon' && (
           <>
             <dt>Angle of attack</dt>
-            <dd>{fmt(s.angleOfAttackDeg)}°</dd>
+            <dd>{s.phase === 'flight' ? `${fmt(s.angleOfAttackDeg)}°` : '—'}</dd>
             <dt>Heating</dt>
             <dd className={heat > 300 ? 'tone-warn' : undefined}>
               {fmt(heat)} kW/m²{' '}

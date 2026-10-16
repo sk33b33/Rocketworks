@@ -94,7 +94,9 @@ describe('mission catalog', () => {
     for (const m of MISSIONS) {
       // Mars flights carry the propellant plant (cargo) or the crew's supplies (round trip);
       // contract flights carry the client's payload.
-      if (m.contract) expect(m.payloadIds).not.toContain('none');
+      // (A crew rotation carries only its crew.)
+      if (m.contract)
+        expect(m.contract === 'crew-rotation' || !m.payloadIds.includes('none')).toBe(true);
       else if (m.mars)
         expect(m.payloadIds).toEqual([m.mars.plantPayloadId ?? m.mars.suppliesPayloadId]);
       else expect(m.payloadIds).toContain('none');

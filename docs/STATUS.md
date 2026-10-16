@@ -1,9 +1,11 @@
 # Project Status
 
 ## Current stage
-**Stage 12: Contracts and the treasury.** Complete and waiting for review.
+
+**Stage 13: Economy balance and polish.** Complete. The approved run continues with Stages 14–17 (photo mode and replays, EVA, audio, manoeuvre planner).
 
 ## Completed
+
 - **Stage 0–2:** foundation; Rocket Factory with modular assembly; validation, certification, design library, progression.
 - **Stage 3:** Mission Control: missions, crew, payloads, weather, a go/no-go poll and commitment.
 - **Stage 4:** Launch Pad, countdown and a fixed-step 2D ascent with seeded failures.
@@ -15,6 +17,7 @@
   - the orbit and ship HUD, objectives and debrief.
 
   Orbital missions hand off from the pad at orbit insertion.
+
 - **Stage 6:**
   - **Booster recovery planning** (`src/recovery/recoveryPlan.ts`):
     - Three options: **tower catch** (return to launch site), **ocean platform** landing downrange, or **expend**.
@@ -31,17 +34,17 @@
     - Assisted results with the reference design: catches within about 1 m at 1.6 m/s; platform landings at the deck centre.
   - **Replay in the launch runtime:**
     - After the ascent, a `recovery` phase replays the booster from staging.
-    - Controls: pause, warp up to 10×, and *Skip replay* (the assisted result is simulated instantly and marked as such).
-    - *Fly the landing myself*: from below 9 km the player flies the landing burn. Shift/Ctrl or a slider set throttle (0–⅓ runs one engine, above that three); A/D tilt the thrust; it flies in real time.
+    - Controls: pause, warp up to 10×, and _Skip replay_ (the assisted result is simulated instantly and marked as such).
+    - _Fly the landing myself_: from below 9 km the player flies the landing burn. Shift/Ctrl or a slider set throttle (0–⅓ runs one engine, above that three); A/D tilt the thrust; it flies in real time.
     - Afterwards the debrief opens (suborbital) or the orbit hand-off is offered (orbital), carrying the booster result.
   - **Landing ratings (S–D)** (`rating.ts`): miss distance, sink rate, drift and tilt against the safe limits. They apply to booster catches, platform landings and ship landings.
     - The ship's debrief shows its rating and whether it was flown manually (the landing program unused below 5 km).
   - **Fleet and reuse** (`src/fleet/fleet.ts`):
     - Recovered boosters (B-n) and ships (S-n) join the fleet with flight count, wear and their last rating.
     - Wear grows with each flight, more after rough landings and heavy heating, and adds mission risk. A vehicle retires at 100% wear.
-    - *Refurbish* resets wear at a one-off surcharge on the next flight; *Scrap* (with confirmation) removes a vehicle.
+    - _Refurbish_ resets wear at a one-off surcharge on the next flight; _Scrap_ (with confirmation) removes a vehicle.
     - Vehicles match designs by a part-tree signature per stage, so editing only the ship keeps the booster reusable.
-    - Reflights cost 12% of a new build plus a wear-dependent share; the *Rapid Reuse* tech lowers that further.
+    - Reflights cost 12% of a new build plus a wear-dependent share; the _Rapid Reuse_ tech lowers that further.
     - A reflown vehicle that is lost leaves the fleet.
   - **Per-mission budget:**
     - The program budget now caps each mission's hardware cost (new builds plus reflights) in the Mission Control poll, under a new "Recovery & budget" station.
@@ -50,8 +53,8 @@
     - Booster recovery choice (Automatic, or an option disabled with its reason), booster and ship hardware (new build or matching fleet vehicles, with cost and wear).
     - Mission hardware cost against the budget, and the fleet list.
   - **Progression:**
-    - New milestones: *Caught by the tower* (+2 RP), *Downrange landing*, *Ship recovered*, *Hands on the stick* (manual landing rated A or better, +1 RP and +25,000 cr), *Flight-proven* (recover reflown hardware).
-    - New tech: *Rapid Reuse* and *Fleet Operations* (+75,000 cr budget).
+    - New milestones: _Caught by the tower_ (+2 RP), _Downrange landing_, _Ship recovered_, _Hands on the stick_ (manual landing rated A or better, +1 RP and +25,000 cr), _Flight-proven_ (recover reflown hardware).
+    - New tech: _Rapid Reuse_ and _Fleet Operations_ (+75,000 cr budget).
   - **Visuals:**
     - The pad scene replays the booster: engines light from the centre out, grid fins unfold, legs deploy.
     - The tower arms wait open and close on capture, then lower the booster onto the mount.
@@ -64,11 +67,11 @@
   - **The station** (`src/station/stationOrbit.ts`): a fictional crewed outpost in a circular 400 km orbit in the same plane as the flight model.
     - Its position is set when the ship first reaches orbit, so the transfer window opens within about one orbit.
     - Helpers convert between the inertial frame and the station's local frame (LVLH: radial, along-track, cross-track).
-  - **Assisted rendezvous** (`rendezvous.ts`), a new *Rendezvous with station* autopilot program:
+  - **Assisted rendezvous** (`rendezvous.ts`), a new _Rendezvous with station_ autopilot program:
     - Waits for the phase angle, then a Hohmann-style transfer burn up to the station's altitude.
     - Closes in with Clohessy–Wiltshire targeting to a hold point 2 km ahead, re-planned every minute.
     - Holds there; proximity operations become available inside 3.5 km and below 3 m/s relative.
-    - The Flight HUD shows a *Station* panel (range, relative speed, time to the burn) and the station's position on the map and orbit inset.
+    - The Flight HUD shows a _Station_ panel (range, relative speed, time to the burn) and the station's position on the map and orbit inset.
   - **Proximity operations** (`proximity.ts`, `proximitySession.ts`), simulated in 3D in the station frame with the Clohessy–Wiltshire equations at fixed steps:
     - RCS translation (0.12 m/s², a 40 m/s budget) and rotation; attitude hold and port alignment.
     - An approach corridor (12° cone) and a 200 m keep-out sphere with a range-dependent closing-speed limit. Leaving the corridor or closing too fast inside it counts as a violation and warns.
@@ -81,10 +84,10 @@
     - **Abort** (B) backs off to a safe point 340 m out and holds.
     - Time warp is limited to 10× in free flight near the station, and up to 1000× while docked.
   - **Docked tasks:** a hatch leak check (30 min) gates a science run (4 h), crew handover (3 h, with crew aboard) and a cargo transfer (2 h, with cargo).
-    - *Undock* is enabled once all tasks are complete. Undocking pushes the ship gently out along the port axis.
-    - *Depart* is enabled beyond 300 m and hands back to Flight / Orbit for the deorbit and landing.
+    - _Undock_ is enabled once all tasks are complete. Undocking pushes the ship gently out along the port axis.
+    - _Depart_ is enabled beyond 300 m and hands back to Flight / Orbit for the deorbit and landing.
   - **Mission rules** (`flightOutcome.ts`):
-    - The *Station Crew Rotation* mission needs a docking adapter on the ship.
+    - The _Station Crew Rotation_ mission needs a docking adapter on the ship.
     - Its objectives are reach orbit, rendezvous, dock, tasks done, and land safely.
     - It's credited only with a completed docking and tasks, and the debrief shows a docking line (grade, manual, bounces, collisions, violations).
   - **Orbital Station location:**
@@ -93,7 +96,7 @@
     - Cameras: chase (1), docking camera with reticle (2), and a station view (3).
     - The HUD has an approach panel (range, closing speed, offsets, angles, corridor/keep-out state) and RCS pad controls for touch and mouse.
     - The location is unlocked by the orbital shakedown, and shows an explanatory empty state when no ship is nearby.
-  - **Progression:** a new *First docking* milestone (+1 RP). The Moon stays locked.
+  - **Progression:** a new _First docking_ milestone (+1 RP). The Moon stays locked.
   - **Save:** flight records carry the docking summary, parsed with validation. The format stays v5; older records simply have none.
 
 - **Stage 8:**
@@ -104,15 +107,15 @@
     - Coasting uses an adaptive step (a fraction of the local dynamical time), and time warp goes up to 10,000× in deep space (1,000× near Earth or the Moon, less near burns).
     - A fast allocation-free propagator predicts paths for the guidance and the map with the same integrator the flight uses.
   - **Assisted transfer guidance** (`lunarTransfer.ts`), new autopilot programs:
-    - *Trans-lunar injection*: plans the burn from the parking orbit by scanning departure times with numerical predictions (about 3.1 km/s, arriving in about 2.7 days), then flies it and makes up to two mid-course corrections (a few m/s each).
-    - *Lunar orbit insertion*: a retrograde burn centred on closest approach (lands in about a 200 × 110 km orbit), engaged automatically on arrival for landing missions.
-    - *Return to Earth*: plans trans-Earth injection from lunar orbit (or coasts home on the flyby's free return) with corrections toward an aerocapture perigee.
-    - *Aerocapture*: one braking pass through the upper atmosphere at about 11 km/s, banking lift up or down (bisection on predicted exit apogee) into a ~300 km orbit, then the regular Circularize program. The usual Deorbit to target, re-entry and landing programs bring the ship home.
+    - _Trans-lunar injection_: plans the burn from the parking orbit by scanning departure times with numerical predictions (about 3.1 km/s, arriving in about 2.7 days), then flies it and makes up to two mid-course corrections (a few m/s each).
+    - _Lunar orbit insertion_: a retrograde burn centred on closest approach (lands in about a 200 × 110 km orbit), engaged automatically on arrival for landing missions.
+    - _Return to Earth_: plans trans-Earth injection from lunar orbit (or coasts home on the flyby's free return) with corrections toward an aerocapture perigee.
+    - _Aerocapture_: one braking pass through the upper atmosphere at about 11 km/s, banking lift up or down (bisection on predicted exit apogee) into a ~300 km orbit, then the regular Circularize program. The usual Deorbit to target, re-entry and landing programs bring the ship home.
   - **Refuelling** (`lunarRules.ts`, `lunarFlight.ts`):
     - Mission Control's Manifest has a Refuelling section: tanker flights in low Earth orbit (5 × 9,000 cr for the reference ship) and a top-up from a fictional pre-positioned depot in lunar orbit (60,000 cr).
     - Readiness checks the Δv of each leg after orbit (flyby trip 3,650 m/s; landing: outbound 4,250 m/s and surface + home 5,150 m/s) against the refuelling bought; refuelling is included in the mission cost and budget.
-    - In flight, *Refuel in orbit* (about 6 h) and *Top up at the lunar depot* (about 3 h) are timed operations with time warp.
-    - New tech: *Heavy Tankers* (fewer tanker flights) and *Lunar Logistics* (cheaper depot top-ups).
+    - In flight, _Refuel in orbit_ (about 6 h) and _Top up at the lunar depot_ (about 3 h) are timed operations with time warp.
+    - New tech: _Heavy Tankers_ (fewer tanker flights) and _Lunar Logistics_ (cheaper depot top-ups).
   - **Landing sites** (`lunarSites.ts`): four fictional near-side sites (Sea of Calm, Aurora Highlands, Halcyon Crater Rim, Lantern Ridge) with deterministic terrain: undulations, crater fields and boulder cells. Hazard ratings match the terrain: 8%, 27%, 72% and 21% of the ground within 500 m of the target is steeper than 9°.
   - **Descent and landing** (`lunarLanding.ts`):
     - A small descent-orbit burn lowers the low point to 15 km ahead of the site.
@@ -120,8 +123,8 @@
     - The approach runs on high-mounted landing thrusters (below 3 km; fine throttle because the main engines can't hover in lunar gravity) and steers to the flattest spot within 400 m (hazard avoidance). Then a terminal descent at ~1.5 m/s.
     - Take over at any time (button or W/S/Shift/Ctrl); flying the last 500 m without the program counts as a manual landing.
     - Touchdown limits: ≤ 3 m/s down (≤ 8 m/s is a hard landing with damage), ≤ 2 m/s sideways, tilt plus ground slope ≤ 12°. Beyond those the ship tips over (lost; crew assumed rescued) or crashes. Landings are rated S–D.
-  - **Surface and ascent:** timed surface tasks (safing gates a site survey, geology samples, and setting up experiments or unloading the surface science package), then *Lift off* under an assisted ascent back to lunar orbit (also usable to abort a descent).
-  - **Mission rules:** the Lunar Flyby is now playable and credited (refuel, inject, fly by, aerocapture, land); the Lunar Landing unlocks after it. New lunar objectives, debrief lines, a lunar summary on flight records, and milestones *Around the Moon* (+2 RP), *Boots on the Moon* (+3 RP, +50,000 cr) and *Pinpoint touchdown* (manual lunar landing rated A or better, +1 RP, +25,000 cr).
+  - **Surface and ascent:** timed surface tasks (safing gates a site survey, geology samples, and setting up experiments or unloading the surface science package), then _Lift off_ under an assisted ascent back to lunar orbit (also usable to abort a descent).
+  - **Mission rules:** the Lunar Flyby is now playable and credited (refuel, inject, fly by, aerocapture, land); the Lunar Landing unlocks after it. New lunar objectives, debrief lines, a lunar summary on flight records, and milestones _Around the Moon_ (+2 RP), _Boots on the Moon_ (+3 RP, +50,000 cr) and _Pinpoint touchdown_ (manual lunar landing rated A or better, +1 RP, +25,000 cr).
   - **Moon location:**
     - A procedural Moon (original texture: maria, craters, rays) with colour-coded site markers, Earth in the sky at its true angular size, and a high-detail terrain patch with instanced boulders at the chosen site (from the same terrain the physics uses).
     - Cameras: chase, a landing-site ground camera, and a wide Moon view. Landing-thruster dust near the ground.
@@ -135,8 +138,8 @@
     - The runtime snapshot holds the full flight state: the ship, programs and guidance, proximity operations, the lunar plan, surface tasks and the station or Moon ephemeris. A restored flight continues bit-for-bit, as the unit tests show.
     - After a reload the flight resumes **paused** at the right location, with a notice. It resumes only if its mission is still committed. A launch still climbing from the pad can't resume: a notice explains that, and the mission stays committed.
     - A damaged or foreign flight save is discarded with a notice. A new launch is refused while a saved flight is still in progress.
-  - **Settings** (top-bar *Settings*; save format v7): *Reduce motion* (defaults to the OS setting; stops camera shake, idle spins, pulsing markers and CSS animations), *Interface size* (90–125%; scales the HUD, never the 3D view), random failures, *Show performance stats*, and *Show program overview*.
-  - **Onboarding:** a first-run *Program overview* (factory → mission control → pad → orbit → station → Moon) and a top-bar **Next** chip with the single most useful next action anywhere in the game (`src/progression/nextStep.ts`, unit-tested). Clicking it goes there.
+  - **Settings** (top-bar _Settings_; save format v7): _Reduce motion_ (defaults to the OS setting; stops camera shake, idle spins, pulsing markers and CSS animations), _Interface size_ (90–125%; scales the HUD, never the 3D view), random failures, _Show performance stats_, and _Show program overview_.
+  - **Onboarding:** a first-run _Program overview_ (factory → mission control → pad → orbit → station → Moon) and a top-bar **Next** chip with the single most useful next action anywhere in the game (`src/progression/nextStep.ts`, unit-tested). Clicking it goes there.
   - **Accessibility:** larger touch targets on coarse pointers; the flight notice now keeps clear of the scene toolbar at every width and interface size (it used to cover the flight controls).
   - **Performance:** an opt-in overlay (Settings or `?perf`) with fps, update and render time, draw calls, triangles and live GPU resources; it's also exposed as `window.__rocketworksPerf` for scripts. Procedural Earth, cloud and Moon textures are painted once and shared across revisits, and per-frame allocations were removed from the Moon scene. Measured headless, the simulation update costs about 0.1–0.4 ms a frame, and GPU resource counts stay flat (116 geometries, 24 textures) across repeated location cycles: no leaks.
   - **End-to-end tests** (`e2e/`, `npm run e2e`): Playwright runs against the production build with software WebGL. Every test fails on any console error. Coverage:
@@ -148,29 +151,29 @@
     - a damaged flight save being discarded with a notice.
 
 - **Stage 10 (Mars cargo missions):**
-  - **Mission:** *Mars Cargo Lander* (`mars-cargo`) unlocks after the Lunar Landing. It is uncrewed, carries the 40 t propellant plant in a cargo bay, needs about 9,300 m/s with refuelling in Earth orbit, and pays 8 RP and 120,000 cr. A crewed return is left for a later stage.
+  - **Mission:** _Mars Cargo Lander_ (`mars-cargo`) unlocks after the Lunar Landing. It is uncrewed, carries the 40 t propellant plant in a cargo bay, needs about 9,300 m/s with refuelling in Earth orbit, and pays 8 RP and 120,000 cr. A crewed return is left for a later stage.
   - **Program calendar and launch windows** (`src/mars/solarSystem.ts`, `marsTransfer.ts`):
-    - The program now keeps a calendar (`progression.calendarDay`): each flight advances it by its duration (at least a day), and Mission Control's *Wait for Mars window* jumps to the next window.
+    - The program now keeps a calendar (`progression.calendarDay`): each flight advances it by its duration (at least a day), and Mission Control's _Wait for Mars window_ jumps to the next window.
     - Earth and Mars move on circular, coplanar orbits. A window opens every ~780 days (the first on day 240); the transfer takes about 7–9 months.
     - The Conditions and Manifest tabs show the window status, the injection Δv for today, and the arrival speed. Outside the window, the readiness poll is NO-GO with a fix button.
   - **Flight:**
-    - In orbit, *Refuel in orbit*, then the *Trans-Mars injection* program plans and flies the departure.
+    - In orbit, _Refuel in orbit_, then the _Trans-Mars injection_ program plans and flies the departure.
     - At Earth's sphere of influence the flight hands over to a Sun-centred cruise (patched conics with universal-variable Kepler propagation). Warp goes up to 1,000,000×.
-    - *Mars cruise* makes three course corrections and an approach correction that targets a −12° entry; corrections usually total 7–60 m/s.
+    - _Mars cruise_ makes three course corrections and an approach correction that targets a −12° entry; corrections usually total 7–60 m/s.
     - The new **Mars** location has a procedural Mars (original texture), four fictional landing sites with hazard and ice ratings, a site picker with terrain profile, and four cameras (chase, landing site, Mars, and a solar-system map with both orbits and the path).
   - **Entry and landing:**
-    - *Mars entry and landing* flies a lifting entry with a bank predictor-corrector, then a supersonic retro-burn, explicit guidance to a gate 500 m up, hazard avoidance and terminal descent.
+    - _Mars entry and landing_ flies a lifting entry with a bank predictor-corrector, then a supersonic retro-burn, explicit guidance to a gate 500 m up, hazard avoidance and terminal descent.
     - Take over below 500 m for a manual landing bonus. The touchdown limits are the same as on the Moon.
   - **Surface and base:**
     - Timed surface tasks run on the surface: safing, survey, unloading, deployment and a first production run.
-    - Completing the mission leaves a **propellant plant** in the progression (`progression.marsBase`). It accumulates propellant by program day according to the site's ice, and the *Ice mining* research makes 50% more.
-    - Milestones: *Red planet* and *Fuel on Mars*.
+    - Completing the mission leaves a **propellant plant** in the progression (`progression.marsBase`). It accumulates propellant by program day according to the site's ice, and the _Ice mining_ research makes 50% more.
+    - Milestones: _Red planet_ and _Fuel on Mars_.
   - **Saves:** save format v8 (calendar and Mars base; v7 → v8 migration). Flight autosave and resume cover the cruise, approach, entry and the Mars surface.
   - Flight-model helpers (`mainEngineThrust`, `aeroAcceleration`, `applyHeating`) were extracted unchanged so the Mars model can reuse them. A lunar-flight fingerprint confirmed that the results are identical.
 
 - **Stage 11 (crewed Mars round trip):**
-  - **Mission:** the *Mars Expedition* (`mars-crewed`) unlocks after the Mars Cargo Lander.
-    - It flies 2–4 crew and carries 8 t of *Mars expedition supplies*: consumables and a recycling kit, worth 4,000 crew-days of life support.
+  - **Mission:** the _Mars Expedition_ (`mars-crewed`) unlocks after the Mars Cargo Lander.
+    - It flies 2–4 crew and carries 8 t of _Mars expedition supplies_: consumables and a recycling kit, worth 4,000 crew-days of life support.
     - The trip takes about 960 days and pays 12 RP and 250,000 cr.
     - Mission Control needs a running propellant plant. Its Manifest forecasts the way home from a departure in today's window: arrival day, the return window and stay on Mars, the plant's stock by then against the propellant needed, and the Δv legs home on refilled tanks.
   - **Two-way transfers** (`src/mars/marsTransfer.ts`): the transfer solver, injection planner (`planInjection`) and cruise navigation work in both directions.
@@ -179,19 +182,19 @@
   - **On Mars:**
     - The crew lands next to the plant (site fixed).
     - Crew tasks run on the surface: safing, egress, a plant inspection EVA, connecting the propellant line, and a geology traverse.
-    - *Refuel from the plant* pumps up to 100 t a day, limited by the plant's stock and production. The line can only be connected within 2 km of the plant.
-    - *Wait for the window* skips ahead to the return window, and the pumping and tasks run on through the skip.
+    - _Refuel from the plant_ pumps up to 100 t a day, limited by the plant's stock and production. The line can only be connected within 2 km of the plant.
+    - _Wait for the window_ skips ahead to the return window, and the pumping and tasks run on through the skip.
   - **The way home:**
-    - *Lift off* engages the new *Mars ascent* program (`src/mars/marsAscent.ts`), which climbs to a ~200 km orbit for about 4.2 km/s.
-    - *Trans-Earth injection* is offered inside the return window. The cruise home makes the same course corrections, aimed at the aerocapture corridor.
+    - _Lift off_ engages the new _Mars ascent_ program (`src/mars/marsAscent.ts`), which climbs to a ~200 km orbit for about 4.2 km/s.
+    - _Trans-Earth injection_ is offered inside the return window. The cruise home makes the same course corrections, aimed at the aerocapture corridor.
     - Inside Earth's sphere of influence an analytic approach applies two corrections. About 400 km up, the normal Earth flight takes over (Flight / Orbit). The lunar return's aerocapture guidance flies the pass, then circularize, deorbit and landing as usual.
   - **Outcome and progression:**
     - The debrief credits the trip when the crew lands safely after every Mars goal.
     - Ending on Mars or in space counts as aborted, with the crew assumed rescued. A crash or breakup is fatal.
     - The plant's stock goes down by what the crew drew (`drawFromPlant`; saves keep the carried stock).
-    - New milestones: *Footprints in red dust* and *Home from Mars* (credits only, so research points stay below the tech tree's total).
+    - New milestones: _Footprints in red dust_ and _Home from Mars_ (credits only, so research points stay below the tech tree's total).
   - **UI:**
-    - Mars location: the way-home panel, crewed surface controls (plant line, return window, lift-off), and autopilot programs for each leg. A *Go to Flight / Orbit* prompt appears back at Earth.
+    - Mars location: the way-home panel, crewed surface controls (plant line, return window, lift-off), and autopilot programs for each leg. A _Go to Flight / Orbit_ prompt appears back at Earth.
     - Mission Control: the round-trip forecast card.
     - Long durations display in days.
   - **Saves:** flight saves carry the plant line and the return leg. Progression keeps the plant's carried stock as an optional field, so the save version stays 8.
@@ -202,13 +205,13 @@
     - First-time story rewards, milestone credits and contract payouts come in, and the program office adds 15,000 cr every 30 program days.
     - Mission Control refuses to commit a flight the treasury can't cover, and shows the balance before and after the flight. An empty treasury never ends the game.
     - The old "budget" stays as the per-design cost cap.
-  - **Contract board** (`src/economy/contracts.ts`, Mission Control → *Contracts*):
+  - **Contract board** (`src/economy/contracts.ts`, Mission Control → _Contracts_):
     - Four offers per 30-day period, seeded from the period, so they're the same on every reload.
     - Each kind is offered once its story mission has been flown:
-      - *satellite deployments* to 300–1,200 km (6–12 t);
-      - *station resupply*;
-      - *lunar depot cargo*;
-      - *Mars tanker runs* (these also need the plant).
+      - _satellite deployments_ to 300–1,200 km (6–12 t);
+      - _station resupply_;
+      - _lunar depot cargo_;
+      - _Mars tanker runs_ (these also need the plant).
     - Each offer has a client, payout, deadline and a reputation stake. Premium clients need reputation 40 or 60.
     - One contract at a time. Accepting it sets up the flight in Mission Control; cancelling costs half the reputation penalty.
   - **Rules:** reputation (0–100, starting at 20) raises payouts by up to 1.5×.
@@ -217,21 +220,36 @@
     - Story missions still pay only once; repeat flights earn through contracts.
   - **Contract flights** reuse existing flights through four hidden contract missions:
     - **Satellites:**
-      - The new *Raise orbit* autopilot program raises the apoapsis to the requested altitude, then circularizes up there.
-      - *Release the satellite* in the Contract panel works only within ±50 km on both apsides. The ship gets lighter by the satellite's mass.
+      - The new _Raise orbit_ autopilot program raises the apoapsis to the requested altitude, then circularizes up there.
+      - _Release the satellite_ in the Contract panel works only within ±50 km on both apsides. The ship gets lighter by the satellite's mass.
       - The ship can then come home to stay in the fleet.
     - **Resupply:** the station flow with an optional crew. It pays once the docked tasks are done.
-    - **Lunar depot cargo:** refuel in Earth orbit, fly to lunar orbit, and *Unload at the lunar depot*, which delivers the pallet and sells no propellant. Then fly home.
+    - **Lunar depot cargo:** refuel in Earth orbit, fly to lunar orbit, and _Unload at the lunar depot_, which delivers the pallet and sells no propellant. Then fly home.
     - **Mars tanker:** the cargo-lander flow, landing at the plant. The ship unloads its 60 t cargo tanks plus its leftover propellant into the plant, whose stock goes up.
   - **Judging:** the flight outcome judges each contract (`judgeContract`) and records it in the flight record. The debrief shows whether the terms were met, and the notice shows the payment and the flight cost.
   - **Saves:** save format v9. The v8 → v9 migration gives existing programs 400,000 cr plus 150,000 cr per mission already flown, and a little reputation. The board, the active contract and the contract history are parsed with validation.
 
+- **Stage 13 (economy balance and polish):**
+  - **Crew rotation contracts:** relief crews for the orbital station, offered once the station mission has been flown. They need 2–4 crew and pay more than resupply runs. They fly as the station flow and are judged on the docked handover.
+  - **Board size grows with reputation:** 3 offers below 35, 4 from 35, 5 from 70.
+  - **Grant cap:** one stretch of time pays at most six grants (half a year), so waiting for a Mars window or flying a long Mars mission is no longer a money machine.
+  - **Released satellites are drawn** (original procedural model):
+    - A small forward separation push sends the satellite ahead, then it climbs and drifts behind.
+    - Its position relative to the ship comes from the Clohessy–Wiltshire equations, not the ship's coarse integration at high warp.
+    - Far away it's drawn larger than life, as a visual aid.
+    - The Contract panel shows how far away it is.
+  - **Fixes:**
+    - The angle of attack reads "—" on the ground.
+    - The flight notice moves to the top of the view while a debrief is open, instead of overlapping it.
+    - The Station panel only shows on station missions.
+
 ## Assumptions (documented, reversible)
+
 - Flight physics is a simplified planar gameplay model: one orbital plane (the equator), no Earth rotation, an exponential atmosphere, lumped aerodynamics, and Sutton–Graves heating with gameplay heat capacities. The UI and footnotes say so; it is not a flight simulator.
 - Out-of-plane steering isn't simulated. Yaw is visual only, and bank only reduces in-plane lift (enough to steer re-entry range).
 - Geography is simplified: the launch coast is the only land on the ground track. Landing on the coast off-pad still recovers the ship; any gentle or hard contact on water is a crew-safe splashdown, but the ship is lost.
 - Assisted flight is on by default (the ship starts with Circularize engaged if the orbit isn't yet stable). Any manual input hands over without a jump.
-- A crew left in space via *End flight* is assumed rescued (the result is "flight ended", not credited). Breakup or a crash is fatal for the crew.
+- A crew left in space via _End flight_ is assumed rescued (the result is "flight ended", not credited). Breakup or a crash is fatal for the crew.
 - Flights resume paused after a reload. The ascent from the pad (and the booster replay) isn't resumable: it lasts minutes, and a mid-ascent snapshot would need the launch runtime's full state. The mission stays committed, so you roll out again.
 - The flight autosave is at most 30 s old if the browser is killed outright. Normal closes, reloads and tab switches save immediately.
 - A flight advances only while its location is active (the pad for the ascent, Flight / Orbit for the orbit), as in Stage 4.
@@ -262,7 +280,7 @@
   - The program calendar starts at 0 with the first flight. Older saves take their flight count as the day.
 - Economy:
   - All money values, grants, payouts and reputation effects are game values chosen for pacing, not real launch economics.
-  - The client tolerance for satellite orbits (±50 km) suits the assisted *Raise orbit* program, which lands within about 40 km of the target.
+  - The client tolerance for satellite orbits (±50 km) suits the assisted _Raise orbit_ program, which lands within about 40 km of the target.
   - A depot delivery run sells no propellant, so the ship comes home light enough for the aerocapture. A full depot top-up left the ship too heavy for it in testing.
   - Contracts are judged on the day the flight ends. A contract flight scrubbed on the pad keeps the contract.
 - Crewed round trips:
@@ -273,8 +291,14 @@
   - The Earth approach is analytic down to 400 km, then the normal Earth flight takes over. Earth's rotation and the Moon are ignored, as for other Earth flights.
 
 ## Checks (last run)
+
 - `npm run typecheck` (app and e2e), `npm run lint`, `npm run build`: pass.
-- `npm test`: 267 tests pass across 24 files. New in Stage 12 (`tests/contracts.test.ts`, plus save, mission and catalog updates):
+- `npm test`: 268 tests pass across 24 files. New in Stage 13: grant cap, board size by reputation, crew-rotation judging and offers, the satellite's separation motion.
+- Stage 13 e2e: 9 Playwright tests pass (about 7.5 min)
+- Headless Chromium smoke test, Stage 13 (manual script, not committed), with no console errors:
+  - With the station mission flown, the board offered three contracts at reputation 20, including crew rotations.
+  - A satellite contract (1,000 km) was flown: raised to 1,048 × 970 km, released, and drawn drifting off after release. The Contract panel showed the range (151 m after 40 s). Landed, paid; no Station panel on the contract flight.
+- Stage 12: `npm test`: 267 tests across 24 files. New in Stage 12 (`tests/contracts.test.ts`, plus save, mission and catalog updates):
   - grants per period; the Δv to raise an orbit;
   - board unlocks per story mission (and the plant for tankers); deterministic boards with sensible terms; reputation raising payouts; refresh each period without the active contract; one contract at a time; premium clients; cancelling;
   - settling: paid in time, late, failed, another contract's result ignored; expiry with grants when the calendar moves;
@@ -306,22 +330,22 @@
 - `npm run e2e`: 9 Playwright tests pass in headless Chromium (about 7.5 min with software WebGL). New in Stage 12: a contract accepted from the board sets up Mission Control, survives a reload, and cancelling it costs reputation. The Mars cruise resume test now waits for the paused clock before reading it; at 100,000× the displayed clock could lag the saved state by one frame.
 - Headless Chromium smoke test, Stage 12 (manual script, not committed), with no console errors:
   - The Program tab shows the treasury (400,000 cr, reputation 20). The Contracts board offered four satellite deployments, one of them premium (locked at reputation 20).
-  - Accepted *Deploy a navigation satellite to a 800 km orbit* (145,000 cr). The Manifest showed the cost (130,700 cr), the treasury after the flight and the contract pay. Committed on a cargo-bay design.
-  - In orbit, the Contract panel refused the release at 316 × 266 km. *Raise orbit* climbed to 836 × 770 km, then *Release the satellite*, deorbit, and the ship landed on the pad.
+  - Accepted _Deploy a navigation satellite to a 800 km orbit_ (145,000 cr). The Manifest showed the cost (130,700 cr), the treasury after the flight and the contract pay. Committed on a cargo-bay design.
+  - In orbit, the Contract panel refused the release at 316 × 266 km. _Raise orbit_ climbed to 836 × 770 km, then _Release the satellite_, deorbit, and the ship landed on the pad.
   - Debrief: mission success, contract terms met. Notice: contract paid +145,000 cr, flight cost 130,700 cr. Treasury 414,300 cr, reputation 25, with the contract in the board's history.
 - Stage 11: `npm run e2e`: 8 Playwright tests pass in headless Chromium (about 9 min with software WebGL). New in Stage 11: a crewed ship resumes on the Mars surface at the same clock, opens the propellant line, waits for the return window with full tanks, and lifts off with the ascent program.
 - Headless Chromium smoke test, Stage 11 (manual script, not committed), with no console errors:
-  - With the plant at Delta Hollow on day 960, the Mars Expedition is committed through the UI (2 crew, ocean platform) after *Wait 24 days for the window*. The Manifest shows the way-home forecast.
+  - With the plant at Delta Hollow on day 960, the Mars Expedition is committed through the UI (2 crew, ocean platform) after _Wait 24 days for the window_. The Manifest shows the way-home forecast.
   - Refuel in orbit, then trans-Mars injection, the cruise and an assisted landing rated A, 118 m from the plant.
-  - After the hook-up EVA: *Refuel from the plant*, then *Wait for the window* (434 days; tanks full, 44 t left in the plant).
-  - *Lift off* reached a 230 × 180 km orbit. *Trans-Earth injection* took 2,393 m/s, and the cruise home 293 days.
-  - Back at Earth, the Mars location offered *Go to Flight / Orbit*, where aerocapture, circularize and deorbit landed the ship on the pad (rated B).
+  - After the hook-up EVA: _Refuel from the plant_, then _Wait for the window_ (434 days; tanks full, 44 t left in the plant).
+  - _Lift off_ reached a 230 × 180 km orbit. _Trans-Earth injection_ took 2,393 m/s, and the cruise home 293 days.
+  - Back at Earth, the Mars location offered _Go to Flight / Orbit_, where aerocapture, circularize and deorbit landed the ship on the pad (rated B).
   - Debrief: mission success, credited, crew safe, "home after 991 days, 434 of them on Mars". The plant's stock went down in the progression.
 - Headless Chromium smoke test, Stage 10 (manual script, not committed), with no console errors:
-  - Commit the Mars Cargo Lander with a cargo-bay design after waiting for the window, then launch, continue to orbit, refuel and run *Trans-Mars injection*.
+  - Commit the Mars Cargo Lander with a cargo-bay design after waiting for the window, then launch, continue to orbit, refuel and run _Trans-Mars injection_.
   - The cruise and map views work; the approach correction is flown.
-  - At the Mars location, choose Delta Hollow and fly *Mars entry and landing*: landed rated A.
-  - Surface tasks complete, and *Complete the mission* opens the debrief: success and credited, with the milestones and the Mars base shown in the Program tab.
+  - At the Mars location, choose Delta Hollow and fly _Mars entry and landing_: landed rated A.
+  - Surface tasks complete, and _Complete the mission_ opens the debrief: success and credited, with the milestones and the Mars base shown in the Program tab.
 - Stage 8 tests (`tests/moon.test.ts`, plus mission, save and progression updates):
   - the Moon's orbit and gravity; synchronous rotation of surface points; a stable low lunar orbit at the coasting step; the sphere-of-influence switch keeping the nose fixed; the propagator matching single coast steps; time to periapsis for ellipses and hyperbolas;
   - lunar touchdown outcomes: gentle, tipped on a slope, tipped by sideways speed, crash, hard landing with damage;
@@ -349,14 +373,14 @@
   - v4→v5 save migration and fleet/recovery parsing.
 - Headless Chromium smoke test, Stage 8 (manual script, not committed), with no console errors, through the real UI:
   - The Moon location shows its empty state; Mission Control's Manifest shows the refuelling choices (5 tanker flights, the depot) and both Δv legs met.
-  - The Lunar Landing is committed (platform recovery, 2 crew), launched, and continued to orbit. *Refuel in orbit* filled the ship (7,449 m/s).
-  - *Trans-lunar injection* flew the transfer; the map framed the Earth–Moon system with the path; insertion gave a 198 × 105 km lunar orbit.
-  - At the Moon location: depot top-up, Aurora Highlands chosen, *Lunar landing*: hazard avoidance retargeted 56 m to flat ground; touchdown rated A (assisted).
-  - Surface tasks, *Lift off* to a 115 × 80 km orbit, *Return to Earth*, aerocapture and circularize to 329 × 284 km, deorbit to the launch site: landed on the pad (rated B).
+  - The Lunar Landing is committed (platform recovery, 2 crew), launched, and continued to orbit. _Refuel in orbit_ filled the ship (7,449 m/s).
+  - _Trans-lunar injection_ flew the transfer; the map framed the Earth–Moon system with the path; insertion gave a 198 × 105 km lunar orbit.
+  - At the Moon location: depot top-up, Aurora Highlands chosen, _Lunar landing_: hazard avoidance retargeted 56 m to flat ground; touchdown rated A (assisted).
+  - Surface tasks, _Lift off_ to a 115 × 80 km orbit, _Return to Earth_, aerocapture and circularize to 329 × 284 km, deorbit to the launch site: landed on the pad (rated B).
   - Debrief: mission success, credited, crew safe, lunar landing line, refuelled 2×; every objective done.
 - Headless Chromium smoke test, Stage 7, with no console errors:
   - The Orbital Station location shows its empty state before a mission; the station mission is committed with the reference design, platform recovery and 2 crew.
-  - Launch → orbit (318 × 268 km) → *Rendezvous with station*: waited for the window, burned, coasted up and closed on the hold point; *Begin proximity operations* switched to the Orbital Station location.
+  - Launch → orbit (318 × 268 km) → _Rendezvous with station_: waited for the window, burned, coasted up and closed on the hold point; _Begin proximity operations_ switched to the Orbital Station location.
   - Docking camera and reticle; W thrusts forward; the assist (G) flew the corridor and docked at 0.06 m/s, 0.13 m off, rated A, with 0 violations, bounces or collisions and about 20 m/s of RCS left.
   - Warped through the docked tasks, undocked, aborted (B) to a safe distance, departed, and the objectives showed rendezvous, dock and tasks done.
   - Deorbit to the launch site: landed on the pad (rated B). The debrief showed mission success, the docking line, the booster platform result and the credit.
@@ -365,16 +389,17 @@
   - **Flight 1** (test flight, tower catch, assisted):
     - Replay: separation → flip → boostback → coast → glide → landing burn.
     - Caught 0.0 m off centre at 1.6 m/s, rated S. The arms close on the booster and lower it onto the mount.
-    - B-1 joins the fleet; *Caught by the tower* is awarded.
+    - B-1 joins the fleet; _Caught by the tower_ is awarded.
   - **Flight 2** (reflown B-1 to the ocean platform):
     - The manifest shows the reflight at 77,217 cr vs 136,700 cr new.
     - The Landing camera watches from the deck; the manual-landing toggle works. Landed at deck centre, and B-1's wear rose.
     - This run exposed a manual-credit exploit, now fixed and covered by a test.
   - **Flight 3** (Crewed Orbital Shakedown, tower catch, replay skipped):
     - The thin-Δv warning shows.
-    - The hand-off dialog carries the simulated catch result. *End flight* in orbit gives a debrief with the booster line, and B-2 joins the fleet.
+    - The hand-off dialog carries the simulated catch result. _End flight_ in orbit gives a debrief with the booster line, and B-2 joins the fleet.
 
 ## Known limitations
+
 - Headless software rendering is slow, so timings in the smoke and e2e tests differ from real browsers. The e2e suite takes about 9 minutes, so it's a pre-review check rather than a per-save one.
 - The e2e suite doesn't fly a launch to orbit through the UI (minutes under software WebGL). The resume test seeds a real snapshot made by the game's own runtime instead; the Stage 4–8 manual smoke tests covered the full flows.
 - Performance numbers come from headless software rendering. There's no measurement on a real GPU or a phone yet.
@@ -399,9 +424,7 @@
   - When standing on the surface, the vehicle panel shows a meaningless angle of attack (cosmetic). The notice can overlap the debrief briefly.
 - Economy:
   - Four contract kinds only; there are no multi-flight contracts, constellations or penalties beyond reputation.
-  - Payouts are not yet balanced against long Mars waits: the program grant accumulates over 780-day windows.
-  - The board offers four contracts a month regardless of how many the player can fly.
-  - The satellite is not drawn after release; the station panel still shows on contract flights in orbit (as on every orbital flight).
+  - A released satellite soon climbs out of the chase camera's view (the Contract panel keeps its range).
 - Crewed round trips:
   - There's no abort-to-orbit from a failed ascent, no Mars orbit rendezvous, and no manual planning of the burn home.
   - The surface stay is time-skipped: there's no EVA gameplay, habitat building or dust storms.
@@ -409,4 +432,5 @@
   - Life support is a crew-day budget, not a simulation.
 
 ## Next action
+
 Review Stage 12. Candidates for the next stage: photo mode and replays, EVA on the Moon or Mars, audio, a manoeuvre planner, or an economy balance and polish pass (contract variety, payout tuning, drawing released satellites). Pick the next focus before starting.

@@ -17,15 +17,24 @@ function useClearOfToolbar(active: boolean, location: string) {
     const notice = ref.current;
     const stage = notice?.parentElement;
     if (!active || !notice || !stage) return;
+    let last = '';
+    const apply = (next: CSSProperties | undefined) => {
+      const key = JSON.stringify(next ?? null);
+      if (key === last) return;
+      last = key;
+      setStyle(next);
+    };
     const measure = () => {
+      // A debrief dialog sits in the middle: keep the notice clear of it, at the top.
+      if (stage.querySelector('.debrief')) return apply({ top: GAP_PX, bottom: 'auto' });
       const bar = stage.querySelector<HTMLElement>('.camera-toolbar');
-      if (!bar) return setStyle(undefined);
+      if (!bar) return apply(undefined);
       const s = stage.getBoundingClientRect();
       const b = bar.getBoundingClientRect();
       // Insets on a zoomed element are in its own (zoomed) units.
       const zoom = parseFloat(getComputedStyle(notice).zoom) || 1;
       const lower = b.top + b.height / 2 > s.top + s.height / 2;
-      setStyle(
+      apply(
         lower
           ? { bottom: (s.bottom - b.top + GAP_PX) / zoom, top: 'auto' }
           : { top: (b.bottom - s.top + GAP_PX) / zoom, bottom: 'auto' },
@@ -36,7 +45,13 @@ function useClearOfToolbar(active: boolean, location: string) {
     observer.observe(stage);
     const bar = stage.querySelector('.camera-toolbar');
     if (bar) observer.observe(bar);
-    return () => observer.disconnect();
+    // Dialogs open and close while the notice is up (only direct children change for those).
+    const hud = new MutationObserver(measure);
+    for (const child of Array.from(stage.children)) hud.observe(child, { childList: true });
+    return () => {
+      observer.disconnect();
+      hud.disconnect();
+    };
   }, [active, location]);
 
   return { ref, style };

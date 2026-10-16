@@ -51,7 +51,7 @@ import {
   type ProxSnapshot,
 } from '../station/proximitySession';
 import type { AssistMode } from '../station/proximity';
-import { EARTH_RADIUS_M } from '../simulation/constants';
+import { EARTH_MU_M3S2, EARTH_RADIUS_M } from '../simulation/constants';
 import { BELLY_AOA_DEG } from './autopilot';
 import { marsFlightPathDeg, marsSlewRate } from '../mars/marsModel';
 import { DAY_S } from '../mars/solarSystem';
@@ -111,6 +111,21 @@ export const THROTTLE_RATE_S = 0.6;
 /** Re-entry counts as survived once the ship slows below this altitude intact. */
 const REENTRY_DONE_ALT_M = 20_000;
 const DEORBIT_PE_M = 80_000;
+/** Separation speed of a released contract satellite (m/s). */
+export const SEPARATION_MS = 0.5;
+
+/**
+ * Where a released satellite is relative to the ship `t` seconds after a forward separation push
+ * (Clohessy–Wiltshire, circular reference orbit of `radius`): radial (up) and along-track metres.
+ */
+export function separationOffset(t: number, radius: number): { up: number; along: number } {
+  const n = Math.sqrt(EARTH_MU_M3S2 / radius ** 3);
+  const dv = SEPARATION_MS;
+  return {
+    up: (2 * dv * (1 - Math.cos(n * t))) / n,
+    along: (4 * dv * Math.sin(n * t)) / n - 3 * dv * t,
+  };
+}
 /** A landing counts as manual if the player flew everything below this height. */
 export const MANUAL_LANDING_ALT_M = 5_000;
 
@@ -702,7 +717,19 @@ export class FlightRuntime {
     const c = ctx.contract;
     this.progress = {
       ...this.progress,
-      release: { apoKm: el.apoapsisAltM / 1000, periKm: el.periapsisAltM / 1000, ok: true },
+      release: {
+        apoKm: el.apoapsisAltM / 1000,
+        periKm: el.periapsisAltM / 1000,
+        ok: true,
+        // A separation spring pushes it gently forward: it pulls ahead, then climbs and drifts
+        // behind over the next orbit.
+        r: s.r,
+        v: [
+          s.v[0] * (1 + SEPARATION_MS / Math.hypot(s.v[0], s.v[1])),
+          s.v[1] * (1 + SEPARATION_MS / Math.hypot(s.v[0], s.v[1])),
+        ],
+        tS: s.tS,
+      },
     };
     const stage = ctx.spec.stage;
     const spec = {

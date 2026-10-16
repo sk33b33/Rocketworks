@@ -1,5 +1,5 @@
 import { flightRuntime } from '../../app/flightBinding';
-import type { FlightSnapshot } from '../../flight/flightRuntime';
+import { separationOffset, type FlightSnapshot } from '../../flight/flightRuntime';
 import { orbitalElements } from '../../flight/orbitMath';
 import { CONTRACT_KIND_LABELS } from '../../economy/contracts';
 import { formatCredits } from '../format';
@@ -7,6 +7,7 @@ import { fmt } from './useFlight';
 
 const HINTS = {
   resupply: 'Rendezvous and dock with the station; the docked tasks unload the module.',
+  'crew-rotation': 'Rendezvous and dock with the station; the docked tasks hand over the crew.',
   'lunar-depot': 'Fly to lunar orbit and dock at the depot ("Unload at the depot") to deliver.',
   'mars-tanker': 'Land within 2 km of the plant at the Mars location; the ship unloads itself.',
 } as const;
@@ -17,7 +18,8 @@ export function ContractPanel({ snap }: { snap: FlightSnapshot }) {
   const s = flightRuntime.liveState ?? snap.state;
   if (!c || !s) return null;
   const release = snap.progress.release;
-  const el = s.phase === 'flight' && !s.origin && !s.ref ? orbitalElements(s.r, s.v) : null;
+  const el =
+    s.phase === 'flight' && !s.origin && s.ref !== 'moon' ? orbitalElements(s.r, s.v) : null;
   const avail = c.kind === 'satellite' ? flightRuntime.releaseAvailability() : null;
   return (
     <div className="panel">
@@ -71,6 +73,12 @@ export function ContractPanel({ snap }: { snap: FlightSnapshot }) {
               </p>
             </>
           )}
+          {release?.r && release.tS !== undefined && (
+            <p className="small-text muted">
+              The satellite is {satelliteRange(release.r, release.tS, s.tS)} from the ship and
+              drifting clear.
+            </p>
+          )}
           {release && (
             <p className="small-text tone-ok">
               Delivered. Bring the ship home to keep it in the fleet.
@@ -85,4 +93,14 @@ export function ContractPanel({ snap }: { snap: FlightSnapshot }) {
       </p>
     </div>
   );
+}
+
+function satelliteRange(r: readonly [number, number], releasedT: number, t: number): string {
+  const { up, along } = separationOffset(Math.max(0, t - releasedT), Math.hypot(r[0], r[1]));
+  const m = Math.hypot(up, along);
+  return m >= 10_000
+    ? `${fmt(m / 1000)} km`
+    : m >= 1_000
+      ? `${fmt(m / 1000, 1)} km`
+      : `${fmt(m)} m`;
 }

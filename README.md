@@ -23,87 +23,101 @@ npm run format     # Prettier
 Current progress is tracked in `docs/STATUS.md`.
 
 **Playing the factory (Stage 1):**
-- Follow the *Guided build* panel, or pick any part in the *Parts catalog* and click a green marker on the rocket.
+
+- Follow the _Guided build_ panel, or pick any part in the _Parts catalog_ and click a green marker on the rocket.
 - Click a placed part to inspect, rotate, replace or remove it.
 - Drag to orbit, right-drag to pan, scroll to zoom. Press `?` for all controls.
 - Your build autosaves in the browser.
 
 **Validating and managing designs (Stage 2):**
-- The *Readiness* tab lists what stops the design from flying, with a fix button for each issue. *Certify for flight* when it's ready, or use the tutorial override.
-- The *Program* tab shows your budget, research points, research projects and milestones.
-- The *Designs* tab keeps several named designs: duplicate, rename, delete, choose a hull finish.
-- *Structure list* (left panel) builds the rocket from a list instead of the 3D view.
+
+- The _Readiness_ tab lists what stops the design from flying, with a fix button for each issue. _Certify for flight_ when it's ready, or use the tutorial override.
+- The _Program_ tab shows your budget, research points, research projects and milestones.
+- The _Designs_ tab keeps several named designs: duplicate, rename, delete, choose a hull finish.
+- _Structure list_ (left panel) builds the rocket from a list instead of the 3D view.
 - Ctrl+Z / Ctrl+Shift+Z undo and redo.
 
 **Planning a mission (Stage 3):**
-- Certify a design, then open *Mission Control* from the location bar.
-- Pick a mission, then assign the vehicle, payload and crew in *Manifest*.
-- *Readiness* shows the flight director's GO/NO-GO poll, with a fix button for each issue.
-- *Conditions* shows the launch window and weather. *Wait for next window* is free.
-- *Commit mission · GO for rollout* when every station is GO, then *Go to Launch Pad*.
+
+- Certify a design, then open _Mission Control_ from the location bar.
+- Pick a mission, then assign the vehicle, payload and crew in _Manifest_.
+- _Readiness_ shows the flight director's GO/NO-GO poll, with a fix button for each issue.
+- _Conditions_ shows the launch window and weather. _Wait for next window_ is free.
+- _Commit mission · GO for rollout_ when every station is GO, then _Go to Launch Pad_.
 
 **Launching (Stage 4):**
-- The committed vehicle rolls out to the pad. *Skip rollout* if you're in a hurry.
-- *Start countdown*. Space holds or resumes; *Skip to T-10 s*; *Scrub* costs nothing.
-- After liftoff: Space pauses, `[` `]` or the buttons set time warp, 1/2/3 switch cameras (Pad, Follow, Cinematic), and *ABORT* asks you to confirm.
+
+- The committed vehicle rolls out to the pad. _Skip rollout_ if you're in a hurry.
+- _Start countdown_. Space holds or resumes; _Skip to T-10 s_; _Scrub_ costs nothing.
+- After liftoff: Space pauses, `[` `]` or the buttons set time warp, 1/2/3 switch cameras (Pad, Follow, Cinematic), and _ABORT_ asks you to confirm.
 - The debrief shows the result and rewards. The ascent is a simplified 2D model.
 
 **Flying to orbit and back (Stage 5):**
-- Orbital missions don't end at orbit insertion: the pad offers *Continue to Flight / Orbit*.
-- The autopilot can fly everything. *Circularize* if needed, coast one full orbit (time warp up to 1000× above 110 km), pick a landing zone, then *Deorbit to target*. Re-entry guidance and the landing burn follow automatically.
+
+- Orbital missions don't end at orbit insertion: the pad offers _Continue to Flight / Orbit_.
+- The autopilot can fly everything. _Circularize_ if needed, coast one full orbit (time warp up to 1000× above 110 km), pick a landing zone, then _Deorbit to target_. Re-entry guidance and the landing burn follow automatically.
 - Take over at any time: W/S pitch, Q/E bank, Shift/Ctrl throttle, Z full throttle, X cutoff, Space pause, `.` `,` warp, 1/2/M cameras (chase, orbit, map), `?` help.
 - The debrief shows the landing outcome, miss distance, heat-shield and hull condition, peak g and rewards. The flight model is simplified (planar, no Earth rotation).
 
 **Recovering and reflying hardware (Stage 6):**
+
 - In Mission Control's Manifest, choose the booster recovery: tower catch, ocean platform or expend. Recovery holds back booster propellant, which costs ascent performance. Assign recovered boosters and ships from the fleet to fly them again for a fraction of the cost.
-- After the ascent, the booster's return replays from staging. Watch it with the **Landing** camera (4), *Skip replay* to simulate it, or choose *Fly the landing myself* below 9 km (Shift/Ctrl throttle, A/D tilt) for a precision rating and a bonus milestone.
+- After the ascent, the booster's return replays from staging. Watch it with the **Landing** camera (4), _Skip replay_ to simulate it, or choose _Fly the landing myself_ below 9 km (Shift/Ctrl throttle, A/D tilt) for a precision rating and a bonus milestone.
 - Landings are rated S–D. Recovered vehicles wear with use: refurbish them in the Manifest's fleet list, or scrap them.
 
 **Visiting the orbital station (Stage 7):**
-- Fly the Crewed Orbital Shakedown first. That unlocks *Station Crew Rotation* and the **Orbital Station** location. The ship needs a docking adapter (Factory).
-- In orbit, engage *Rendezvous with station*. The autopilot waits for the transfer window, burns, and closes to a hold point 2 km ahead of the station (warp is safe).
-- *Begin proximity operations* switches to the Orbital Station location. Fly with RCS: W/S forward/back, A/D left/right, R/F up/down, arrows pitch/yaw, Q/E roll, T attitude hold, Y align to the port. Or use the on-screen pad.
+
+- Fly the Crewed Orbital Shakedown first. That unlocks _Station Crew Rotation_ and the **Orbital Station** location. The ship needs a docking adapter (Factory).
+- In orbit, engage _Rendezvous with station_. The autopilot waits for the transfer window, burns, and closes to a hold point 2 km ahead of the station (warp is safe).
+- _Begin proximity operations_ switches to the Orbital Station location. Fly with RCS: W/S forward/back, A/D left/right, R/F up/down, arrows pitch/yaw, Q/E roll, T attitude hold, Y align to the port. Or use the on-screen pad.
 - G toggles the docking assist and B aborts to a safe distance. Cameras: 1 chase, 2 docking camera with reticle, 3 station view.
 - Stay inside the approach corridor and below the closing-speed limit. Contact that is too fast or misaligned bounces off or damages the hull.
-- Once docked, warp through the tasks (leak check, science, crew handover, cargo), *Undock*, back off beyond 300 m, *Depart*, and deorbit as usual. The relative-motion model is simplified (Clohessy–Wiltshire, single orbital plane).
+- Once docked, warp through the tasks (leak check, science, crew handover, cargo), _Undock_, back off beyond 300 m, _Depart_, and deorbit as usual. The relative-motion model is simplified (Clohessy–Wiltshire, single orbital plane).
 
 **Going to the Moon (Stage 8):**
-- The station mission unlocks the *Lunar Flyby*; the flyby unlocks the *Lunar Landing* (it needs a docking adapter for the depot).
-- In Mission Control's Manifest, keep *Refuelling* ticked: tankers in Earth orbit (and, for the landing, a top-up at a fictional lunar depot). The Δv table shows each leg against what the ship will have.
-- In orbit, switch the autopilot off and press *Refuel in orbit* in the Moon panel (warp through ~6 h). Then engage *Trans-lunar injection*: it plans the burn, flies it and corrects course. The coast to the Moon takes about 2.7 days; deep-space warp goes up to 10,000×. The map (M) frames the Earth–Moon system.
-- Flyby: the free return brings the ship home; *Aerocapture* engages near Earth, then circularize and *Deorbit to target* as usual.
-- Landing: lunar orbit insertion engages on arrival. At the **Moon** location, top up at the depot, pick a landing site (hazard ratings and a terrain profile), and engage *Lunar landing*. Take over above 500 m (button or W/S pitch, Shift/Ctrl throttle; landing thrusters below 3 km, ~40% hovers) for a manual landing. Cameras: 1 chase, 2 landing site, 3 Moon.
-- Touch down at ≤ 3 m/s with ≤ 2 m/s sideways and tilt plus slope ≤ 12°, or the ship tips over. Run the surface tasks, *Lift off*, then *Return to Earth*. The Earth–Moon physics is a simplified planar model.
+
+- The station mission unlocks the _Lunar Flyby_; the flyby unlocks the _Lunar Landing_ (it needs a docking adapter for the depot).
+- In Mission Control's Manifest, keep _Refuelling_ ticked: tankers in Earth orbit (and, for the landing, a top-up at a fictional lunar depot). The Δv table shows each leg against what the ship will have.
+- In orbit, switch the autopilot off and press _Refuel in orbit_ in the Moon panel (warp through ~6 h). Then engage _Trans-lunar injection_: it plans the burn, flies it and corrects course. The coast to the Moon takes about 2.7 days; deep-space warp goes up to 10,000×. The map (M) frames the Earth–Moon system.
+- Flyby: the free return brings the ship home; _Aerocapture_ engages near Earth, then circularize and _Deorbit to target_ as usual.
+- Landing: lunar orbit insertion engages on arrival. At the **Moon** location, top up at the depot, pick a landing site (hazard ratings and a terrain profile), and engage _Lunar landing_. Take over above 500 m (button or W/S pitch, Shift/Ctrl throttle; landing thrusters below 3 km, ~40% hovers) for a manual landing. Cameras: 1 chase, 2 landing site, 3 Moon.
+- Touch down at ≤ 3 m/s with ≤ 2 m/s sideways and tilt plus slope ≤ 12°, or the ship tips over. Run the surface tasks, _Lift off_, then _Return to Earth_. The Earth–Moon physics is a simplified planar model.
 
 **Settings, saving and help (Stage 9):**
+
 - Everything autosaves, including a flight in progress: after a reload it resumes paused where you left it (a launch still climbing from the pad has to roll out again).
-- *Settings* (top bar): reduce motion, interface size, random failures, performance stats, and the program overview.
+- _Settings_ (top bar): reduce motion, interface size, random failures, performance stats, and the program overview.
 - The **Next** chip in the top bar always says what to do next; click it to go there.
 - The e2e suite needs a Chromium for Playwright: `npx playwright install chromium`, or point `PW_CHROMIUM_PATH` at an existing one.
 
 **Sending cargo to Mars (Stage 10):**
-- The Lunar Landing unlocks the *Mars Cargo Lander*. It's uncrewed and carries a propellant plant, so the ship needs a cargo bay (role: Cargo).
-- Mars launches only work in a transfer window, every ~26 months on the program calendar. Mission Control's Conditions tab shows the window; *Wait for Mars window* jumps there.
-- In orbit, *Refuel in orbit*, then engage *Trans-Mars injection*. Engage *Mars cruise* for the course corrections and warp up to 1,000,000× (the map, camera 4 at the Mars location, shows both planets and the path).
-- Before arrival, pick a landing site at the **Mars** location (ice ratings set the plant's output), then engage *Mars entry and landing*. Take over below 500 m for a manual landing bonus.
-- Warp through the surface tasks, then *Complete the mission*. The plant keeps producing propellant on the program calendar. The interplanetary model is simplified (circular coplanar orbits, patched conics).
+
+- The Lunar Landing unlocks the _Mars Cargo Lander_. It's uncrewed and carries a propellant plant, so the ship needs a cargo bay (role: Cargo).
+- Mars launches only work in a transfer window, every ~26 months on the program calendar. Mission Control's Conditions tab shows the window; _Wait for Mars window_ jumps there.
+- In orbit, _Refuel in orbit_, then engage _Trans-Mars injection_. Engage _Mars cruise_ for the course corrections and warp up to 1,000,000× (the map, camera 4 at the Mars location, shows both planets and the path).
+- Before arrival, pick a landing site at the **Mars** location (ice ratings set the plant's output), then engage _Mars entry and landing_. Take over below 500 m for a manual landing bonus.
+- Warp through the surface tasks, then _Complete the mission_. The plant keeps producing propellant on the program calendar. The interplanetary model is simplified (circular coplanar orbits, patched conics).
 
 **Taking a crew to Mars and back (Stage 11):**
-- With the plant running, the *Mars Expedition* unlocks. It carries 2–4 crew and their supplies; Mission Control's Manifest forecasts the stay, the plant's stock and the legs home.
+
+- With the plant running, the _Mars Expedition_ unlocks. It carries 2–4 crew and their supplies; Mission Control's Manifest forecasts the stay, the plant's stock and the legs home.
 - Fly out as before. The crew lands next to the plant at the Mars location.
-- After the surface tasks connect the propellant line, press *Refuel from the plant*. Then *Wait for the window* to skip to the Mars–Earth return window; the tanks fill while you wait.
-- *Lift off*: the *Mars ascent* program climbs to orbit. Inside the window, engage *Trans-Earth injection*, then warp through the cruise home.
-- Back inside Earth's sphere of influence, go to Flight / Orbit. *Aerocapture at Earth* flies the braking pass, then circularize, *Deorbit to target* and land. The trip takes about two and a half years of program time.
+- After the surface tasks connect the propellant line, press _Refuel from the plant_. Then _Wait for the window_ to skip to the Mars–Earth return window; the tanks fill while you wait.
+- _Lift off_: the _Mars ascent_ program climbs to orbit. Inside the window, engage _Trans-Earth injection_, then warp through the cruise home.
+- Back inside Earth's sphere of influence, go to Flight / Orbit. _Aerocapture at Earth_ flies the braking pass, then circularize, _Deorbit to target_ and land. The trip takes about two and a half years of program time.
 
 **Contracts and the treasury (Stage 12):**
+
 - The program has a treasury: each flight is paid for when it flies (Mission Control's Manifest shows the cost and the balance after). First-time missions, milestones and contracts pay in, and a grant arrives every 30 program days.
-- Mission Control → *Contracts* lists offers from fictional clients, with a payout, deadline and reputation stake. New offers come every 30 days; premium clients need a good reputation.
-- *Accept* an offer to set up the flight. Satellite deployments: reach orbit, engage *Raise orbit*, then *Release the satellite* in the Contract panel once inside the tolerance. Station resupply, lunar depot cargo and Mars tanker runs fly like their story missions.
+- Mission Control → _Contracts_ lists offers from fictional clients, with a payout, deadline and reputation stake. New offers come every 30 days; premium clients need a good reputation.
+- _Accept_ an offer to set up the flight. Satellite deployments: reach orbit, engage _Raise orbit_, then _Release the satellite_ in the Contract panel once inside the tolerance. Station resupply, lunar depot cargo and Mars tanker runs fly like their story missions.
 - Meet the terms before the deadline to get paid. Late or failed contracts pay nothing and cost reputation. Reusing recovered hardware keeps more of the payout.
+- Once the station mission has been flown, crew rotation contracts appear: fly 2–4 crew to the station and hand them over. A better reputation brings more offers each month (up to five).
 
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:
+
 1. **Rocket Factory / Assembly Hall** — fabricate, inspect, and assemble a reusable heavy-lift rocket inspired by modern stainless-steel launch vehicles.
 2. **Mission Control** — configure payload, crew, mission, launch window, and flight systems.
 3. **Launch Pad** — transport the rocket, run countdown checks, launch, fly, and attempt a landing.

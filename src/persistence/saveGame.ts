@@ -207,6 +207,7 @@ function parseProgression(raw: unknown, warnings: string[]): ProgressionState {
 const CONTRACT_KINDS: readonly ContractKind[] = [
   'satellite',
   'resupply',
+  'crew-rotation',
   'lunar-depot',
   'mars-tanker',
 ];

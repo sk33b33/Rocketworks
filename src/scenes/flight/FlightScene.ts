@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { autoMotion } from '../../render/motion';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { FlightState } from '../../flight/flightModel';
-import { flownFromMars } from '../../flight/flightRuntime';
+import { flownFromMars, separationOffset, type FlightSnapshot } from '../../flight/flightRuntime';
 import { localFrame } from '../../flight/orbitMath';
 import type { GameScene, SceneContext } from '../../game/GameScene';
 import { ResourceCache } from '../../render/ResourceCache';
@@ -13,6 +13,7 @@ import { OrbitOverlay } from './OrbitOverlay';
 import { Planet } from './Planet';
 import { ShipView } from './ShipView';
 import { StationModel } from '../station/StationModel';
+import { SatelliteModel } from './SatelliteModel';
 import { stationState, type StationState } from '../../station/stationOrbit';
 import { MoonBody } from '../moon/MoonBody';
 import { bodyFrame, MOON_DISTANCE_M, MOON_RADIUS_M, moonState } from '../../moon/moonOrbit';
@@ -33,6 +34,7 @@ export class FlightScene implements GameScene {
   private readonly cache = new ResourceCache();
   private planet: Planet | null = null;
   private stationModel: StationModel | null = null;
+  private satellite: SatelliteModel | null = null;
   private readonly stationBasis = new THREE.Matrix4();
   private ship: ShipView | null = null;
   private moon: MoonBody | null = null;
@@ -81,6 +83,7 @@ export class FlightScene implements GameScene {
     this.scene.add(this.sun, this.sun.target, this.ambient);
     this.stationModel = new StationModel(this.cache);
     this.stationModel.root.visible = false;
+    this.satellite = new SatelliteModel(this.cache);
     this.moon = new MoonBody(this.cache);
     this.moon.group.visible = false;
     this.scene.add(this.moon.group);
@@ -90,6 +93,7 @@ export class FlightScene implements GameScene {
       this.ship.root,
       this.ship.effects,
       this.stationModel.root,
+      this.satellite.root,
     );
     this.planet.group.add(this.overlay.group);
   }
@@ -170,6 +174,7 @@ export class FlightScene implements GameScene {
     }
     this.overlay!.update(s, snap.zone, mapDist, st, lunarOverlay);
     this.placeStation(st, s, mode === 'map');
+    this.placeSatellite(snap.progress.release, s, mode === 'map');
     this.updateSky(camAlt);
   }
 
@@ -234,6 +239,37 @@ export class FlightScene implements GameScene {
     );
     (this.scene.background as THREE.Color).set(0x000000);
     this.planet!.stars.visible = true;
+  }
+
+  /**
+   * A released contract satellite near the ship. Its motion relative to the ship comes from the
+   * Clohessy–Wiltshire equations for the separation push, so it doesn't pick up the ship's own
+   * integration error at high time warp.
+   */
+  private placeSatellite(
+    release: FlightSnapshot['progress']['release'],
+    s: FlightState,
+    map: boolean,
+  ): void {
+    const sat = this.satellite;
+    if (!sat) return;
+    if (!release?.r || release.tS === undefined || map || s.origin || s.ref === 'moon') {
+      sat.root.visible = false;
+      return;
+    }
+    const { up, along } = separationOffset(
+      Math.max(0, s.tS - release.tS),
+      Math.hypot(release.r[0], release.r[1]),
+    );
+    const f = localFrame(s.r);
+    const dir = Math.hypot(s.v[0], s.v[1]) > 1 ? [s.v[0], s.v[1]] : f.east;
+    const len = Math.hypot(dir[0]!, dir[1]!);
+    const ax = dir[0]! / len;
+    const ay = dir[1]! / len;
+    const dx = f.up[0] * up + ax * along;
+    const dy = f.up[1] * up + ay * along;
+    sat.root.visible = Math.hypot(dx, dy) < 20_000;
+    if (sat.root.visible) sat.place(dx, dy, this.time);
   }
 
   /** The station model near the ship (floating origin), in its own local frame. */

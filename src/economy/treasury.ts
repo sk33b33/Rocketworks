@@ -15,9 +15,16 @@ export const PERIOD_DAYS = 30;
 /** Grant period a program day falls in. */
 export const periodOf = (day: number): number => Math.floor(Math.max(0, day) / PERIOD_DAYS);
 
+/**
+ * Most grants a single stretch of time can pay (about half a year): waiting years for a Mars
+ * window, or a long Mars flight, mustn't be a money machine.
+ */
+export const MAX_GRANT_PERIODS = 6;
+
 /** Grants paid when the calendar moves from `fromDay` to `toDay` (cr; 0 when it doesn't advance). */
 export function grantsBetween(fromDay: number, toDay: number): number {
-  return Math.max(0, periodOf(toDay) - periodOf(fromDay)) * GRANT_CREDITS;
+  const periods = Math.max(0, periodOf(toDay) - periodOf(fromDay));
+  return Math.min(MAX_GRANT_PERIODS, periods) * GRANT_CREDITS;
 }
 
 /** Whether the treasury covers a flight costing `costCredits`. */
