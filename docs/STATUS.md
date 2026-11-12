@@ -398,7 +398,7 @@
 
 - `npm run typecheck` (app and e2e), `npm run lint`, `npm run build`: pass.
 - `npm test`: 305 tests pass across 29 files. New in Stage 18 (`tests/pixelArt.test.ts`): every location, story mission, contract kind and crew member has a built sprite of the expected size; the logo and favicon exist; the factory signs keep the art's aspect ratio and clear the wall columns; URLs follow the base URL.
-- Stage 18 e2e: 13 Playwright tests (unchanged, as the art is decorative). Result recorded below once the run finishes.
+- Stage 18 e2e: 13 Playwright tests (unchanged, as the art is decorative). All 13 pass (about 9 min).
 - Headless Chromium smoke test, Stage 18 (manual script, not committed), with no console errors and no broken images. Checked: the logo, location icons and bar fit at 1440 px; patches on the mission cards and in the briefing; crew portraits; posters and the bay sign readable on the factory wall.
 - Stage 17: `npm test`: 300 tests pass across 28 files. New in Stage 17 (`tests/maneuver.test.ts`, plus the flight runtime): Kepler propagation against an RK4 integration and a full period; pitch conventions; a Hohmann raise, lowering and a radial burn; the Δv vector; burn time and node limits; apoapsis and periapsis node times; a runtime flight that plans a node (preview, refusal when the ship lacks the Δv, save and resume) and flies it to within 15 km of the prediction.
 - Stage 17 e2e: 13 Playwright tests pass (about 10 min), including the new planner test (`e2e/maneuver.e2e.ts`: place a node, shape it, preview, survive a reload, arm and delete).
