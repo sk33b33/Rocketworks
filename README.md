@@ -136,6 +136,11 @@ Current progress is tracked in `docs/STATUS.md`.
 - _Execute node_ hands the burn to the autopilot. It turns the ship, starts half the burn time before the node, eases off at the end, and stops when the planned Δv is in. Time warp drops to 10× two minutes before the burn. The node is saved with the flight.
 - Use it for Hohmann raises, lowering the orbit, phasing for the station, or a manual deorbit. The prediction is two-body and impulsive, so a long burn lands slightly off.
 
+**Pixel art (Stage 18):**
+
+- The interface and the factory carry original pixel art: a logo and favicon, location icons, a patch for every mission and contract kind, crew portraits, and posters and signs on the assembly hall's wall.
+- The art is code: `art/rocketworks.px.js`, written for [pxl](https://github.com/crsolver/claude-pxl) (MIT). The built PNGs are committed in `public/art/`, so the game doesn't need pxl. After changing the art, run `npm run art` (Node 22.18+; it fetches pxl at a pinned commit) to rebuild them.
+
 ## Core concept
 
 The player starts at a spaceflight development complex and progresses through:

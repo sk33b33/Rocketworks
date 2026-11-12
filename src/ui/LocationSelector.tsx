@@ -1,5 +1,7 @@
 import { useGameStore } from '../app/gameStore';
 import { getAvailability, LOCATIONS } from '../app/locations';
+import { ART_SIZE, LOCATION_ICONS } from '../art/pixelArt';
+import { PixelArt } from './PixelArt';
 
 /** Persistent location selector. Locked entries stay focusable and explain why they're locked. */
 export function LocationSelector() {
@@ -23,6 +25,7 @@ export function LocationSelector() {
                 title={reason ?? `Go to ${loc.name}`}
                 onClick={() => goTo(loc.id)}
               >
+                <PixelArt name={LOCATION_ICONS[loc.id]} size={ART_SIZE.icon} className="loc-icon" />
                 {reason && <span aria-hidden="true">🔒 </span>}
                 {loc.name}
                 {reason && <span className="sr-only"> (locked: {reason})</span>}

@@ -13,6 +13,8 @@ import { ProgramOverview } from '../ui/ProgramOverview';
 import { PerfOverlay } from '../ui/PerfOverlay';
 import { NoticeBar } from '../ui/NoticeBar';
 import { Viewport } from '../ui/Viewport';
+import { PixelArt } from '../ui/PixelArt';
+import { ART_SIZE } from '../art/pixelArt';
 import { PhotoButton, PhotoMode } from '../ui/PhotoMode';
 import { usePhotoStore } from './photoStore';
 import { useEffect } from 'react';
@@ -27,7 +29,10 @@ export function App() {
   return (
     <div className={photo ? 'app photo-mode' : 'app'}>
       <header className="topbar">
-        <span className="brand">ROCKETWORKS</span>
+        <span className="brand">
+          <PixelArt name="logo" size={ART_SIZE.logo} className="brand-mark" />
+          ROCKETWORKS
+        </span>
         <LocationSelector />
         <NextStepChip />
         <SettingsMenu />

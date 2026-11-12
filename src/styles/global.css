@@ -1923,3 +1923,74 @@ fieldset.stacked label {
   padding: 2px 8px;
   font-size: 12px;
 }
+
+/* Pixel art (art/rocketworks.px.js): always crisp, never smoothed. */
+.pixel {
+  image-rendering: pixelated;
+  flex: none;
+}
+.brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.loc {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 9px;
+}
+.next-step {
+  max-width: 210px;
+}
+.topbar {
+  gap: 12px;
+}
+/* Narrow windows: the names matter more than the icons. */
+@media (max-width: 1380px) {
+  .loc-icon {
+    display: none;
+  }
+}
+.loc.locked .loc-icon {
+  opacity: 0.45;
+  filter: grayscale(1);
+}
+.mission-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 10px;
+  align-items: start;
+}
+.mission-card .mission-patch {
+  grid-row: 1 / span 3;
+  margin-top: 2px;
+}
+.mission-card > :not(.mission-patch) {
+  grid-column: 2;
+}
+.mission-card.locked .mission-patch {
+  opacity: 0.4;
+  filter: grayscale(1);
+}
+.briefing-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+.crew-head .crew-portrait {
+  border-radius: 4px;
+  margin-right: 8px;
+}
+.crew-head {
+  align-items: center;
+  justify-content: flex-start;
+}
+.crew-head .crew-status {
+  margin-left: auto;
+}
+.debrief-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}

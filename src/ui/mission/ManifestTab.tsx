@@ -1,5 +1,7 @@
 import { selectMissionReport, useGameStore } from '../../app/gameStore';
 import { CREW_ROSTER, ROLE_LABELS, STATUS_LABELS } from '../../missions/crew';
+import { ART_SIZE, portraitFor } from '../../art/pixelArt';
+import { PixelArt } from '../PixelArt';
 import { findPayload } from '../../missions/missionCatalog';
 import { certificationStatus } from '../../rocket/readiness/certification';
 import { calculateRocketStats } from '../../rocket/stats/calculateRocketStats';
@@ -107,6 +109,11 @@ export function ManifestTab() {
           return (
             <li key={c.id} className={assigned ? 'assigned' : ''}>
               <div className="crew-head">
+                <PixelArt
+                  name={portraitFor(c.id) ?? 'logo'}
+                  size={ART_SIZE.portrait}
+                  className="crew-portrait"
+                />
                 <strong>{c.name}</strong>
                 <span className={`crew-status status-${c.status}`}>{STATUS_LABELS[c.status]}</span>
               </div>

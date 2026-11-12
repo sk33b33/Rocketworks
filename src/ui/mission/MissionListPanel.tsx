@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { ART_SIZE, patchFor } from '../../art/pixelArt';
+import { PixelArt } from '../PixelArt';
 import { useGameStore } from '../../app/gameStore';
 import { findMission, missionAvailability, STORY_MISSIONS } from '../../missions/missionCatalog';
 import { formatCredits, formatSpeed } from '../format';
@@ -61,6 +63,13 @@ function StoryList() {
                 title={reason ?? m.summary}
                 onClick={() => select(m.id)}
               >
+                {patchFor(m.id) && (
+                  <PixelArt
+                    name={patchFor(m.id)!}
+                    size={ART_SIZE.patch}
+                    className="mission-patch"
+                  />
+                )}
                 <span className="mission-name">
                   {reason && <span aria-hidden="true">🔒 </span>}
                   {done && <span aria-hidden="true">✓ </span>}

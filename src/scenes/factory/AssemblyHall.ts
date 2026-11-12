@@ -6,6 +6,7 @@ import {
   mulberry32,
 } from '../../render/proceduralTextures';
 import type { ResourceCache } from '../../render/ResourceCache';
+import { artUrl, FACTORY_SIGNS } from '../../art/pixelArt';
 
 /** Top of the assembly stand; the rocket's root socket sits here. */
 export const STAND_HEIGHT_M = 6;
@@ -207,6 +208,38 @@ function buildShell(cache: ResourceCache, group: THREE.Group): void {
   group.add(instanced(box(cache, W, 1, 1), colMat, chords));
   group.add(instanced(box(cache, 0.5, trussDepth, 0.5), colMat, posts));
   group.add(instanced(box(cache, 0.4, Math.hypot(10, trussDepth), 0.4), colMat, diags));
+}
+
+/** Pixel-art posters and signs on the left wall (original art; see art/rocketworks.px.js). */
+function buildSigns(cache: ResourceCache, group: THREE.Group): void {
+  const { width: W } = HALL;
+  const loader = new THREE.TextureLoader();
+  for (const sign of FACTORY_SIGNS) {
+    const map = cache.texture(`hall:sign:${sign.sprite}`, () => {
+      const t = loader.load(artUrl(sign.sprite));
+      t.colorSpace = THREE.SRGBColorSpace;
+      // Crisp pixels up close; mipmaps keep them from shimmering far away.
+      t.magFilter = THREE.NearestFilter;
+      t.anisotropy = 4;
+      return t;
+    });
+    const mat = std(cache, `sign:${sign.sprite}`, {
+      map,
+      roughness: 0.75,
+      metalness: 0.05,
+      emissive: 0xffffff,
+      emissiveMap: map,
+      emissiveIntensity: 0.18,
+    });
+    const geo = cache.geometry(
+      `hall:signPlane:${sign.widthM}:${sign.heightM}`,
+      () => new THREE.PlaneGeometry(sign.widthM, sign.heightM),
+    );
+    const mesh = place(new THREE.Mesh(geo, mat), -W / 2 + sign.offsetM, sign.y, sign.z);
+    mesh.rotation.y = Math.PI / 2;
+    mesh.name = `sign:${sign.sprite}`;
+    group.add(mesh);
+  }
 }
 
 function buildDoors(cache: ResourceCache, group: THREE.Group): void {
@@ -504,6 +537,7 @@ export function buildAssemblyHall(
   buildStand(cache, group);
   buildShell(cache, group);
   buildDoors(cache, group);
+  buildSigns(cache, group);
   buildTower(cache, group);
   const crane = buildCrane(cache, group);
   buildLights(cache, group);

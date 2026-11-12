@@ -6,6 +6,8 @@ import { RecoveryResultLine } from '../launch/RecoveryPanel';
 import { formatPercent } from '../format';
 import { fmt, formatDuration } from './useFlight';
 import { ReplayButton } from './ReplayBar';
+import { ART_SIZE, patchFor } from '../../art/pixelArt';
+import { PixelArt } from '../PixelArt';
 
 const RESULT = {
   success: { label: '✓ MISSION SUCCESS', tone: 'ok' },
@@ -36,7 +38,16 @@ export function FlightDebrief({ record }: { record: FlightRecord }) {
   return (
     <div className="panel debrief" role="dialog" aria-label="Flight debrief">
       <div className={`status-banner tone-${r.tone}`}>{r.label}</div>
-      <h2 className="debrief-title">{record.missionName}</h2>
+      <div className="debrief-head">
+        {patchFor(record.missionId) && (
+          <PixelArt
+            name={patchFor(record.missionId)!}
+            size={ART_SIZE.patch}
+            className="debrief-patch"
+          />
+        )}
+        <h2 className="debrief-title">{record.missionName}</h2>
+      </div>
       <p>{record.summary}</p>
       {record.recovery && <RecoveryResultLine r={record.recovery} />}
       {record.contract && (

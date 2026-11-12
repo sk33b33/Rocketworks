@@ -8,6 +8,11 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // Pixel art sources (pxl): the drawing commands (sprite, rect, ...) are globals of the DSL.
+    files: ['art/**/*.px.js'],
+    rules: { 'no-undef': 'off' },
+  },
+  {
     files: ['**/*.{ts,tsx}'],
     languageOptions: { globals: { ...globals.browser } },
     plugins: { 'react-hooks': reactHooks },

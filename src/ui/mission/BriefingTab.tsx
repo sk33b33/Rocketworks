@@ -1,5 +1,7 @@
 import { selectMissionReport, useGameStore } from '../../app/gameStore';
 import { formatCredits } from '../format';
+import { ART_SIZE, patchFor } from '../../art/pixelArt';
+import { PixelArt } from '../PixelArt';
 
 const RISK_TONE = { low: 'ok', moderate: 'warn', high: 'bad' } as const;
 
@@ -8,7 +10,18 @@ export function BriefingTab() {
   const m = report.mission;
   return (
     <div className="briefing">
-      <p className="lead">{m.summary}</p>
+      <div className="briefing-head">
+        {patchFor(m.id) && (
+          <PixelArt
+            name={patchFor(m.id)!}
+            size={ART_SIZE.patch}
+            scale={3}
+            className="briefing-patch"
+            alt={`${m.name} mission patch`}
+          />
+        )}
+        <p className="lead">{m.summary}</p>
+      </div>
       <p>{m.briefing}</p>
       <div className="eyebrow section-gap">Objectives</div>
       <ol className="plain-list">

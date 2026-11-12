@@ -13,6 +13,7 @@
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
+    "art": "npx -y github:crsolver/claude-pxl#21fee41 build art/rocketworks.px.js --out public/art --no-preview",
     "e2e": "npm run build && playwright test"
   },
   "dependencies": {

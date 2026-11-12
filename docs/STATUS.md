@@ -2,7 +2,7 @@
 
 ## Current stage
 
-**Stage 17: Manoeuvre planner.** Complete. This finishes the approved run of Stages 13–17.
+**Stage 18: Pixel art pass.** Complete.
 
 ## Completed
 
@@ -315,6 +315,24 @@
     - The map draws the planned orbit dashed in yellow with a node marker.
   - **Polish:** the new EVA and planner panels use the shared HUD panel header.
 
+- **Stage 18 (pixel art pass, with pxl):**
+  - **Art as code** (`art/rocketworks.px.js`) for [pxl](https://github.com/crsolver/claude-pxl), an MIT pixel-art DSL. All art is original, in the interface's own palette, with no real agency insignia.
+    - A 7×8 logo and a 16×16 favicon.
+    - Seven 8×8 location icons.
+    - Twelve 23×23 mission patches (seven story missions, five contract kinds).
+    - Seven 16×16 crew portraits: one helmeted base sprite with swapped skin, hair and role-stripe colours.
+    - Factory signage: an "ASSEMBLY BAY 1" sign, "SAFETY FIRST", "NEXT STOP THE MOON" and "MARS THE LONG HAUL" posters, and a vertical ROCKETWORKS banner.
+  - **Build:** the PNGs are in `public/art/sprites/` (33 files, 140 KB) and committed, so the game has no new runtime or install dependency. `npm run art` rebuilds them with `npx` from pxl at a pinned commit (21fee41); that build reproduces the committed files byte for byte.
+  - **Interface:**
+    - The logo sits by the wordmark and the favicon is set.
+    - Each location button has its icon (greyed when locked; hidden below 1380 px wide so the names always fit).
+    - Mission and contract cards show their patch (greyed when locked), the briefing shows it at 3×, and so does the debrief header.
+    - The crew list shows portraits.
+    - Sprites go through a small `PixelArt` component at whole-number scales with `image-rendering: pixelated`. They're decorative to screen readers except the briefing patch, which has a text alternative.
+  - **Factory:** the posters and signs hang on the hall's left wall, the side the default camera faces. They sit between the wall columns and in front of the girts, or on the column faces. Textures are nearest-filtered up close and mipmapped for distance, with a faint emissive so they read in the hall's light. They're released with the scene's resource cache.
+  - **Mapping** (`src/art/pixelArt.ts`): from locations, missions, contract kinds and crew to sprite names, built from the app's base URL.
+  - **Top bar:** slightly tighter, so all seven locations still fit beside the Next chip at 1440 px.
+
 ## Assumptions (documented, reversible)
 
 - Flight physics is a simplified planar gameplay model: one orbital plane (the equator), no Earth rotation, an exponential atmosphere, lumped aerodynamics, and Sutton–Graves heating with gameplay heat capacities. The UI and footnotes say so; it is not a flight simulator.
@@ -361,6 +379,10 @@
   - An EVA in progress isn't saved: after a reload the astronaut is back aboard and unboarded samples are lost.
   - Walking is on the terrain heightfield; small boulders are walked over, and lighting doesn't change.
   - Headless software rendering runs the surface at a few frames per second; the per-frame step cap then slows the walk in real time.
+- Pixel art:
+  - It covers the interface and the factory only. The launch pad, Mission Control's wall screens, the station and the surfaces don't use it yet.
+  - Rebuilding the art needs Node 22.18+ and network access to fetch pxl; the game itself doesn't.
+  - Portraits are small (16×16) and share one helmeted design.
 - Audio:
   - Sounds are simple synthesis: no positional (3D) audio, no voice or radio chatter, no music.
   - The booster's return and the station's RCS have no sounds of their own yet.
@@ -375,7 +397,10 @@
 ## Checks (last run)
 
 - `npm run typecheck` (app and e2e), `npm run lint`, `npm run build`: pass.
-- `npm test`: 300 tests pass across 28 files. New in Stage 17 (`tests/maneuver.test.ts`, plus the flight runtime): Kepler propagation against an RK4 integration and a full period; pitch conventions; a Hohmann raise, lowering and a radial burn; the Δv vector; burn time and node limits; apoapsis and periapsis node times; a runtime flight that plans a node (preview, refusal when the ship lacks the Δv, save and resume) and flies it to within 15 km of the prediction.
+- `npm test`: 305 tests pass across 29 files. New in Stage 18 (`tests/pixelArt.test.ts`): every location, story mission, contract kind and crew member has a built sprite of the expected size; the logo and favicon exist; the factory signs keep the art's aspect ratio and clear the wall columns; URLs follow the base URL.
+- Stage 18 e2e: 13 Playwright tests (unchanged, as the art is decorative). Result recorded below once the run finishes.
+- Headless Chromium smoke test, Stage 18 (manual script, not committed), with no console errors and no broken images. Checked: the logo, location icons and bar fit at 1440 px; patches on the mission cards and in the briefing; crew portraits; posters and the bay sign readable on the factory wall.
+- Stage 17: `npm test`: 300 tests pass across 28 files. New in Stage 17 (`tests/maneuver.test.ts`, plus the flight runtime): Kepler propagation against an RK4 integration and a full period; pitch conventions; a Hohmann raise, lowering and a radial burn; the Δv vector; burn time and node limits; apoapsis and periapsis node times; a runtime flight that plans a node (preview, refusal when the ship lacks the Δv, save and resume) and flies it to within 15 km of the prediction.
 - Stage 17 e2e: 13 Playwright tests pass (about 10 min), including the new planner test (`e2e/maneuver.e2e.ts`: place a node, shape it, preview, survive a reload, arm and delete).
 - Headless Chromium smoke test, Stage 17 (manual script, not committed), with no console errors: from a 316 × 267 km orbit, a node in 10 minutes with +120 m/s predicted 708 × 304 km and drew a dashed orbit on the map. _Execute node_ flew it to 710 × 302 km and cleared the node.
 - Stage 16: `npm test`: 293 tests pass across 27 files. New in Stage 16 (`tests/audio.test.ts`, plus saves): the mix (silence, room tone, thrust, booster, vacuum, wind and heating, pause and warp); cues (the last-ten beeps, ignition but not on a scrub, touchdown, crash, docking, chimes, shutter, warnings, each once); volume sanitizing; the engine as a silent no-op without Web Audio; sound prefs in saves.
@@ -537,4 +562,4 @@
 
 ## Next action
 
-The approved run (Stages 13–17) is complete. Candidates next: planner nodes for the Moon and Mars legs with an intercept preview, more contract kinds, positional audio, and EVA tools or a rover. Pick the next focus before starting.
+Stage 18 (pixel art) is complete. Candidates next: more pixel art (launch-pad signage, mission patches on the Mission Control wall screen, part icons in the catalog), planner nodes for the Moon and Mars legs with an intercept preview, more contract kinds, positional audio, and EVA tools or a rover. Pick the next focus before starting.
